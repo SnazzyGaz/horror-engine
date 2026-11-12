@@ -4,7 +4,7 @@
 
 A playable machine for horror sound that runs in your browser: nine physical models bolted to one wooden box, with no samples.
 
-[Run it locally](#running-it) · [Watch the intro (MP4, 64 s)](docs/media/intro_720p.mp4) · [Instrument guide](docs/INSTRUMENTS.md)
+[Play it in your browser](https://snazzygaz.github.io/horror-engine/) · [Run it locally](#running-it) · [Watch the intro (MP4, 64 s)](docs/media/intro_720p.mp4) · [Instrument guide](docs/INSTRUMENTS.md)
 
 ## What it is
 
