@@ -1,0 +1,142 @@
+{
+ "oak": {
+  "library": "polyhaven",
+  "asset": "oak_veneer_01",
+  "mix": null,
+  "size": 2048,
+  "tile": 1.83,
+  "note": "bench top (oak veneer)",
+  "bytes": 1824616,
+  "url": "https://polyhaven.com/a/oak_veneer_01"
+ },
+ "walnut": {
+  "library": "polyhaven",
+  "asset": "walnut_veneer",
+  "mix": null,
+  "size": 2048,
+  "tile": 1.8,
+  "note": "cabinet sides, wheel, frames, drawer",
+  "bytes": 521114,
+  "url": "https://polyhaven.com/a/walnut_veneer"
+ },
+ "ebony": {
+  "library": "polyhaven",
+  "asset": "black_walnut_veneer_01",
+  "mix": null,
+  "size": 1024,
+  "tile": 1.0,
+  "note": "ebonised plates and slots (darkened in the material)",
+  "bytes": 228336,
+  "url": "https://polyhaven.com/a/black_walnut_veneer_01"
+ },
+ "floor": {
+  "library": "polyhaven",
+  "asset": "old_wood_floor",
+  "mix": null,
+  "size": 1024,
+  "tile": 3.0,
+  "note": "floorboards",
+  "bytes": 294592,
+  "url": "https://polyhaven.com/a/old_wood_floor"
+ },
+ "brick": {
+  "library": "polyhaven",
+  "asset": "brick_wall_001",
+  "mix": null,
+  "size": 1024,
+  "tile": 3.0,
+  "note": "back wall",
+  "bytes": 471114,
+  "url": "https://polyhaven.com/a/brick_wall_001"
+ },
+ "plaster": {
+  "library": "polyhaven",
+  "asset": "clay_plaster",
+  "mix": null,
+  "size": 1024,
+  "tile": 2.0,
+  "note": "side wall and ceiling",
+  "bytes": 179724,
+  "url": "https://polyhaven.com/a/clay_plaster"
+ },
+ "brass": {
+  "library": "ambientcg",
+  "asset": "Metal048A",
+  "mix": "Metal053B",
+  "size": 1024,
+  "tile": 0.5,
+  "note": "brass and bronze (tinted)",
+  "bytes": 68334,
+  "url": "https://ambientcg.com/view?id=Metal048A"
+ },
+ "steel": {
+  "library": "ambientcg",
+  "asset": "Metal009",
+  "mix": null,
+  "size": 1024,
+  "tile": 0.5,
+  "note": "brushed steel",
+  "bytes": 115774,
+  "url": "https://ambientcg.com/view?id=Metal009"
+ },
+ "alu": {
+  "library": "ambientcg",
+  "asset": "Metal011",
+  "mix": null,
+  "size": 512,
+  "tile": 0.3,
+  "note": "aluminium knobs",
+  "bytes": 13696,
+  "url": "https://ambientcg.com/view?id=Metal011"
+ },
+ "iron": {
+  "library": "ambientcg",
+  "asset": "Metal046A",
+  "mix": null,
+  "size": 1024,
+  "tile": 0.8,
+  "note": "dark iron: stand, tank, gauge case, sheet",
+  "bytes": 109044,
+  "url": "https://ambientcg.com/view?id=Metal046A"
+ },
+ "vellum": {
+  "library": "ambientcg",
+  "asset": "Paper005",
+  "mix": null,
+  "size": 512,
+  "tile": 0.4,
+  "note": "drum skin",
+  "bytes": 12278,
+  "url": "https://ambientcg.com/view?id=Paper005"
+ },
+ "cloth": {
+  "library": "ambientcg",
+  "asset": "Fabric030",
+  "mix": null,
+  "size": 512,
+  "tile": 0.25,
+  "note": "grille cloth",
+  "bytes": 287774,
+  "url": "https://ambientcg.com/view?id=Fabric030"
+ },
+ "stone": {
+  "library": "ambientcg",
+  "asset": "Concrete012",
+  "mix": null,
+  "size": 512,
+  "tile": 0.6,
+  "note": "slate board (darkened)",
+  "bytes": 165858,
+  "url": "https://ambientcg.com/view?id=Concrete012"
+ },
+ "crinkle": {
+  "library": "ambientcg",
+  "asset": "Leather026",
+  "mix": null,
+  "size": 512,
+  "tile": 0.25,
+  "note": "crinkle-enamel faceplate",
+  "bytes": 38958,
+  "url": "https://ambientcg.com/view?id=Leather026"
+ }
+}

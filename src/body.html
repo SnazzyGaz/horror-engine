@@ -1,0 +1,77 @@
+<div class="app">
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 46 34" aria-hidden="true" fill="none" stroke="#c8a35a" stroke-width="1.2"><path d="M23 33 L1 33 A22 22 0 0 1 45 33 Z"/><path d="M23 33 L3.9 22 M23 33 L12 13.9 M23 33 L23 11 M23 33 L34 13.9 M23 33 L42.1 22"/><path d="M12 33 A11 11 0 0 1 34 33" stroke="#efdca6"/><circle cx="23" cy="5" r="2.2" fill="#c8a35a" stroke="none"/></svg>
+    <div><h1>Horror Engine</h1><p>Nine physical models, no samples</p></div>
+  </div>
+  <div class="bar">
+    <button class="btn primary" id="power">Start audio</button>
+    <label class="field">Preset <select id="preset"></select></label>
+    <button class="btn sm" id="psave" title="Save every setting as a preset file">Save</button>
+    <button class="btn sm" id="pload" title="Load a preset file">Load</button>
+    <input type="file" id="pfile" accept=".json,application/json" hidden>
+    <button class="btn sm" id="render" title="Re-render a .horror.json performance offline, faster than real time, to WAV (uses the Stems and format settings)">Render…</button>
+    <input type="file" id="rfile" accept=".json,application/json" hidden>
+    <progress id="rprog" max="1" value="0" hidden></progress>
+    <button class="btn rec" id="rec" aria-pressed="false" title="Record the output (R). Stops into a zip of WAV files.">&#9679; Record</button>
+    <span id="rectime" aria-live="off">00:00</span>
+    <label class="chk" title="Also record one stereo WAV per voice plus the hall return, reverse swell, harmonizer return and body, before the master limiter. Stems line up with the mix and sum to it."><input type="checkbox" id="stems"> Stems</label>
+    <select id="bits" aria-label="WAV format" title="32-bit float keeps pre-limiter stems intact. 24-bit stems get a -6 dB pad."><option value="32" selected>32-bit float</option><option value="24">24-bit</option></select>
+    <div class="meter" title="Output level, left and right. Red bar: limiter gain reduction."><div><i id="mL"></i></div><div><i id="mR"></i></div><div><b id="mG"></b></div></div>
+    <button class="btn sm" id="panic" title="Stop every voice and clear the hall (Esc)">Silence</button>
+    <button class="btn sm" id="aboutBtn">Guide</button>
+  </div>
+</header>
+<main class="grid">
+  <nav class="rack panel" aria-label="Voices"><h2><span>Voices</span></h2><ol id="rack"></ol></nav>
+  <section class="stage panel" aria-label="Playing surface">
+    <div class="tabs" role="tablist" aria-label="Playing view">
+      <button class="btn sm" role="tab" id="tabMachine" aria-selected="false" aria-controls="machine">The Machine</button>
+      <button class="btn sm" role="tab" id="tabSurface" aria-selected="true" aria-controls="pad">The Surface</button>
+      <span id="tabNote"></span>
+    </div>
+    <div class="padwrap">
+      <div id="machine" hidden><div id="mload" role="status" aria-live="polite" aria-label="Loading the machine"><div class="ml-glow"></div><div class="ml-core"><div class="ml-spin"><svg class="ml-sun" viewBox="-50 -50 100 100" aria-hidden="true"><defs><linearGradient id="mlg" gradientUnits="userSpaceOnUse" x1="0" y1="-46" x2="0" y2="46"><stop offset="0" stop-color="#efdca6"/><stop offset=".55" stop-color="#c8a35a"/><stop offset="1" stop-color="#7c6535"/></linearGradient></defs><g class="ml-rays" stroke="url(#mlg)" stroke-width="1.1" stroke-linecap="round"><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(0)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(15)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(30)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(45)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(60)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(75)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(90)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(105)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(120)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(135)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(150)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(165)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(180)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(195)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(210)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(225)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(240)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(255)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(270)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(285)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(300)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(315)"/><line x1="0" y1="-14" x2="0" y2="-44" transform="rotate(330)"/><line x1="0" y1="-16" x2="0" y2="-34" transform="rotate(345)"/></g><g fill="url(#mlg)"><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(0)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(30)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(60)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(90)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(120)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(150)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(180)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(210)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(240)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(270)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(300)"/><rect x="-2.2" y="-12.5" width="4.4" height="4" rx=".6" transform="rotate(330)"/><circle r="10.5"/></g><circle r="4.2" fill="#0b0a08"/><circle r="1.6" fill="#c8a35a"/></svg></div><h2 class="ml-title">Horror Engine</h2><p class="ml-sub">The Machine</p><div class="ml-bar"><i id="mlP"></i><b></b></div><p class="ml-status"><span id="mlS">Assembling the machine</span><span id="mlN"></span></p></div></div><span class="padlab" id="ml"></span><span class="padlab" id="mh">Drag a part to play it &middot; drag the room to look around &middot; wheel to zoom</span></div>
+      <canvas id="pad" tabindex="0" aria-label="Gesture pad. Drag to play the selected voice."></canvas>
+      <span class="padlab" id="hn"></span><span class="padlab" id="hp"></span><span class="padlab" id="hx"></span><span class="padlab" id="hy"></span>
+      <div id="wake"><div><button class="btn primary" id="wakeBtn">Start audio</button><p>Then drag on this surface. How fast you move and how hard you press are the bow, the scrape and the crank.</p></div></div>
+    <script>/* the Machine is the default view: show its loading screen from the first paint (machine2.js takes over) */(function(){try{var t=localStorage.getItem("horror-engine.tab");if(t&&t!=="machine")return;}catch(e){}var $=function(i){return document.getElementById(i)};$("machine").hidden=false;$("pad").hidden=true;["hn","hp","hx","hy"].forEach(function(i){$(i).hidden=true});document.body.classList.add("machine-on");$("tabMachine").setAttribute("aria-selected","true");$("tabSurface").setAttribute("aria-selected","false");setTimeout(function(){var l=$("mload");if(l&&!l.hidden&&!(window.__he&&window.__he.loader)){l.classList.add("err");$("mlS").textContent="The machine did not start. Try reloading, or use The Surface.";setTimeout(function(){l.hidden=true},6000)}},20000);})();</script>
+    </div>
+    <div class="keys"><span><kbd>1</kbd>&ndash;<kbd>9</kbd> voice</span><span><kbd>Z</kbd>&hellip;<kbd>M</kbd> <kbd>Q</kbd>&hellip;<kbd>P</kbd> notes</span><span><kbd>[</kbd> <kbd>]</kbd> octave</span><span><kbd>Shift</kbd> hard <kbd>Alt</kbd> soft</span><span><kbd>Space</kbd> loop</span><span><kbd>G</kbd> ghost</span><span><kbd>F1</kbd>&ndash;<kbd>F5</kbd> moments</span><span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span><span><kbd>H</kbd> hold</span><span><kbd>F</kbd> freeze</span><span><kbd>R</kbd> record</span><span><kbd>Esc</kbd> silence</span></div>
+  </section>
+  <aside class="side">
+    <section class="panel macros"><h2><span>Macros</span></h2><div class="knobs" id="macros"></div></section>
+    <section class="panel"><h2><span>Moments</span></h2><div class="moments" id="moments"></div></section>
+  </aside>
+  <section class="voice panel" id="voice" aria-live="off"></section>
+  <section class="hall panel"><h2><span>Hall &amp; Master</span></h2><h4>Huge reverb</h4><div class="knobs" id="hallk"></div><h4 class="sub">Harmonizer <small>(each voice's Harmonizer knob sends to it)</small></h4><div class="knobs" id="harmk"></div><h4 class="sub">Body &amp; piezo <small>(the wooden box every part is bolted to)</small></h4><div class="knobs" id="bodyk"></div><h4 class="sub">Master</h4><div class="knobs" id="masterk"></div></section>
+  <section class="looper panel"><h2><span>Gesture Looper</span></h2>
+    <div class="looprow">
+      <button class="btn" id="loopRec" aria-pressed="false">&#9679; Loop a gesture</button>
+      <label class="chk" title="Off (default): new layers lock to the first layer's cycle, so overdubs stay in time. On: the new layer keeps its own length and drifts against the others (polymetric)."><input type="checkbox" id="free"> Free length</label>
+      <button class="btn sm" id="loopClear">Clear all</button>
+      <p>Loops store what your hand did, not audio, so each pass is performed again by the models. Hand a layer to a Ghost and it keeps improvising with your strokes.</p>
+    </div>
+    <ul id="layers"></ul>
+  </section>
+</main>
+<footer><span>Horror Engine by <a href="https://x.com/_mintydoge" target="_blank" rel="noopener">Garyck Arntzen</a> &middot; MIT licence</span><span id="status">Audio is off</span></footer>
+</div>
+<dialog id="about" aria-labelledby="abt">
+  <h2 id="abt">Horror Engine</h2>
+  <p>A playable machine for horror sound, by Garyck Arntzen (<a href="https://x.com/_mintydoge" target="_blank" rel="noopener">x.com/_mintydoge</a>). Every sound is synthesised live from physical models. Inspired by Mark Korven's Apprehension Engine.</p>
+  <h3>Playing</h3>
+  <ul><li>Pick a voice, then drag on the surface. Bowed and scraped voices are silent until you move.</li><li>Hold keeps a voice sounding hands-free. Aura replays the machine's own recent sound as a pad; Freeze pins it.</li><li>Mouse pressure: hold Shift for hard, Alt for soft, or roll the wheel over the surface. A pen uses its real pressure.</li><li>Knobs: drag up and down, Shift for fine, double-click to reset, arrow keys when focused.</li></ul>
+  <h3>The machine</h3>
+  <ul><li><b>Machine V2.</b> Drag any part to play it. Stroke the rulers, rods, coil or saw to bow them; tap them to strike (drag up or down while bowing the saw to bend it). Grab the brass tray by its rim and push one end down to rock it: the water runs to the low side and bends those rods down, and it sways back level when you let go (Shift keeps the tilt). While bowing the rods, push up or down to rock the tray under the note. Draw on the slate with chalk, rub the bottle with a wet finger (Alt for a nail on either). Lift a superball off its wand and drag it onto the thunder sheet, the rods, the drumhead or the box. Hold the glass tap to fill the wine glass (Shift drains it). Pull the drawer open to rake the junk. Home and F6&ndash;F9 move the camera, K follows the part you play, D is demo mode. The first Machine is at <code>?machine=v1</code>.</li><li><b>Shared body.</b> Like the real Apprehension Engine, every part is bolted to one wooden box heard through contact mics. Body sets how much the box rings along; Piezo moves from the warm box to the quacky, bass-light contact-mic sound.</li><li><b>Harmonizer.</b> Each voice has a Harmonizer send (in its Channel knobs). The return is pitch-shifted (an octave down by default), split into two detuned voices, with feedback for falling spirals.</li><li><b>Superball (IX).</b> A rubber ball on a stick dragged over a drumhead, a steel sheet or the cabinet. It moans; pressure raises the pitch, and it catches on the surface's own notes.</li><li><b>Blaster Beam.</b> Set the E-bow's Excite to Strike or Pluck (or play the long beam on the floor in the Machine view): a hit rings for seconds and x slides the bar.</li><li><b>Water.</b> Rods, bells and the steel sheet wobble in pitch as if standing in a waterphone's bowl. Slosh speeds the wobble.</li><li><b>Rulers</b> are pitched by their overhang (Ruler length): 10 cm is about 65 Hz, 20 cm about 16 Hz. Bowed metal jumps between modes when you change bow pressure.</li><li><b>Spring tank</b> echoes drip downward, highs first and lows last, like a real tank. Its E-bow mode holds it in sustain.</li></ul>
+  <h3>Recording</h3>
+  <p>Record captures the limited master mix at the audio device rate. With Stems on you also get one stereo file per voice, the hall return, the reverse swell, the harmonizer return and the body. Stems are taken after Distance and the master tone, volume and low cut, but before the limiter; they line up with the mix sample for sample and add up to it. 32-bit float is the default; 24-bit stems are padded by 6 dB so they cannot clip. Stop to save a zip of WAV files with the session settings alongside. Mix-only takes run up to 10 minutes, takes with stems up to 4.</p>
+  <h3>Keys</h3>
+  <dl><dt><kbd>1</kbd>&ndash;<kbd>9</kbd></dt><dd>Select a voice</dd><dt><kbd>Z</kbd>&hellip;<kbd>/</kbd> and <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd>&hellip;<kbd>P</kbd></dt><dd>Chromatic notes, two rows an octave apart (R is Record, so the upper row skips it)</dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Octave down, up</dd><dt><kbd>Space</kbd></dt><dd>Start or stop a loop layer</dd><dt><kbd>Backspace</kbd></dt><dd>Remove the newest layer</dd><dt><kbd>G</kbd></dt><dd>Ghost the newest layer (it improvises from its own strokes)</dd><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>Undo, redo looper changes (50 steps)</dd><dt><kbd>F1</kbd>&ndash;<kbd>F5</kbd></dt><dd>Moments, in the order of the buttons</dd><dt><kbd>H</kbd> <kbd>F</kbd> <kbd>R</kbd> <kbd>Esc</kbd></dt><dd>Hold, Freeze, Record, Silence</dd></dl>
+  <h3>MIDI</h3>
+  <p>Where the browser allows it: notes play the selected voice, CC 20&ndash;23 move Dread, Distance, Material and Pitch.</p>
+  <h3>Notices</h3>
+  <p>MIT licence, &copy; 2026 Garyck Arntzen. The bowed-string friction curve follows the bow-table idea published in STK by Perry R. Cook and Gary P. Scavone.</p>
+  <p><button class="btn" id="aboutClose">Close</button></p>
+</dialog>
+<div id="toast" role="status" hidden></div>

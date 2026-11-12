@@ -1,0 +1,314 @@
+/* layout: a lacquered instrument cabinet. Rack of eight voices left, the playing surface centre stage, macros right; voice detail, hall and looper below. */
+:root{
+  --ink:#0b0f0e; --lacquer:#111816; --panel:#151d1b; --inset:#0d1312; --line:#2c3a35;
+  --brass:#c8a35a; --brass-hi:#efdca6; --brass-lo:#7c6535; --ivory:#eee5cf; --dim:#9a927c;
+  --jade:#4fa48d; --blood:#c0392f;
+  --display:"Limelight","Poiret One","Copperplate","Didot",serif;
+  --ui:"Josefin Sans","Century Gothic","Futura","Gill Sans",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--ink)}
+body{color:var(--ivory);font-family:var(--ui);font-size:14px;line-height:1.35;
+  background:var(--ink) repeating-linear-gradient(90deg,transparent 0 22px,rgba(200,163,90,.035) 22px 23px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 28px}
+button,select,input{font:inherit;color:inherit}
+.app{max-width:1500px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.panel{position:relative;background:linear-gradient(180deg,var(--panel),var(--lacquer));border:1px solid var(--brass-lo);
+  box-shadow:inset 0 0 0 3px var(--lacquer),inset 0 0 0 4px var(--line);padding:16px 16px 14px;min-width:0}
+.panel>h2{margin:0 0 12px;font:400 12px/1 var(--ui);letter-spacing:.32em;text-transform:uppercase;color:var(--brass);display:flex;align-items:center;gap:10px;white-space:nowrap}
+.panel>h2::before,.panel>h2::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,var(--brass-lo))}
+.panel>h2::after{transform:scaleX(-1)}
+.panel>h2 span::before,.panel>h2 span::after{content:"\25C6";font-size:7px;vertical-align:middle;margin:0 8px;color:var(--brass-lo)}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;border-bottom:1px solid var(--brass-lo);padding-bottom:12px;position:relative}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-4px;height:1px;background:var(--line)}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto;min-width:0}
+.brand svg{width:46px;height:34px;flex:none}
+.brand h1{margin:0;font:400 clamp(22px,3.2vw,34px)/1 var(--display);letter-spacing:.08em;text-transform:uppercase;
+  background:linear-gradient(180deg,var(--brass-hi),var(--brass) 55%,var(--brass-lo));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand p{margin:3px 0 0;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.btn{background:transparent;border:1px solid var(--brass-lo);color:var(--brass-hi);padding:8px 13px 6px;letter-spacing:.16em;text-transform:uppercase;font-size:12px;cursor:pointer;
+  transition:background .12s,color .12s,border-color .12s;min-height:34px}
+.btn:hover{border-color:var(--brass);background:rgba(200,163,90,.09)}
+.btn:focus-visible,.knob:focus-visible,select:focus-visible,.src:focus-visible,#pad:focus-visible{outline:2px solid var(--brass-hi);outline-offset:2px}
+.btn[aria-pressed="true"],.btn.on{background:var(--brass);color:var(--ink);border-color:var(--brass-hi)}
+.btn.primary{background:var(--brass);color:var(--ink);border-color:var(--brass-hi)}
+.btn.primary.live{background:transparent;color:var(--jade);border-color:var(--jade)}
+.btn.rec{color:#f0b9b3;border-color:#7a2a24}
+.btn.rec[aria-pressed="true"]{background:var(--blood);color:#fff;border-color:#ff8f85;animation:pulse 1.2s infinite}
+.btn.sm{padding:5px 9px 3px;font-size:11px;min-height:28px}
+.btn:disabled{opacity:.4;cursor:default}
+@keyframes pulse{50%{box-shadow:0 0 0 4px rgba(192,57,47,.3)}}
+.field{display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+select{background:var(--inset);border:1px solid var(--brass-lo);color:var(--ivory);padding:7px 8px 5px;min-height:34px;letter-spacing:.04em;max-width:100%}
+.chk{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);cursor:pointer}
+.chk input{accent-color:var(--brass);width:15px;height:15px}
+#rectime{font-variant-numeric:tabular-nums;letter-spacing:.08em;color:var(--dim);min-width:3.2em}
+.meter{display:grid;gap:3px;width:120px}
+.meter div{height:5px;background:var(--inset);border:1px solid var(--line);overflow:hidden}
+.meter i{display:block;height:100%;transform-origin:left;transform:scaleX(0);background:linear-gradient(90deg,var(--jade) 60%,var(--brass) 85%,var(--blood))}
+.meter b{display:block;height:100%;transform-origin:right;transform:scaleX(0);background:var(--blood)}
+
+.grid{display:grid;gap:14px;grid-template-columns:230px minmax(0,1fr) 300px;grid-template-areas:"rack stage side" "voice voice hall" "loop loop loop"}
+.rack{grid-area:rack}.stage{grid-area:stage}.side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}.voice{grid-area:voice}.hall{grid-area:hall}.looper{grid-area:loop}
+@media(max-width:1100px){.grid{grid-template-columns:minmax(0,1fr) 280px;grid-template-areas:"stage stage" "rack side" "voice voice" "hall hall" "loop loop"}}
+@media(max-width:700px){.grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "rack" "side" "voice" "hall" "loop"}}
+
+.rack ol{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+@media(max-width:1100px){.rack ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.src{width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) 10px;align-items:center;gap:8px;text-align:left;background:var(--inset);border:1px solid var(--line);padding:9px 10px 7px;cursor:pointer;color:var(--ivory)}
+.src em{font:400 13px var(--display);color:var(--brass-lo);text-align:center;font-style:normal}
+.src strong{font-weight:400;letter-spacing:.14em;text-transform:uppercase;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src small{display:block;font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;min-height:1.3em}
+.src u{width:8px;height:8px;border-radius:50%;background:var(--line);text-decoration:none;transition:background .1s}
+.src[aria-current="true"]{border-color:var(--brass);background:linear-gradient(90deg,rgba(200,163,90,.18),transparent)}
+.src[aria-current="true"] em{color:var(--brass-hi)}
+.src.muted strong{text-decoration:line-through;color:var(--dim)}
+
+.stage{padding:10px}
+.padwrap{position:relative;border:1px solid var(--brass-lo);background:var(--inset)}
+#pad{display:block;width:100%;height:clamp(260px,46vh,520px);touch-action:none;cursor:crosshair}
+.padlab{position:absolute;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+#hx{left:50%;bottom:8px;transform:translateX(-50%);white-space:nowrap}
+#hy{left:12px;top:50%;writing-mode:vertical-rl;transform:translateY(-50%) rotate(180deg);white-space:nowrap}
+#hn{left:14px;top:10px;color:var(--brass);right:120px}
+#hp{right:14px;top:10px;font-variant-numeric:tabular-nums}
+#wake{position:absolute;inset:0;display:grid;place-items:center;background:rgba(11,15,14,.72);text-align:center;padding:16px}
+#wake div{max-width:34ch;display:grid;gap:12px;justify-items:center}
+#wake p{margin:0;color:var(--dim);letter-spacing:.06em}
+.keys{margin:10px 2px 0;font-size:11px;letter-spacing:.1em;color:var(--dim);display:flex;flex-wrap:wrap;gap:4px 16px}
+kbd{font:inherit;color:var(--brass-hi);border:1px solid var(--line);padding:1px 5px 0;background:var(--inset)}
+
+.knobs{display:flex;flex-wrap:wrap;gap:14px 10px}
+.knob{width:74px;display:grid;justify-items:center;gap:5px;cursor:ns-resize;user-select:none;-webkit-user-select:none;touch-action:none;text-align:center}
+.dial{--v:0;width:48px;height:48px;border-radius:50%;position:relative;
+  background:radial-gradient(circle at 50% 35%,#27322f,#0f1514 70%);box-shadow:0 0 0 1px var(--brass-lo),0 2px 5px rgba(0,0,0,.6)}
+.dial::before{content:"";position:absolute;inset:-6px;border-radius:50%;
+  background:conic-gradient(from 225deg,var(--brass) calc(var(--v)*270deg),var(--line) 0 270deg,transparent 0);
+  -webkit-mask:radial-gradient(circle,transparent 26px,#000 27px);mask:radial-gradient(circle,transparent 26px,#000 27px)}
+.dial i{position:absolute;left:50%;top:50%;width:2px;height:20px;margin:-22px 0 0 -1px;background:var(--brass-hi);transform-origin:50% 22px;transform:rotate(calc(-135deg + var(--v)*270deg))}
+.knob span{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);line-height:1.1}
+.knob output{font-size:12px;font-variant-numeric:tabular-nums;color:var(--ivory)}
+.knob.big{width:118px}
+.knob.big .dial{width:78px;height:78px}
+.knob.big .dial::before{inset:-8px;-webkit-mask:radial-gradient(circle,transparent 43px,#000 44px);mask:radial-gradient(circle,transparent 43px,#000 44px)}
+.knob.big .dial i{height:32px;margin:-36px 0 0 -1px;transform-origin:50% 36px;width:3px}
+.knob.big span{font-size:12px;color:var(--brass);letter-spacing:.26em}
+.knob.big small{font-size:10px;color:var(--dim);letter-spacing:.06em;line-height:1.2}
+.macros .knobs{justify-content:space-around;gap:16px 4px}
+.moments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.moments .btn{position:relative;overflow:hidden;text-align:left;padding:10px 10px 8px}
+.moments .btn small{display:block;font-size:9px;letter-spacing:.14em;opacity:.7;margin-top:2px}
+.moments .btn:last-child{grid-column:1/-1}
+.moments .btn b{position:absolute;left:0;bottom:0;height:2px;background:var(--brass-hi);width:0}
+
+.voicehead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:12px}
+.voicehead h3{margin:0;font:400 22px/1 var(--display);letter-spacing:.06em;color:var(--brass-hi)}
+.voicehead p{margin:0;color:var(--dim);flex:1;min-width:16ch}
+.voicehead .tg{display:flex;gap:6px}
+.vgrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px 26px}
+@media(max-width:900px){.vgrid{grid-template-columns:minmax(0,1fr)}}
+.vgrid h4,.hall h4{margin:0 0 10px;font:400 10px/1 var(--ui);letter-spacing:.3em;text-transform:uppercase;color:var(--brass-lo);border-bottom:1px solid var(--line);padding-bottom:6px}
+.seg{display:flex;flex-wrap:wrap;gap:0;margin:0 0 12px}
+.seg legend,.seglab{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:0 10px 4px 0;align-self:center;min-width:64px}
+.seg .btn{margin-left:-1px}
+.sub{margin-top:12px}
+
+.looprow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+.looprow p{margin:0;color:var(--dim);flex:1;min-width:20ch}
+#layers{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+#layers li{display:grid;grid-template-columns:28px minmax(110px,170px) minmax(40px,1fr) auto;gap:8px 10px;align-items:center;background:var(--inset);border:1px solid var(--line);padding:6px 8px}
+#layers li>em{font:400 13px var(--display);color:var(--brass);font-style:normal;text-align:center}
+#layers .prog{height:6px;background:var(--lacquer);border:1px solid var(--line);position:relative;overflow:hidden}
+#layers .prog i{position:absolute;inset:0;background:var(--brass);transform-origin:left;transform:scaleX(0)}
+#layers .acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+#layers .len{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px;min-width:4em;text-align:right}
+#layers .empty{display:block;color:var(--dim);border-style:dashed;padding:12px}
+@media(max-width:600px){#layers li{grid-template-columns:28px minmax(0,1fr)}#layers .prog,#layers .acts{grid-column:1/-1}}
+
+footer{color:var(--dim);font-size:12px;letter-spacing:.06em;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;border-top:1px solid var(--line);padding-top:10px}
+a{color:var(--brass-hi)}
+dialog{background:var(--panel);color:var(--ivory);border:1px solid var(--brass);box-shadow:inset 0 0 0 3px var(--lacquer),inset 0 0 0 4px var(--line),0 20px 60px #000;max-width:min(680px,calc(100vw - 32px));padding:22px 24px;max-height:86vh;overflow:auto}
+dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog h2{margin:0 0 4px;font:400 26px var(--display);color:var(--brass-hi);letter-spacing:.06em}
+dialog h3{margin:18px 0 6px;font:400 11px var(--ui);letter-spacing:.3em;text-transform:uppercase;color:var(--brass)}
+dialog p,dialog li{color:#d6cdb6;max-width:64ch}
+dialog ul{margin:0;padding-left:18px}
+dialog dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 14px;margin:0}
+dialog dt{white-space:nowrap}dialog dd{margin:0;color:#d6cdb6}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--brass);color:var(--ink);padding:9px 16px 7px;letter-spacing:.08em;max-width:calc(100vw - 32px);z-index:20}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.hall h4.sub{margin-top:18px}
+.knob.big small{min-height:2.4em}
+@media(min-width:1101px){.rack{display:flex;flex-direction:column}.rack ol{flex:1;grid-auto-rows:1fr}}
+.tabs{display:flex;align-items:center;gap:0;margin-bottom:10px;flex-wrap:wrap}
+.tabs .btn+.btn{margin-left:-1px}
+.tabs .btn[aria-selected="true"]{background:var(--brass);color:var(--ink);border-color:var(--brass-hi)}
+#tabNote{margin-left:12px;font-size:11px;letter-spacing:.08em;color:var(--dim)}
+#machine{position:relative;width:100%;height:clamp(300px,56vh,640px);touch-action:none;overflow:hidden;background:#070a09}
+#machine canvas{display:block;width:100%;height:100%}
+#ml{left:14px;top:10px;color:var(--brass-hi);right:14px;font-size:11px}
+#mh{left:14px;right:14px;bottom:8px;text-align:center}
+#mh,#ml{text-shadow:0 1px 2px #000,0 0 8px #000}
+#mh{color:var(--ivory)}
+.hall h4 small{letter-spacing:.04em;text-transform:none;opacity:.75;font-size:10px}.vgrid h4.sub{margin-top:14px}
+/* Machine V2 view tools */
+.mtools{position:absolute;right:10px;bottom:10px;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;z-index:3}
+.mtools .btn{opacity:.82}
+.mtools .btn[aria-pressed=true]{opacity:1}
+#machine.demo .mtools,#machine.demo .padlab{display:none}
+
+/* ---------- UI pass: an old workshop instrument rather than an Art Deco lobby ----------
+   Tarnished, dimmer brass; soot-black enamel; labels look ink-stamped; fewer frames. When the Machine is showing it
+   takes the stage and the controls sit in a slim strip under it and a narrow column beside it. */
+:root{
+  --ink:#0b0a08; --lacquer:#12100d; --panel:#16130f; --inset:#0e0c0a; --line:#28231b;
+  --brass:#a3864f; --brass-hi:#cdb987; --brass-lo:#5a4a2c; --ivory:#e2d8c0; --dim:#8b8170;
+  --jade:#6f9a86; --blood:#a8382c;
+  --display:"Courier New","American Typewriter","Courier",monospace;
+  --stamp:"Courier New","Courier",monospace;
+}
+body{background:var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .45 0 0 0 0 .3 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+.panel{background:linear-gradient(180deg,rgba(255,240,200,.025),transparent 40%),var(--panel);border:0;border-top:1px solid var(--line);box-shadow:0 1px 0 rgba(0,0,0,.6),0 12px 30px -18px #000;padding:12px 14px 12px}
+.panel>h2{font:700 11px/1 var(--stamp);letter-spacing:.28em;color:var(--brass);opacity:.85;transform:rotate(-.4deg);transform-origin:left;margin-bottom:10px}
+.panel>h2::before,.panel>h2::after,.panel>h2 span::before,.panel>h2 span::after{display:none}
+.top{border-bottom:0;padding-bottom:6px}.top::after{display:none}
+.brand svg{width:34px;height:25px;opacity:.7}
+.brand h1{font:700 clamp(18px,2.2vw,26px)/1 var(--display);letter-spacing:.2em;background:none;color:var(--brass-hi);-webkit-background-clip:border-box;background-clip:border-box;
+  text-shadow:1px 1px 0 rgba(0,0,0,.7),0 0 1px rgba(205,185,135,.4);transform:rotate(-.6deg);opacity:.92}
+.brand p{font-family:var(--stamp);font-size:10px;letter-spacing:.24em;opacity:.8}
+.btn{border:1px solid transparent;background:rgba(163,134,79,.07);color:var(--brass-hi);font-family:var(--stamp);font-weight:700;letter-spacing:.12em;border-radius:2px;
+  box-shadow:inset 0 1px 0 rgba(255,230,180,.05),inset 0 -1px 0 rgba(0,0,0,.5)}
+.btn:hover{border-color:var(--brass-lo);background:rgba(163,134,79,.14)}
+.btn[aria-pressed="true"],.btn.on,.btn.primary,.tabs .btn[aria-selected="true"]{background:linear-gradient(180deg,#a68a55,#7e6a3e);color:#15110a;border-color:transparent;box-shadow:inset 0 1px 0 rgba(255,235,190,.25),inset 0 -1px 0 rgba(0,0,0,.4)}
+.btn.primary.live{background:transparent;color:var(--jade);border-color:rgba(111,154,134,.4)}
+.btn.rec{color:#d9a59c;border-color:transparent;background:rgba(168,56,44,.12)}
+.field,.chk,.seg legend,.seglab,.knob span,.padlab,.keys,#tabNote,.src small,.vgrid h4,.hall h4{font-family:var(--stamp)}
+select{background:var(--inset);border:1px solid var(--line);border-radius:2px}
+.meter div{border-color:transparent;background:#070605}
+.src{border:0;border-left:2px solid transparent;background:rgba(255,240,200,.02);border-radius:2px}
+.src em{font-family:var(--stamp);font-weight:700}
+.src strong{font-family:var(--stamp);font-weight:700;letter-spacing:.1em}
+.src[aria-current="true"]{border-left-color:var(--brass);background:linear-gradient(90deg,rgba(163,134,79,.16),transparent)}
+.padwrap{border:0;box-shadow:0 0 0 1px #000,0 0 0 2px var(--line)}
+.dial{background:radial-gradient(circle at 45% 35%,#3a332a,#14110d 70%);box-shadow:0 0 0 1px #000,0 2px 4px rgba(0,0,0,.7)}
+.dial::before{background:conic-gradient(from 225deg,var(--brass) calc(var(--v)*270deg),#221d16 0 270deg,transparent 0)}
+.dial i{background:#e6d6a8}
+.knob output{font-family:var(--stamp)}
+.knob.big span{font-family:var(--stamp);font-weight:700;color:var(--brass)}
+.moments .btn{background:rgba(255,240,200,.025);border:0;border-left:2px solid var(--brass-lo)}
+.voicehead h3{font:700 19px/1 var(--display);letter-spacing:.1em;color:var(--brass-hi);transform:rotate(-.4deg)}
+.vgrid h4,.hall h4{border-bottom:1px dashed var(--line);font-weight:700}
+#layers li{border:0;background:rgba(255,240,200,.02)}
+#layers .empty{border:1px dashed var(--line)}
+kbd{border-color:transparent;background:#1c1813;font-family:var(--stamp)}
+footer{border-top:0;font-family:var(--stamp);font-size:11px}
+dialog{background:var(--panel);border:1px solid var(--brass-lo);box-shadow:0 20px 60px #000}
+dialog h2{font:700 22px var(--display);letter-spacing:.12em}
+dialog h3{font-family:var(--stamp);font-weight:700}
+#toast{background:#a68a55;font-family:var(--stamp);font-weight:700}
+.mtools .btn{background:rgba(10,9,7,.6)}
+.mtools .btn[aria-pressed=true]{background:linear-gradient(180deg,#a68a55,#7e6a3e)}
+
+/* the Machine takes the stage; controls become a slim strip under it and a narrow column beside it */
+@media(min-width:1101px){
+  body.machine-on .grid{grid-template-columns:minmax(0,1fr) 248px;grid-template-areas:"stage side" "rack rack" "voice hall" "loop loop";gap:10px}
+  body.machine-on #machine{height:clamp(420px,calc(100vh - 230px),900px)}
+  body.machine-on .stage{padding:6px}
+  body.machine-on .rack{padding:6px 8px;display:flex;flex-direction:row;align-items:center;gap:10px}
+  body.machine-on .rack>h2{margin:0;writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;letter-spacing:.2em}
+  body.machine-on .rack ol{grid-template-columns:repeat(9,minmax(0,1fr));grid-auto-rows:auto;flex:1;gap:4px}
+  body.machine-on .src{padding:5px 6px 4px;grid-template-columns:18px minmax(0,1fr) 7px;gap:4px}
+  body.machine-on .src strong{font-size:10px;letter-spacing:.04em}
+  body.machine-on .src small{font-size:9px;min-height:1.1em}
+  body.machine-on .side{gap:8px}
+  body.machine-on .side .panel{padding:8px 8px}
+  body.machine-on .macros .knobs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-items:center;gap:8px 2px}
+  body.machine-on .knob.big{width:100px}
+  body.machine-on .knob.big .dial{width:56px;height:56px}
+  body.machine-on .knob.big .dial::before{inset:-6px;-webkit-mask:radial-gradient(circle,transparent 30px,#000 31px);mask:radial-gradient(circle,transparent 30px,#000 31px)}
+  body.machine-on .knob.big .dial i{height:22px;margin:-25px 0 0 -1px;transform-origin:50% 25px}
+  body.machine-on .knob.big small{display:none}
+  body.machine-on .moments{grid-template-columns:minmax(0,1fr);gap:4px}
+  body.machine-on .moments .btn{padding:6px 8px 5px;min-height:0}
+  body.machine-on .moments .btn small{display:none}
+  body.machine-on .keys{margin-top:6px;font-size:10px;gap:2px 12px;opacity:.75}
+  body.machine-on .tabs{margin-bottom:6px}
+}
+.mtools{top:8px;bottom:auto;right:8px}
+#machine #ml{right:430px}
+@media(max-width:900px){.mtools{top:auto;bottom:30px}#machine #ml{right:14px}}
+@media(min-width:1101px){body.machine-on #machine{height:clamp(400px,calc(100vh - 300px),880px)}}
+/* UI QA: the numeral column sizes to its numeral (VIII is the widest), so numerals never run into the names */
+.src{grid-template-columns:minmax(30px,max-content) minmax(0,1fr) 10px}
+.src em{white-space:nowrap;text-align:right;padding-right:2px}
+@media(min-width:1101px){
+  body.machine-on .src{grid-template-columns:max-content minmax(0,1fr) 7px;gap:5px;padding:5px 6px 4px 5px;align-items:center}
+  body.machine-on .src em{font-size:10px;letter-spacing:0;min-width:2.4em;padding-right:0}
+  body.machine-on .src strong{font-size:10px;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere;line-height:1.15;display:block}
+  body.machine-on .src small{letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(min-width:1101px){body.machine-on .rack>h2{font-size:8px;letter-spacing:.12em;line-height:1;padding:0;opacity:.7;transform:rotate(180deg)}}
+/* Round 2: the view shortcuts are a compact two-row cluster in the top-right corner (cameras on top; Whole, Follow and
+   detail below), so the part hint along the top gets almost the whole width and wraps cleanly in readable sentence case */
+.mtools{top:8px;right:8px;bottom:auto;display:grid;grid-template-columns:repeat(4,auto);gap:3px;justify-content:end}
+.mtools .btn{font-size:9px;letter-spacing:.1em;padding:4px 7px 3px;min-height:0;line-height:1.2;text-align:center;opacity:.9;border-color:rgba(163,134,79,.28)}
+.mtools .btn.qual{grid-column:span 2}
+.mtools .btn:hover{opacity:1;border-color:var(--brass-lo)}
+#machine #ml{top:8px;left:8px;right:236px;font-size:12px;letter-spacing:.05em;text-transform:none;line-height:1.4;color:#e6d3a2;padding:3px 9px 4px;border-radius:2px;
+  background:linear-gradient(90deg,rgba(8,7,5,.72),rgba(8,7,5,.55) 70%,rgba(8,7,5,0));max-width:max-content}
+#machine #ml:empty{display:none}
+@media(max-width:900px){.mtools{top:auto;bottom:30px}#machine #ml{right:8px}}
+/* Polish: the cabinet panels get a soft top sheen and a drop shadow; the 3D view a thin brass bezel; the view shortcuts sit
+   on one dark plate (a plain fill: a backdrop blur over a live WebGL canvas would be re-blurred every frame); buttons get a brass edge light and press down a pixel. No sizes or positions change. */
+.panel{background:radial-gradient(120% 60% at 50% 0,rgba(239,220,166,.045),transparent 60%),linear-gradient(180deg,var(--panel),var(--lacquer));
+  box-shadow:inset 0 0 0 3px var(--lacquer),inset 0 0 0 4px var(--line),inset 0 1px 0 4px rgba(239,220,166,.03),0 8px 22px rgba(0,0,0,.38)}
+#machine{border-radius:2px}
+#machine::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;border-radius:inherit;
+  box-shadow:inset 0 0 0 1px rgba(200,163,90,.22),inset 0 0 0 2px rgba(0,0,0,.6)}
+#machine #ml,#machine #mh{z-index:2}
+.mtools{z-index:3;padding:3px;border-radius:3px;background:rgba(9,8,6,.8);border:1px solid rgba(200,163,90,.16);
+  box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.mtools .btn{background:linear-gradient(180deg,rgba(32,28,20,.7),rgba(10,9,7,.7));border-radius:2px;box-shadow:inset 0 1px 0 rgba(239,220,166,.08)}
+.mtools .btn[aria-pressed=true]{background:linear-gradient(180deg,#b89a60,#7e6a3e);color:#120f09;box-shadow:inset 0 1px 0 rgba(255,240,200,.35),0 0 8px rgba(200,163,90,.25)}
+.btn{text-shadow:0 1px 0 rgba(0,0,0,.45);box-shadow:inset 0 1px 0 rgba(239,220,166,.06)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn[aria-pressed="true"],.btn.on,.btn.primary{text-shadow:none;box-shadow:inset 0 1px 0 rgba(255,240,200,.35)}
+@media (prefers-reduced-motion:reduce){.btn:active:not(:disabled){transform:none}}
+/* Big screens: with the machine showing, the cabinet grows to fill the monitor (up to 2880 px wide) and the 3D view takes the
+   width beside the macro column and most of the height (the voice rack stays just above the fold). Small sizes are unchanged. */
+@media(min-width:1600px){
+  body.machine-on .app{max-width:2880px}
+  body.machine-on #machine{height:clamp(400px,calc(100vh - 300px),1400px)}
+}
+@media(min-width:1900px){body.machine-on .grid{grid-template-columns:minmax(0,1fr) 280px}}
+
+/* loading screen over the Machine: compositor-only motion (transform/opacity), progress from the real load phases */
+#mload{position:absolute;inset:0;z-index:8;display:grid;place-items:center;overflow:hidden;container-type:size;cursor:progress;
+  background:radial-gradient(ellipse 80% 70% at 50% 40%,#1a140d 0%,#0d0b08 48%,#050505 100%);transition:opacity .9s cubic-bezier(.4,0,.2,1)}
+#mload::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 95% 85% at 50% 45%,transparent 55%,rgba(0,0,0,.65))}
+#mload.out{opacity:0;pointer-events:none}
+#mload .ml-glow{position:absolute;left:50%;top:36%;width:120cqmin;height:120cqmin;margin:-60cqmin 0 0 -60cqmin;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,176,92,.20) 0,rgba(255,150,70,.07) 32%,transparent 62%);animation:mlFlick 9s steps(1,end) infinite,mlSway 13s ease-in-out infinite;will-change:opacity,transform}
+#mload .ml-core{position:relative;z-index:1;display:grid;justify-items:center;text-align:center;width:min(82%,460px);gap:clamp(4px,1.6cqmin,14px)}
+#mload .ml-spin{width:clamp(48px,24cqmin,170px);height:clamp(48px,24cqmin,170px);animation:mlSpin 90s linear infinite;will-change:transform}
+#mload .ml-sun{display:block;width:100%;height:100%;animation:mlBreathe 6s ease-in-out infinite;will-change:transform,opacity;filter:drop-shadow(0 0 6px rgba(255,170,80,.25))}
+#mload .ml-title{margin:clamp(2px,1cqmin,8px) 0 0;font:400 clamp(18px,6.4cqmin,44px)/1.05 var(--display);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;
+  background:linear-gradient(180deg,var(--brass-hi),var(--brass) 55%,var(--brass-lo));-webkit-background-clip:text;background-clip:text;color:transparent}
+#mload .ml-sub{margin:0;font:400 clamp(9px,1.9cqmin,12px)/1 var(--ui);letter-spacing:.46em;text-transform:uppercase;color:var(--dim);padding-left:.46em}
+#mload .ml-bar{position:relative;width:min(100%,340px);height:2px;margin-top:clamp(6px,2.4cqmin,18px);background:rgba(124,101,53,.32);overflow:hidden}
+#mload .ml-bar i{position:absolute;inset:0;background:linear-gradient(90deg,var(--brass-lo),var(--brass-hi));transform-origin:0 50%;transform:scaleX(0);transition:transform .6s cubic-bezier(.3,0,.2,1);will-change:transform}
+#mload .ml-bar b{position:absolute;top:0;bottom:0;left:0;width:28%;background:linear-gradient(90deg,transparent,rgba(255,236,190,.75),transparent);animation:mlRun 2.6s linear infinite;will-change:transform}
+#mload .ml-status{margin:0;display:flex;gap:.9em;justify-content:center;flex-wrap:wrap;font:400 clamp(9px,1.9cqmin,12px)/1.4 var(--ui);letter-spacing:.2em;text-transform:uppercase;color:#b9a77c}
+#mload #mlN{color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.12em}
+#mload #mlN:empty{display:none}
+#mload.err .ml-status{color:#e09272;letter-spacing:.08em;text-transform:none}
+#mload.err .ml-bar b,#mload.err .ml-spin{animation:none}
+@keyframes mlSpin{to{transform:rotate(360deg)}}
+@keyframes mlBreathe{0%,100%{transform:scale(.95);opacity:.82}50%{transform:scale(1.04);opacity:1}}
+@keyframes mlRun{from{transform:translateX(-100%)}to{transform:translateX(360%)}}
+@keyframes mlSway{0%,100%{transform:translate(-1.5%,0) scale(1)}50%{transform:translate(1.5%,1%) scale(1.04)}}
+@keyframes mlFlick{0%{opacity:.9}11%{opacity:.82}12%{opacity:.95}37%{opacity:.86}38%{opacity:.62}39%{opacity:.9}40%{opacity:.74}41%{opacity:.92}66%{opacity:.84}67%{opacity:.97}88%{opacity:.8}89%{opacity:.9}}
+@media(prefers-reduced-motion:reduce){#mload *{animation:none!important}#mload{transition-duration:.2s}}
