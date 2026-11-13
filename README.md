@@ -1,4 +1,4 @@
-![The Horror Engine in a dark brick cellar: a walnut cabinet with waterphone rods, a wine glass, a hurdy-gurdy wheel and two superball wands, the brass FX panel on a mast above it, one blue window high on the right](docs/media/hero.jpg)
+![The Horror Engine's Altar skin in a candle-lit crypt: a blood-stained wooden altar with rusted rail spikes, a ribcage harp, a hide drum, a skull bowl, a bone-spoked wheel, an iron plate under a goat skull, and a carved pentagram glowing on the front](docs/media/hero.jpg)
 
 # Horror Engine
 
@@ -8,7 +8,7 @@ A playable machine for horror sound that runs in your browser: nine physical mod
 
 ## What it is
 
-Horror Engine is a single-page instrument for scoring slow dread. You play it with the mouse, a pen, the computer keyboard or MIDI, and you can play it two ways. In **The Machine**, a 3D cabinet, you bow, scrape, strike and crank each part. **The Surface** is a flat gesture pad for the selected voice. Each sound is synthesised live from a model of a real object: a slack string, a rosined wheel, steel rulers, glass, springs, a tray of bolts.
+Horror Engine is a single-page instrument for scoring slow dread. You play it with the mouse, a pen, the computer keyboard or MIDI, and you can play it two ways. In **The Machine**, a 3D view of the instrument, you bow, scrape, strike and crank each part. It has two skins, Workshop and Altar, that share every voice; only the look changes (see [Skins](#skins)). **The Surface** is a flat gesture pad for the selected voice. Each sound is synthesised live from a model of a real object: a slack string, a rosined wheel, steel rulers, glass, springs, a tray of bolts.
 
 It owes its idea to the [Apprehension Engine](https://apprehensionengine.com/), the acoustic horror instrument conceived by composer Mark Korven and luthier Tony Duggan-Smith and built by Duggan-Smith. This project is not affiliated with either of them, and it uses none of their recordings or images. It is a separate, software take on the same idea: odd objects on a resonant box, played by hand.
 
@@ -35,29 +35,29 @@ Every part is bolted to one wooden body heard through a contact mic, so a knock 
 
 The Machine has two skins. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address.
 
-![The Altar skin: a blood-stained altar with a ribcage harp, bones in a tray of blood, a goat idol over an iron plate and a wheel cranked through a skull](docs/media/altar.jpg)
+![Workshop skin: the Horror Engine in a dark brick cellar, a walnut cabinet with waterphone rods, a wine glass, a hurdy-gurdy wheel and two superball wands, the brass FX panel on a mast above it, one blue window high on the right](docs/media/workshop.jpg)
 
 | Workshop | Altar |
 |---|---|
 | Slack string, e-bow, slide bar | Ribcage harp strung with gut, lodestone, knuckle slide |
-| Waterphone rods in a water tray | Long bones standing in a tray of blood |
-| Hurdy-gurdy wheel and crank | A wheel cranked through a skull on a spike |
+| Waterphone rods in a water tray | Rusted rail spikes in a tray of blood |
+| Hurdy-gurdy wheel and crank | A wheel cranked through a skull on a spike, with two drone guts the wheel bows |
 | Wine glass and tap | Cracked skull bowl and a bleeding spout |
 | Glass pane, slate, bottle | Black mirror, grave slate, bottle |
 | Steel rulers and clamp, bow saw, clock spring | Rusted blades under an iron strap, bone saw, iron serpent |
 | Drumhead | Stitched hide drumhead |
-| Thunder sheet | Iron plate under a horned goat idol |
+| Thunder sheet | Iron plate under a beam-mounted goat skull |
 | Spring tank | Rusty coils beside hanging entrails |
 | Junk drawer and magnet | Drawer of bones and teeth, stirred by a claw |
 | Superballs | Eyes on stalks |
 | Lamp (Aura) | The altar candle |
-| Brass FX panel, body sunburst | Bone dials and a pentagram carved into the altar front |
+| Brass FX panel, body sunburst | Bone dials and a carved pentagram that glows with the Body voice |
 
-The Altar is built in code like the rest (`src/sculpt.js`, `src/altar.js`). Most of the bones, the idol and the blood are distance fields and procedural work meshed at load; the human skulls and the beam-mounted goat skull are packed scans (see [CREDITS.md](CREDITS.md)).
+The Altar is built in code like the rest (`src/sculpt.js`, `src/altar.js`). Most of the bones and the blood are distance fields and procedural work meshed at load; the human skulls and the beam-mounted goat skull are packed scans (see [CREDITS.md](CREDITS.md)).
 
 ## The FX panel
 
-The brass panel on the mast holds the effects that sit after the instruments:
+The FX panel holds the effects that sit after the instruments:
 
 - **SEND**, a slider: how much of the selected voice goes into the harmonizer.
 - **SHIFT**, **DETUNE**, **FEEDBACK** and **RETURN**: the harmonizer. It is an octave down by default, split into two voices detuned left and right, with feedback that stacks the shift into a falling spiral.

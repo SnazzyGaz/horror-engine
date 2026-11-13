@@ -253,7 +253,7 @@ Each voice also feeds the shared wooden **Body** by a fixed amount. Struck metal
 
 ### Water
 
-The waterphone tray and its water are shared by the rods (bowed and struck), bells, clock springs and the superball on the metal sheet and the rods. The Water knobs appear under Bowed metal, Struck metal and the Superball.
+The waterphone tray and its water are shared by the rods (bowed and struck), bells, clock springs and the superball on the metal sheet and the rods. The Water knobs appear under Bowed metal, Struck metal and the Superball. On the Altar the rods are rusted rail spikes in a tray of blood.
 
 - **Water**: how much the submerged modes wobble in pitch.
 - **Slosh**: how fast they wobble (about 0.3–3 Hz).
@@ -264,7 +264,7 @@ On the Machine, grab the tray by its rim and push one end down to rock it. It sw
 
 ### Body and piezo
 
-Every part is bolted to one wooden box heard through a contact mic.
+Every part is bolted to one wooden box heard through a contact mic. On the Altar, the carved pentagram and the wax seals glow with the Body voice.
 
 - **Body**: how much the box rings along with each voice.
 - **Piezo**: from the warm box toward the quacky, bass-light contact-mic sound. On the Machine, click the piezo disc to step through 0, 40% and 80%.
