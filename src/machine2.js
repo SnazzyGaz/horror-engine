@@ -8,9 +8,12 @@
   if (window.__heMachine !== 'v2') { var ml0 = document.getElementById('mload'); if (ml0) ml0.hidden = true; return; }
   var H = window.__he, $ = function (id) { return document.getElementById(id); };
   var host = $('machine'), padEl = $('pad'), V = null, tab = 'surface', TAU = Math.PI * 2;
+  var PR0 = 1;   // the renderer's base pixel ratio (before the cap and the dynamic scale)
   // the loading screen (#mload in body.html): stays over the view until the scene is built, every shader warmed, the
   // textures in at full size and the frames running smoothly again, then fades. Progress and status come from the real
   // load phases. All motion is CSS transform/opacity, so it keeps moving while the main thread is busy.
+  var LMSG = /[?&]skin=altar/.test(location.search) || (!/[?&]skin=/.test(location.search) && (function () { try { return localStorage.getItem('horror-engine.skin') === 'altar'; } catch (e) { return false; } })())
+    ? ['Laying out the altar', 'Carving the sigils', 'Letting the blood dry', 'Stringing the gut', 'Lighting the candles'] : ['Assembling the machine', 'Warming the valves', 'Staining the wood', 'Tuning the strings', 'Letting the lamp settle'];
   var LD = (function () {
     var el = $('mload'), on = !!el, t0 = performance.now(), loaded = 0, smooth = 0, last = 0, avg = 0, tm = null, shown = -1;
     if (!el) return { on: false, tick: function () { }, fail: function () { }, hide: function () { } };
@@ -26,15 +29,15 @@
     function tick() {
       if (!LD.on) return; var now = performance.now();
       if (now - t0 > 240000) return hide();   // never hang: after four minutes show whatever is there
-      if (!V) return set(.04, 'Assembling the machine');
+      if (!V) return set(.04, LMSG[0]);
       if (!V.ready) {
-        if (V.compileMs == null) { var w = V.warmN ? Math.min(1, V.warmSteps.length * V.warmB / V.warmN) : 0; return set(.1 + .42 * w, 'Warming the valves'); }
-        return set(.54 + .08 * Math.min(1, V.halfQ.length / Math.max(1, V.nTex)), 'Staining the wood');
+        if (V.compileMs == null) { var w = V.warmN ? Math.min(1, V.warmSteps.length * V.warmB / V.warmN) : 0; return set(.1 + .42 * w, LMSG[1]); }
+        return set(.54 + .08 * Math.min(1, V.halfQ.length / Math.max(1, V.nTex)), LMSG[2]);
       }
       var hiT = V.hiTotal || 0, hiD = Math.min(V.hiDone, hiT), texDone = !hiT || V.hiFail || (hiD >= hiT && !V.hiCur);
-      if (!texDone) return set(.64 + .3 * hiD / hiT, 'Tuning the strings', 'textures ' + hiD + '/' + hiT);
+      if (!texDone) return set(.64 + .3 * hiD / hiT, LMSG[3], 'textures ' + hiD + '/' + hiT);
       if (!loaded) { loaded = now; smooth = 0; }
-      set(.95 + .05 * Math.min(1, smooth / 20), 'Letting the lamp settle', hiT ? 'textures ' + hiT + '/' + hiT : '');
+      set(.95 + .05 * Math.min(1, smooth / 20), LMSG[4], hiT ? 'textures ' + hiT + '/' + hiT : '');
       if ((smooth >= 20 && now - loaded > 300) || now - loaded > 8000) hide();
     }
     var LD = { on: on, tick: tick, fail: fail, hide: hide };
@@ -46,6 +49,9 @@
   var ZB = .62, ZT = .92;
   var LS = function (k, v) { try { if (v === undefined) return localStorage.getItem('horror-engine.' + k); localStorage.setItem('horror-engine.' + k, v); } catch (e) { return null; } };
   var QUAL = Q.get('quality') || LS('quality') || 'high';
+  // the skin: the same parts, zones and voices in different clothes. 'workshop' is the walnut cabinet built below; 'altar'
+  // (src/altar.js) swaps every part for a stand-in on a blood-stained altar. ?skin=altar, or the button over the view.
+  var SKIN = (Q.get('skin') || LS('skin') || 'workshop').toLowerCase(), SK = SKIN === 'altar' && window.HEAltar && window.HESculpt ? window.HEAltar : null;
   var PDEF = {}; window.HE_PARAMS.forEach(function (p) { PDEF[p.id] = p; });
 
   // hints, one per part (the label at the top of the view)
@@ -72,7 +78,7 @@
     spring: '\u246C Spring tank \u00B7 tap for the drip, drag along to scrape, drag up and down to shake it (Alt: e-bow it). Knocks on the wood set it off too.',
     wandL: '\u246D Left superball \u00B7 pick it up and drag it over the thunder sheet, the rods or the left of the box.',
     wandR: '\u246D Right superball \u00B7 pick it up and drag it over the drumhead or the right of the box.',
-    sheet: '\u246E Thunder sheet \u00B7 tap to hit it; the left superball makes it moan.',
+    sheet: '\u246E Thunder sheet \u00B7 click to hit it; press and drag across it to rub it into a moan (faster is louder and higher). The left superball moans it too.',
     wood: '\u2460 The spine \u00B7 knock on the bare wood. Everything is bolted to it, so it rings along.',
     knob: '\u2470 Brain panel \u00B7 drag a knob up or down.',
     send: '\u2470 Harmonizer send \u00B7 drag sideways: how much of the selected voice goes into the harmonizer.',
@@ -82,6 +88,8 @@
     coil: '\u3251 Clock spring \u00B7 stroke across to bow it, tap to strike it.',
     lamp: '\u3252 Lamp \u00B7 rub it to swell the aura pad; double-click to freeze it.'
   };
+
+  if (SK) Object.assign(HINT, SK.HINT);
 
   /* ---------- procedural textures: value noise, then colour, roughness and a normal map from a height field ---------- */
   var PERM = new Uint8Array(512);
@@ -96,7 +104,8 @@
   // tile: metres per repeat (UVs are in metres, see HELook.worldUV); rot: turn 90 degrees so the grain runs along u
   var TSPEC = {
     oak: { tile: 1.83, rot: 1 }, walnut: { tile: 1.8, rot: 1 }, ebony: { tile: 1, rot: 1 }, floor: { tile: 3 }, brick: { tile: 3 }, plaster: { tile: 2 },
-    brass: { tile: .5 }, steel: { tile: .5 }, alu: { tile: .3 }, iron: { tile: .8 }, vellum: { tile: .4 }, cloth: { tile: .25 }, stone: { tile: .6 }, crinkle: { tile: .25 }
+    brass: { tile: .5 }, steel: { tile: .5 }, alu: { tile: .3 }, iron: { tile: .8 }, vellum: { tile: .4 }, cloth: { tile: .25 }, stone: { tile: .6 }, crinkle: { tile: .25 },
+    aWall: { tile: 2.4 }, aFloor: { tile: 2.6 }, aSheet: { tile: 1 }
   };
   // the whole mip chain, built off the main thread so the GPU upload is a plain copy (no mip generation on upload). Colour
   // is averaged in linear light (sRGB in, sRGB out), normals are averaged and renormalised, roughness is a plain average.
@@ -152,7 +161,7 @@
     // high detail renders the scene into an MSAA HDR buffer and finishes it in look.js (bloom, ACES, vignette); the canvas
     // itself then needs no multisampling. Low detail draws straight to the canvas with the renderer's own MSAA and ACES.
     try { r = new T.WebGLRenderer({ antialias: low, powerPreference: 'high-performance', stencil: false }); } catch (e) { return false; }
-    r.setPixelRatio(low ? 1 : Math.min(2, window.devicePixelRatio || 1)); r.shadowMap.enabled = !low; r.shadowMap.type = T.PCFSoftShadowMap;
+    r.setPixelRatio(low ? 1 : Math.min(2, window.devicePixelRatio || 1)); PR0 = r.getPixelRatio(); r.shadowMap.enabled = !low; r.shadowMap.type = T.PCFSoftShadowMap;
     ANISO = low ? 4 : Math.min(16, r.capabilities.getMaxAnisotropy());
     var post = !low && window.HELook && r.capabilities.isWebGL2 ? new window.HELook.Post(T, r, Q.get('msaa') ? { samples: Math.min(+Q.get('msaa'), r.capabilities.maxSamples || 4), fixedSamples: true } : { samples: Math.min(8, r.capabilities.maxSamples || 4) }) : null;
     r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.22; r.domElement.style.touchAction = 'none'; host.insertBefore(r.domElement, host.firstChild);
@@ -162,11 +171,14 @@
     // environment for the metal: a dim workshop with one warm window, a teal bounce and a lamp, baked into a PMREM map
     // the same room as seen by the metal: brown brick and plaster, the cold window back right, the warm lamp overhead, the
     // floor's dull bounce, and a dim warm glow from the front where the camera stands
+    // (the altar skin bakes its own crypt environment, so the workshop one is only baked for the workshop)
+    if (!SK) {
     var es = new T.Scene(); es.background = new T.Color(0x0e0c0a);
     [[0x4a3628, 1, 0, 1.6, -1.6, 8, 3.4, .1], [0x2a2420, 1, -3, 1.6, 0, .1, 3.4, 8], [0x2a2420, 1, 3, 1.6, 0, .1, 3.4, 8], [0x1a1612, 1, 0, 3.3, 0, 8, .1, 8], [0x302418, 1, 0, -.05, 0, 8, .1, 8],
      [0x9db4d6, 3.2, 1.55, 1.75, -1.55, .9, 1.15, .05], [0xffc890, 14, .42, 1.5, -.2, .12, .06, .12], [0x6a5440, 1.5, 0, 1.4, 3, 6, 2.5, .1], [0xfff0d8, 1.4, -1.3, 2.6, 2.6, .8, .5, .1]].forEach(function (p) { var m = new T.Mesh(new T.BoxGeometry(p[5], p[6], p[7]), new T.MeshBasicMaterial({ color: new T.Color(p[0]).multiplyScalar(p[1]) })); m.position.set(p[2], p[3], p[4]); es.add(m); });
     var pm = new T.PMREMGenerator(r); sc.environment = pm.fromScene(es, .04).texture; pm.dispose();
     es.traverse(function (o) { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+    }
 
     // textures: the quick half-resolution set now (what Low uses), the full set from workers a moment later (High only)
     var tt0 = performance.now(), tx = {};
@@ -175,7 +187,8 @@
     var HT = window.HE_TEX || {}, one = function (c, srgb, sp) { return dtex(T, new Uint8ClampedArray([c[0], c[1], c[2], 255]), 1, 1, srgb, sp); };
     Object.keys(TSPEC).forEach(function (k) { var sp = TSPEC[k], av = (HT[k] && HT[k].avg) || [128, 110, 90]; tx[k] = { map: one(av, true, sp), roughnessMap: one([200, 200, 200], false, sp), normalMap: one([128, 128, 255], false, sp), w: 1, h: 1 }; });
     var halfQ = [], hiQ = [], hiFail = null, noHi = low || /[?&]hitex=0/.test(location.search), jobs = [];
-    Object.keys(TSPEC).forEach(function (k) { var d = HT[k]; if (!d) return; var hs = Math.max(16, d.s >> 1); jobs.push({ key: k, phase: 'half', w: hs, c: d.c, n: d.n, r: d.r, cost: hs * hs }); if (!noHi) jobs.push({ key: k, phase: 'full', w: d.s, c: d.c, n: d.n, r: d.r, cost: d.s * d.s }); });
+    var SKIP = SK ? { brick: 1, plaster: 1, walnut: 1, ebony: 1, brass: 1, alu: 1, vellum: 1, cloth: 1, stone: 1 } : { aWall: 1, aFloor: 1, aSheet: 1 };
+    Object.keys(TSPEC).forEach(function (k) { if (SKIP[k]) return; var d = HT[k]; if (!d) return; var hs = Math.max(16, d.s >> 1); jobs.push({ key: k, phase: 'half', w: hs, c: d.c, n: d.n, r: d.r, cost: hs * hs }); if (!noHi) jobs.push({ key: k, phase: 'full', w: d.s, c: d.c, n: d.n, r: d.r, cost: d.s * d.s }); });
     var nTex = jobs.filter(function (j) { return j.phase === 'half'; }).length;
     var genMs = [], ws = texWorkers(jobs, function (d) { genMs.push([d.key, d.phase, d.ms]); (d.phase === 'half' ? halfQ : hiQ).push(d); }, function (e) { hiFail = String(e && e.message || e); if (V) V.hiFail = hiFail; });
     // no workers: decode the half sets here (async, so the page still comes up), and stay on them
@@ -230,6 +243,18 @@
       return o2;
     }
 
+    var zones = [], picks = [];
+    // a zone is a part's invisible hit surface: face 'top' | 'front' | 'chamfer'; its kind picks the handler
+    function zone(kind, w, h, at, face, o) {
+      o = o || {}; var m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ visible: false, side: T.DoubleSide }));
+      m.position.copy(at); if (face === 'top') m.rotation.x = -Math.PI / 2; else if (face === 'chamfer') m.rotation.y = -Math.PI / 4;
+      m.userData = Object.assign({ kind: kind, w: w, h: h, part: o.part || kind, src: o.src === undefined ? -1 : o.src }, o); rig.add(m); zones.push(m); return m;
+    }
+    function tag(o, z) { o.traverse(function (c) { if (c.isMesh) c.userData.zone = z; }); return o; }
+    // a skin builds its own room, lights and parts with the same helpers, and hands back the fields of V it fills
+    var AV = SK ? SK.build({ T: T, r: r, sc: sc, cam: cam, rig: rig, P: P, low: low, tx: tx, std: std, ph: ph, M: M, mesh: mesh, box: box, cyl: cyl, rod: rod, ball: ball, wire: wire, zone: zone, tag: tag, zones: zones,
+      H: H, ZB: ZB, ZT: ZT, PDEF: PDEF, post: post, LS: LS, tiltStep: tiltStep, G: G }) : null;
+    if (!SK) {
     // the room: old floorboards, a brick back wall with a moonlit window, plaster side walls and a low ceiling, close enough
     // to the bench to catch its light (so the background reads as a workshop, not a void)
     var room = new T.Group(); sc.add(room);
@@ -282,15 +307,6 @@
     // the stand: iron legs, a frame, the brass trunnion block
     [[.14, .07], [1.46, .07], [.14, .38], [1.46, .38]].forEach(function (p) { cyl(p[0], p[1], 0, ZB - .03, .02, M.iron, null, 14, .026); cyl(p[0], p[1], 0, .02, .045, M.iron, null, 20); });
     box(.12, .05, .30, 1.48, .40, .33, M.iron); box(.74, .18, ZB - .04, .86, .27, ZB, M.brass);
-
-    var zones = [], picks = [];
-    // a zone is a part's invisible hit surface: face 'top' | 'front' | 'chamfer'; its kind picks the handler
-    function zone(kind, w, h, at, face, o) {
-      o = o || {}; var m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ visible: false, side: T.DoubleSide }));
-      m.position.copy(at); if (face === 'top') m.rotation.x = -Math.PI / 2; else if (face === 'chamfer') m.rotation.y = -Math.PI / 4;
-      m.userData = Object.assign({ kind: kind, w: w, h: h, part: o.part || kind, src: o.src === undefined ? -1 : o.src }, o); rig.add(m); zones.push(m); return m;
-    }
-    function tag(o, z) { o.traverse(function (c) { if (c.isMesh) c.userData.zone = z; }); return o; }
 
     /* ---------- ② slack string, ③ humbucker, ㉓ groove, E-bow puck and slide bar ---------- */
     var SY = .40, SZ = ZT + .06;
@@ -443,7 +459,7 @@
     rod(P(.80, .48, 1.55), P(.40, .48, 1.72), .008, M.iron); rod(P(.80, .48, 1.55), P(1.20, .48, 1.72), .008, M.iron);
     var shG = new T.PlaneGeometry(.88, .56, 16, 12), sheet = mesh(shG, std((function () { var o = {}; ['map', 'roughnessMap', 'normalMap'].forEach(function (k) { o[k] = tx.iron[k].clone(); o[k].repeat.set(1, 1); o[k].needsUpdate = true; }); return o; })(), { metalness: .7, roughness: 1, side: T.DoubleSide, color: 0xd8d2c4 })); sheet.position.copy(P(.58, .535, 1.30)); var sh0 = Float32Array.from(shG.attributes.position.array);
     [.17, .99].forEach(function (x) { wire(P(x, .535, 1.72), P(x, .535, 1.58)); });
-    var sheetZ = zone('knock', .88, .56, P(.58, .53, 1.30), 'front', { part: 'sheet', hz: 88, obj: 2 }); tag(sheet, sheetZ);
+    var sheetZ = zone('sheet', .88, .56, P(.58, .53, 1.30), 'front', { part: 'sheet', hz: 88, obj: 2 }); tag(sheet, sheetZ);
     box(.60, .43, 1.04, 1.00, .445, 1.46, M.lac); box(.59, .445, 1.03, 1.01, .45, 1.47, M.walnut);
     var KN0 = ['SHIFT', 'DETUNE', 'FEEDBACK', 'RETURN', 'AURA', 'HALL'];
     // ⑰ the faceplate: black crinkle enamel (a photo-scanned grain as its normal and roughness), engraved white-filled
@@ -624,8 +640,10 @@
       }
       uv.needsUpdate = true;
     });
-    rig.traverse(function (o) { if (o.isMesh && !o.isInstancedMesh && zones.indexOf(o) < 0 && o !== water && o !== wwat && o !== wsurf && o !== trail && !o.userData.noPick) picks.push(o); });
-    picks.push(fl, wl);
+    }
+    var roomPicks = SK ? AV.roomPicks : [fl, wl]; if (!SK) [water, wwat, wsurf, trail].forEach(function (o) { o.userData.noPick = 1; });
+    var listPicks = function () { picks.length = 0; rig.traverse(function (o) { if (o.isMesh && !o.isInstancedMesh && zones.indexOf(o) < 0 && !o.userData.noPick) picks.push(o); }); roomPicks.forEach(function (o) { picks.push(o); }); };
+    listPicks();
 
     V = { woodT: woodT, woodF: woodF, T: T, r: r, sc: sc, cam: cam, rig: rig, zones: zones, picks: picks, key: key, fill: fill, cone: cone, hemi: hemi, P: P, M: M, low: low,
       string: string, sp: sp, puck: puck, PUCK0: PUCK0, pkG: pkG, bar: bar, barX: barX, barZ: barZ, strZ: strZ, poleM: poleM, wheel: wheel, crank: crank, wrot: 0, drones: drones,
@@ -635,12 +653,15 @@
       wands: wands, ROD_HZ: ROD_HZ, tiltBack: false, holdRun: null, vsl: 0, tilt0: 0,
       ray: new T.Raycaster(), nd: new T.Vector2(), act: null, orbit: null, t: 0, last: 0, lv: [0, 0, 0, 0, 0, 0, 0, 0, 0], bodyLv: 0, harmLv: 0, flick: 1, pt: new T.Vector3(), pl: new T.Plane(), n: new T.Vector3(), wq: new T.Vector3(),
       follow: LS('follow') === '1', demo: false, idle: 0 };
+    if (SK) { Object.assign(V, AV.V); V.skin = AV; }
     V.cs = Object.assign({}, CAM.player); V.cg = Object.assign({}, CAM.player);
     V.post = post; V.quiet = 0;
+    V.dyn = /[?&]dynres=0/.test(location.search) ? null : { lvl: 0, sc: 1, slow: 0, fast: 0, best: 1e9, t0: 0, n: 0, s: 0, hold: [], wait: 20000, log: [],
+      L: post ? (post.maxS > 4 ? [{ sc: 1, ms: 99 }, { sc: 1, ms: 4 }, { sc: .85, ms: 4 }, { sc: .75, ms: 4 }] : [{ sc: 1, ms: 99 }, { sc: .85, ms: 99 }, { sc: .75, ms: 99 }]) : [{ sc: 1 }, { sc: .85 }, { sc: .75 }] };
     // fold the static parts (no handler or animation reaches them through V) into a few merged meshes, then re-list the picks
     if (window.HELook) V.uvParts = window.HELook.worldUV(T, sc, function (m) { return m && ((m.map && m.map.userData.he) || (m.normalMap && m.normalMap.userData.he && !m.map)); });
     if (window.HELook && !/[?&]nomerge=1/.test(location.search)) { var keep = window.HELook.reach(V, ['picks', 'zones', 'rig', 'sc', 'cam', 'M', 'r', 'P', 'T']); zones.forEach(function (z) { keep.add(z); }); V.merged = window.HELook.mergeAll(T, rig, keep);
-      picks.length = 0; rig.traverse(function (o) { if (o.isMesh && !o.isInstancedMesh && zones.indexOf(o) < 0 && o !== water && o !== wwat && o !== wsurf && o !== trail && !o.userData.noPick) picks.push(o); }); picks.push(fl, wl); }
+      listPicks(); }
     r.info.autoReset = false;
     V.buildMs = Math.round(performance.now() - bt0); V.texMs = V_TEXMS; V.ready = false; V.t0 = bt0; V.tx = tx;
     V.hiQ = hiQ; V.halfQ = halfQ; V.nTex = nTex; V.genMs = genMs; V.hiTotal = hiJobs.length; V.hiDone = 0; V.hiFail = hiFail; V.load = []; V.upMs = []; V.upLog = [];
@@ -654,12 +675,28 @@
       var bw0 = performance.now(), ms = [], vis = [], fc = [], i = 0, B = 12; V.warmSteps = []; V.compile0 = bw0;
       size(); sc.traverse(function (o) { if (o.isMesh || o.isLine || o.isPoints) { ms.push(o); vis.push(o.visible); } if (o.frustumCulled) { fc.push(o); o.frustumCulled = false; } }); V.warmN = ms.length; V.warmB = B;
       var tgt = function () { r.setRenderTarget(post ? post.rt : null); };
+      // every object, hidden ones included (whatever a strike or a drip shows later), so nothing compiles on first use:
+      // hidden groups are opened for the warm-up and closed again after it
+      var gs = [], gv = []; sc.traverse(function (o) { if (!o.isMesh && !o.isLine && !o.isPoints && !o.isLight && !o.isCamera && o !== sc) { gs.push(o); gv.push(o.visible); } });
+      var openG = function (on) { gs.forEach(function (o, j) { o.visible = on ? true : gv[j]; }); };
       var step = function () {
-        if (i >= ms.length) { ms.forEach(function (o, j) { o.visible = vis[j]; }); V.compileMs = Math.round(performance.now() - bw0); return post && post.compileAsync ? post.compileAsync().then(waitHalf) : waitHalf(); }
-        ms.forEach(function (o, j) { o.visible = vis[j] && j >= i && j < i + B; });
-        var go = function () { var s0 = performance.now(); ms.forEach(function (o, j) { o.visible = vis[j] && j >= i && j < i + B; }); try { tgt(); r.render(sc, cam); } catch (e) { } r.setRenderTarget(null); i += B; V.warmSteps.push(Math.round(performance.now() - s0)); setTimeout(step, 0); };
-        var cp = null; try { tgt(); cp = r.compileAsync ? r.compileAsync(sc, cam) : null; } catch (e) { } r.setRenderTarget(null);
+        if (i >= ms.length) { ms.forEach(function (o, j) { o.visible = vis[j]; }); openG(false); V.compileMs = Math.round(performance.now() - bw0); return post && post.compileAsync ? post.compileAsync().then(waitHalf) : waitHalf(); }
+        // then draw a dozen at a time (buffer and texture uploads, shadow programs, driver finalising), each in its own task
+        openG(true); ms.forEach(function (o, j) { o.visible = j >= i && j < i + B; });
+        var go = function () { var s0 = performance.now(); openG(true); ms.forEach(function (o, j) { o.visible = j >= i && j < i + B; }); try { tgt(); r.render(sc, cam); } catch (e) { } r.setRenderTarget(null); i += B; V.warmSteps.push(Math.round(performance.now() - s0)); setTimeout(step, 0); };
+        // no parallel compile: each batch compiles its own shaders first, as before, so no single task blocks for long
+        var cp = null; if (!PAR) { try { tgt(); cp = r.compileAsync ? r.compileAsync(sc, cam) : null; } catch (e) { cp = null; } r.setRenderTarget(null); }
         if (cp) cp.then(go, go); else go();
+      };
+      // first, every shader at once: with KHR_parallel_shader_compile (Chrome on D3D11, Metal, most GL) the driver compiles
+      // them all in parallel off the main thread; without it each batch below compiles its own, as before
+      var PAR = !!(r.compileAsync && (r.getContext().getExtension('KHR_parallel_shader_compile') || /[?&]warmall=1/.test(location.search)));
+      var all0 = function () {
+        if (!PAR) return step();
+        openG(true); ms.forEach(function (o) { o.visible = true; });
+        var cp = null; try { tgt(); cp = r.compileAsync ? r.compileAsync(sc, cam) : null; } catch (e) { cp = null; } r.setRenderTarget(null);
+        var done = function () { V.compileAllMs = Math.round(performance.now() - bw0); step(); };
+        if (cp) cp.then(done, done); else step();
       };
       var waitT0 = 0, waitHalf = function () {
         if (!waitT0) waitT0 = performance.now();
@@ -671,9 +708,9 @@
         V.halfQ.splice(0).forEach(function (d) { if (d) swapTex(d.key, texSet(T, d.key, d)); });
         setTimeout(function () { var s0 = performance.now(); try { if (post) post.render(sc, cam, 0); else r.render(sc, cam); } catch (e) { }
           fc.forEach(function (o) { o.frustumCulled = true; }); r.setRenderTarget(null); V.warmSteps.push(Math.round(performance.now() - s0));
-          V.warmMs = Math.round(performance.now() - bw0); V.readyMs = Math.round(performance.now() - bt0); V.ready = true; }, 0);
+          V.warmMs = Math.round(performance.now() - bw0); V.readyMs = Math.round(performance.now() - bt0); V.ready = true; if (r.shadowMap.enabled && !/[?&]shcache=0/.test(location.search)) V.shc = shadowCache(); }, 0);
       };
-      step();
+      all0();
     };
     setTimeout(warm, 0);
     // first visit: switch on the couplings V2 is built around (knock to spring, sympathetic string, water in the tray)
@@ -700,6 +737,7 @@
     panel: { tx: .80, ty: .43, tz: 1.28, az: 0, el: .12, d: 1.2 }
   };
   var FOLLOW = { string: 'centre', puck: 'centre', bar: 'centre', crank: 'right', drones: 'right', rulers: 'left', clamp: 'left', rods: 'left', tray: 'left', saw: 'panel', slate: 'centre', bottle: 'centre', filltap: 'left', pane: 'centre', wine: 'centre', gtap: 'centre', drum: 'right', drawer: 'centre', junk: 'centre', spring: 'right', wandL: 'left', wandR: 'right', sheet: 'player', wood: 'player', knob: 'panel', send: 'panel', freeze: 'panel', loop: 'panel', piezo: 'player', coil: 'left', lamp: 'panel' };
+  if (SK) { Object.assign(CAM, SK.CAM); Object.assign(FOLLOW, SK.FOLLOW); }
   function station(n) { if (!V || !CAM[n]) return; V.cg = Object.assign({}, CAM[n]); V.stn = n; }
 
   function tools() {
@@ -707,9 +745,13 @@
     [['left', 'Left', 'F6'], ['centre', 'Middle', 'F7'], ['right', 'Right', 'F8'], ['panel', 'Panel', 'F9'], ['player', 'Whole', 'Home']].forEach(function (q) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = q[1]; b.title = 'Camera: ' + q[1] + ' (' + q[2] + ')'; b.addEventListener('click', function () { station(q[0]); }); bar.appendChild(b); });
     var fo = document.createElement('button'); fo.className = 'btn sm'; fo.setAttribute('aria-pressed', V.follow ? 'true' : 'false'); fo.textContent = 'Follow'; fo.title = 'After you let go of a part, the camera eases to it (K)'; fo.addEventListener('click', function () { V.follow = !V.follow; fo.setAttribute('aria-pressed', V.follow ? 'true' : 'false'); LS('follow', V.follow ? '1' : '0'); if (!V.follow) station('player'); }); bar.appendChild(fo); V.foBtn = fo;
     var qb = document.createElement('button'); qb.className = 'btn sm qual'; qb.textContent = QUAL === 'low' ? 'Low detail' : 'High detail'; qb.title = 'Low detail: no shadows, lighter textures, lower resolution (reloads the view)'; qb.addEventListener('click', function () { LS('quality', QUAL === 'low' ? 'high' : 'low'); location.reload(); }); bar.appendChild(qb);
+    if (window.HEAltar) { var sb = document.createElement('button'); sb.className = 'btn sm skin'; sb.textContent = SK ? 'Skin: Altar' : 'Skin: Workshop'; sb.title = 'Switch between the walnut workshop machine and the altar: the same instruments in other clothes (reloads the view)'; sb.addEventListener('click', function () { LS('skin', SK ? 'workshop' : 'altar'); var u = new URL(location.href); u.searchParams.delete('skin'); location.href = u.toString(); }); bar.appendChild(sb); }
     host.appendChild(bar);
   }
-  function size() { if (!V) return; var w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; V.r.setSize(w, h, false); if (V.post) { var db = V.r.getDrawingBufferSize(new V.T.Vector2()); V.post.setSize(db.x, db.y); } V.cam.aspect = w / h; V.cam.fov = w / h < 1.2 ? 52 : 36; V.cam.updateProjectionMatrix(); }
+  function size() { if (!V) return; var w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
+    // pixel-ratio cap (drawing buffer at most ~4.2 MP on High) times the dynamic-resolution scale (1 unless the frame rate sags)
+    var pr = Math.min(PR0, Math.sqrt(4.2e6 / (w * h))) * (V.dyn ? V.dyn.sc : 1); if (Math.abs(V.r.getPixelRatio() - pr) > 1e-3) V.r.setPixelRatio(pr);
+    V.r.setSize(w, h, false); if (V.post) { var db = V.r.getDrawingBufferSize(new V.T.Vector2()); V.post.setSize(db.x, db.y); } V.cam.aspect = w / h; V.cam.fov = w / h < 1.2 ? 52 : 36; V.cam.updateProjectionMatrix(); }
   function cast(e) { var b = host.getBoundingClientRect(); V.nd.set((e.clientX - b.left) / b.width * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1); V.ray.setFromCamera(V.nd, V.cam); }
   // the part under the pointer: the nearest hit that is a zone or a part's mesh; anything else in front blocks it
   function hits(skipWands) {
@@ -718,6 +760,7 @@
       var o = hs[i].object, u = o.userData, z = V.zones.indexOf(o) >= 0 ? o : u.zone || null;
       if (z === V.woodT && hs[i].point.y < ZT - .012) z = V.woodF;   // the box's front face belongs to the front wood zone
       if (z && z.userData.off) continue;
+      if (z && o === z && z.userData.clip && !z.userData.clip(hs[i].point)) continue;   // a zone plane whose real outline is not a rectangle
       if (skipWands && z && z.userData.kind === 'wand') continue;
       return z ? { object: z, point: hs[i].point } : null;
     }
@@ -749,7 +792,7 @@
       },
       move: function (A, e) {
         var q = locate(A.z, e); if (!q) return; A.q = q; V.mark.position.copy(q.w);
-        if (A.u.part === 'spring' && A.sm === 0 && A.dist > 10) { A.sm = Math.abs(e.clientY - A.sy) > Math.abs(e.clientX - A.sx) ? 1 : 2; H.setParam('spring.mode', A.sm); }
+        if (A.u.part === 'spring' && A.sm === 0 && A.dist > 10) { var up = Math.abs(e.clientY - A.sy) > Math.abs(e.clientX - A.sx); A.sm = (A.u.vert ? !up : up) ? 1 : 2; H.setParam('spring.mode', A.sm); }   // across the coil shakes it, along it scrapes (vert: a coil that hangs)
         G(A.u.src, 'm', q.x, q.y, H.pressure(e));
       },
       up: function (A) { G(A.u.src, 'u'); if (A.rs) for (var k in A.rs) H.setParam(k, A.rs[k]); if (A.sm === 1 || A.sm === 2) H.setParam('spring.mode', 0); }
@@ -797,6 +840,24 @@
     knock: {
       down: function (A, e) { var q = locate(A.z, e) || { x: .5, y: .5, w: A.hit }; A.q = q; H.setParam('struck.object', A.u.obj); H.select(4); G(4, 'd', q.x, .5, Math.max(.45, H.pressure(e)), A.u.hz * (A.u.part === 'wood' ? .8 + .5 * q.x : 1)); V.mark.position.copy(q.w); V.mark.visible = true; },
       move: function () { }, up: function () { G(4, 'u'); }
+    },
+    // the thunder sheet, mouse only: a click strikes it; press and drag across it to rub it into a moan (the superball's
+    // stick-slip voice on the metal sheet). Rub speed drives loudness and pitch in the engine; pressure is the usual
+    // pointer pressure (pen/touch, or the wheel while held). A press that starts moving within 60 ms is a pure rub; one
+    // that rests longer strikes first, and can still be dragged into a rub after it.
+    sheet: {
+      strike: function (A, e) { if (A.struck) return; A.struck = true; var q = A.q; H.setParam('struck.object', A.u.obj); H.select(4); G(4, 'd', q.x, .5, Math.max(.45, A.p), A.u.hz); setTimeout(function () { G(4, 'u'); }, 60); },
+      down: function (A, e) {
+        var q = locate(A.z, e) || { x: .5, y: .5, w: A.hit }, self = this; A.q = q; A.p = H.pressure(e); A.rub = false; A.struck = false;
+        V.mark.position.copy(q.w); V.mark.visible = true;
+        A.tap = setTimeout(function () { requestAnimationFrame(function () { if (V.act === A && !A.rub && A.dist < 5) self.strike(A, e); }); }, 60);   // (after a frame, so a drag queued behind a slow frame wins)
+      },
+      move: function (A, e) {
+        var q = locate(A.z, e); if (!q) return; A.q = q; V.mark.position.copy(q.w); A.p = H.pressure(e);
+        if (!A.rub) { if (A.dist < 5) return; A.rub = true; clearTimeout(A.tap); if ((H.P['moan.surface'] | 0) !== 2) H.setParam('moan.surface', 2); H.select(8); G(8, 'd', q.x, q.y, A.p); return; }
+        G(8, 'm', q.x, q.y, A.p);
+      },
+      up: function (A, e) { clearTimeout(A.tap); if (A.rub) G(8, 'u'); else this.strike(A, e); }
     },
     // drag a value up and down (knobs, the clamp, the tray tap, the rocker); A.v0 is the value on press
     knob: { down: function (A) { A.p = A.u.param; A.v0 = H.P[A.p]; }, move: function (A, e) { var d = PDEF[A.p]; H.setParam(A.p, clampP(A.p, A.v0 + (A.sy - e.clientY) / 200 * (d.max - d.min) * (e.shiftKey ? .2 : 1))); }, up: function () { } },
@@ -853,17 +914,19 @@
     });
     el.addEventListener('pointermove', function (e) {
       if (V.orbit && e.pointerId === V.orbit.id) { var c = V.cg; c.az = Math.min(.61, Math.max(-.61, c.az - (e.clientX - V.orbit.x) * .005)); c.el = Math.min(.79, Math.max(.12, c.el + (e.clientY - V.orbit.y) * .004)); V.orbit.x = e.clientX; V.orbit.y = e.clientY; return; }
-      cast(e);
       var A = V.act;
-      if (A && e.pointerId === A.id) { A.dist = Math.max(A.dist, Math.hypot(e.clientX - A.sx, e.clientY - A.sy)); A.h.move(A, e); return; }
-      if (e.pointerType === 'mouse') { var h = pick(); el.style.cursor = h ? 'pointer' : 'grab'; label(h ? h.object.userData : null); }
+      if (A && e.pointerId === A.id) { cast(e); A.dist = Math.max(A.dist, Math.hypot(e.clientX - A.sx, e.clientY - A.sy)); A.h.move(A, e); return; }
+      // hover: a gaming mouse reports up to 1000 moves a second; the hover pick (a raycast through the whole machine,
+      // the harp alone is 176k triangles) only needs doing once per displayed frame, for the latest position
+      if (e.pointerType === 'mouse') { V.hovX = e.clientX; V.hovY = e.clientY; if (!V.hovQ) { V.hovQ = true; requestAnimationFrame(hover); } }
     });
+    var hover = function () { V.hovQ = false; if (V.act || V.orbit) return; cast({ clientX: V.hovX, clientY: V.hovY }); var h = pick(); el.style.cursor = h ? 'pointer' : 'grab'; label(h ? h.object.userData : null); };
     var up = function (e) {
       if (V.orbit && e.pointerId === V.orbit.id) V.orbit = null;
       var A = V.act; if (A && e.pointerId === A.id) { V.act = null; A.h.up(A, e); V.mark.visible = false; if (V.follow && FOLLOW[A.u.part]) station(FOLLOW[A.u.part]); }
     };
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
-    el.addEventListener('wheel', function (e) { e.preventDefault(); if (V.act) H.nudgePr(-Math.sign(e.deltaY) * .05); else V.cg.d = Math.min(4.5, Math.max(1.0, V.cg.d * (1 + Math.sign(e.deltaY) * .08))); }, { passive: false });
+    el.addEventListener('wheel', function (e) { e.preventDefault(); if (V.act) { var np = H.nudgePr(-Math.sign(e.deltaY) * .05), A = V.act; if (A.rub && A.q) { A.p = np; G(8, 'm', A.q.x, A.q.y, np); } } else V.cg.d = Math.min(4.5, Math.max(1.0, V.cg.d * (1 + Math.sign(e.deltaY) * .08))); }, { passive: false });
     el.addEventListener('dblclick', function (e) { cast(e); var h = pick(); if (h && h.object.userData.part === 'lamp') H.setParam('aura.freeze', H.P['aura.freeze'] > .5 ? 0 : 1); });
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     document.addEventListener('keydown', function (e) {
@@ -894,6 +957,17 @@
     c.font = '600 62px "DejaVu Sans Mono", "Courier New", monospace'; c.textBaseline = 'middle'; c.shadowColor = 'rgba(80,255,190,.9)'; c.shadowBlur = 16; c.fillStyle = '#a6ffe0'; c.fillText(t, 18, 66); c.shadowBlur = 4; c.fillStyle = '#e4fff4'; c.fillText(t, 18, 66); c.shadowBlur = 0;
     var gr = c.createLinearGradient(0, 0, 0, H2); gr.addColorStop(0, 'rgba(255,255,255,.05)'); gr.addColorStop(.5, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, W2, H2); V.lct.needsUpdate = true;
   }
+  // the tray rocks on its gimbal: the hand pulls it toward the goal through a stiff spring; let go and it sways back
+  function tiltStep(dt) {
+    var P = H.P, k;
+    if (!V.tiltHeld && !V.tiltKeep) V.tiltGoal = 0;
+    if (V.tiltKeep && !V.tiltHeld) V.tiltGoal = V.tiltGoal === undefined ? V.tilt : V.tiltGoal;
+    var kT = V.tiltHeld ? 260 : 38, cT = V.tiltHeld ? 30 : 2.6, steps = Math.ceil(dt / .004);
+    for (k = 0; k < steps; k++) { var hh = dt / steps; V.tiltV += (kT * ((V.tiltGoal || 0) - V.tilt) - cT * V.tiltV) * hh; V.tilt += V.tiltV * hh;
+      V.tiltLagV = (V.tiltLagV || 0) + (60 * (V.tilt - V.tiltLag) - 3 * V.tiltLagV) * hh; V.tiltLag += V.tiltLagV * hh; }
+    V.tilt = Math.min(1, Math.max(-1, V.tilt)); if (!V.tiltHeld && !V.tiltKeep && Math.abs(V.tilt) < .002 && Math.abs(V.tiltV) < .01) { V.tilt = 0; V.tiltV = 0; }
+    var tq = Math.round(V.tilt * 100) / 100; if (tq !== (P['water.tilt'] || 0)) H.setParam('water.tilt', tq, true);
+  }
   function wandTube(w) {
     var T = V.T, a = w.base, b = w.pos, m = a.clone().lerp(b, .5); m.y += .06 + .16 * Math.max(0, 1 - a.distanceTo(b)); m.addScaledVector(w.vel, -.03);
     w.tube.geometry.dispose(); w.tube.geometry = new T.TubeGeometry(new T.QuadraticBezierCurve3(a, m, b), 20, .0035, 6);
@@ -914,6 +988,7 @@
     V.idle += dt; if (V.demo && !A && !V.orbit) V.cg.az = CAM.player.az + Math.sin(V.idle * .05) * .25;
     var c = V.cs, g = V.cg, ee = FM ? 1 : 1 - Math.pow(.02, dt / .8); for (k in g) if (typeof g[k] === 'number') c[k] += (g[k] - c[k]) * ee;
     var tg = Pm(c.tx, c.ty, c.tz); V.cam.position.set(tg.x + Math.sin(c.az) * Math.cos(c.el) * c.d, tg.y + Math.sin(c.el) * c.d, tg.z + Math.cos(c.az) * Math.cos(c.el) * c.d); V.cam.lookAt(tg);
+    if (V.skin) V.skin.frame({ dt: dt, t: t, L: L, P: P, lv: lv, TM: TM, A: A, mo: mo, still: still, FM: FM }); else {
     // ② the string sings with the e-bow and booms when struck (only the length behind the slide bar rings)
     var ex = P['ebow.excite'] | 0, sp = V.sp, a0 = lv[0] * .012 * mo, onS = A && (A.u.part === 'string' || A.u.part === 'bar' || A.u.part === 'puck') && A.q;
     if (ex && onS && A.u.part !== 'puck') V.barX = .11 + 1.38 * A.q.x;
@@ -931,14 +1006,7 @@
     V.rulers.forEach(function (r, j) { var Lm = Math.max(6, V.clampL * V.RF[j]) / 100 + .06; r.userData.b.scale.z = Lm; r.userData.b.position.z = Lm / 2; r.rotation.x = Math.sin(t * (14 + j * 5)) * (rl + sl4) * .05 * mo; });
     // ⑦⑧ the tray tips on its gimbal; the water stays level, piles up at the low end and wets the rods there
     if (false) { var tb = (P['water.tilt'] || 0) * Math.pow(.02, dt); if (Math.abs(tb) < .01) { tb = 0; V.tiltBack = false; } H.setParam('water.tilt', Math.round(tb * 100) / 100, true); }
-    // the tray rocks on its gimbal: the hand pulls it toward the goal through a stiff spring; let go and it sways back
-    if (!V.tiltHeld && !V.tiltKeep) V.tiltGoal = 0;
-    if (V.tiltKeep && !V.tiltHeld) V.tiltGoal = V.tiltGoal === undefined ? V.tilt : V.tiltGoal;
-    var kT = V.tiltHeld ? 260 : 38, cT = V.tiltHeld ? 30 : 2.6, steps = Math.ceil(dt / .004);
-    for (k = 0; k < steps; k++) { var hh = dt / steps; V.tiltV += (kT * ((V.tiltGoal || 0) - V.tilt) - cT * V.tiltV) * hh; V.tilt += V.tiltV * hh;
-      V.tiltLagV = (V.tiltLagV || 0) + (60 * (V.tilt - V.tiltLag) - 3 * V.tiltLagV) * hh; V.tiltLag += V.tiltLagV * hh; }
-    V.tilt = Math.min(1, Math.max(-1, V.tilt)); if (!V.tiltHeld && !V.tiltKeep && Math.abs(V.tilt) < .002 && Math.abs(V.tiltV) < .01) { V.tilt = 0; V.tiltV = 0; }
-    var tq = Math.round(V.tilt * 100) / 100; if (tq !== (P['water.tilt'] || 0)) H.setParam('water.tilt', tq, true);
+    tiltStep(dt);
     var tilt = V.tilt, lvl = P['water.level'] || 0;
     V.tray.rotation.z = -tilt * .12;
     V.vsl = Math.max(V.vsl * Math.pow(.01, dt / 1.5), Math.min(1, Math.abs(tilt - V.tilt0) / Math.max(dt, .001) * .35)); V.tilt0 = tilt;
@@ -975,7 +1043,7 @@
     // ⑫ the drawer slides out; the junk rides in it, the magnet arm swings over it
     V.drawer.position.z = V.open * .2; var jz = V.junkZ; jz.userData.off = V.open < .2; jz.scale.y = Math.max(.1, V.open); jz.position.copy(Pm(.98, -V.open * .1, ZB + .18));
     var J = L.junk, n = J ? Math.min(60, (J.length - 3) / 3) : Math.min(60, P['junk.count'] | 0), src = J || V.rest, dm = V.dummy;
-    for (i = 0; i < 60; i++) { if (i < n) { var rr = src[i * 3 + 2] * .22; dm.position.copy(Pm(.87 + .22 * src[i * 3], .02 + .26 * (1 - src[i * 3 + 1]), ZB + .057 + rr * .35)); dm.scale.set(rr * .5, rr * .5, rr * .5); dm.rotation.y = i * 1.7; } else dm.scale.set(0, 0, 0); dm.updateMatrix(); V.nuts.setMatrixAt(i, dm.matrix); if (i < n) { var bx2 = src[i * 3]; V.nuts.setColorAt(i, bx2 < .333 ? V.cSteel : bx2 < .667 ? (i % 2 ? V.cBrass : V.cSteel) : V.cBrass); } }
+    for (i = 0; i < 60; i++) { if (i < n) { var rr = src[i * 3 + 2] * .22; dm.position.copy(Pm(.87 + .22 * src[i * 3], .02 + .26 * src[i * 3 + 1], ZB + .057 + rr * .35)); dm.scale.set(rr * .5, rr * .5, rr * .5); dm.rotation.y = i * 1.7; } else dm.scale.set(0, 0, 0); dm.updateMatrix(); V.nuts.setMatrixAt(i, dm.matrix); if (i < n) { var bx2 = src[i * 3]; V.nuts.setColorAt(i, bx2 < .333 ? V.cSteel : bx2 < .667 ? (i % 2 ? V.cBrass : V.cSteel) : V.cBrass); } }
     V.nuts.instanceMatrix.needsUpdate = true; if (V.nuts.instanceColor) V.nuts.instanceColor.needsUpdate = true;
     var mOn = J && J[(J.length - 3) + 2] > .5, aimA = mOn ? .4 + V.open * .6 + (J[(J.length - 3)] - .5) * .8 : .2 + V.open * .7; V.arm.rotation.y += (aimA - V.arm.rotation.y) * .2;
     // ⑬ the springs jiggle, and each hit sends a drip down them (highs ahead, lows trailing)
@@ -1023,6 +1091,7 @@
     var D = P['macro.dread']; if (FM) V.flick = FM.flick; else { if (!still && D > .55 && Math.random() < (D - .5) * .12) V.flick = .45 + Math.random() * .4; V.flick += (1 - V.flick) * .12; }
     var glow = .4 + lv[7] * 3 + (TM.frz ? .8 : 0); V.bulbM.emissiveIntensity = glow * V.flick; V.lampL.intensity = glow * .9 * V.flick; V.lampL.color.setRGB(1, .62 - D * .3, .38 - D * .3);
     V.key.intensity = 4.5 * (1 - D * .45) * V.flick * (.92 + .3 * Math.min(1, lv[7] * 2)); V.key.color.setRGB(1, .85 - D * .3, .66 - D * .4); V.sc.fog.density = .1 + P['macro.distance'] * .12; V.hemi.intensity = .5 - D * .15; if (V.cone) V.cone.material.uniforms.op.value = .07 * V.key.intensity / 4.5;
+    }
     if (V.mark.visible) V.mark.rotation.y = t * 3;
     // idle: nothing touched for 4 s, everything quiet and the camera settled: draw every other frame (the scene barely changes)
     var cmv = 0; for (k in g) if (typeof g[k] === 'number') cmv += Math.abs(g[k] - c[k]);
@@ -1036,14 +1105,22 @@
     if (V.hiCur && (LD.on || (V.upGap >= 3 && (dt < .02 || V.upGap >= 20)))) { V.upGap = 0; var u0 = performance.now(), hc = V.hiCur; R.initTexture(hc.set[TEXP[hc.step]]); hc.step++;
       if (hc.step === 3) { swapTex(hc.key, hc.set); V.hiCur = null; V.hiDone++; if (V.hiDone === V.hiTotal) V.hiMs = Math.round(performance.now() - V.t0); }
       var um = +(performance.now() - u0).toFixed(2); V.upMs.push(um); V.upLog.push([hc.key, TEXP[hc.step - 1], hc.set.w + 'x' + hc.set.h, um]); }
-    var busy = A || V.orbit || cmv > 1e-4 || V.drips.length || Math.abs(V.tiltV) > .001 || lvMax(lv) > .005 || V.bodyLv > .005 || V.flick < .995 || V.bench || V.hiCur || V.hiQ.length;
-    V.quiet = busy ? 0 : V.quiet + dt; V.skip = !V.skip;
-    if (V.quiet > 4 && V.skip && !FM) return;
+    var busy = A || V.orbit || cmv > 1e-4 || V.live || V.drips.length || Math.abs(V.tiltV) > .001 || lvMax(lv) > .005 || V.bodyLv > .005 || V.flick < .995 || V.bench || V.hiCur || V.hiQ.length;
+    V.quiet = busy ? 0 : V.quiet + dt;
+    // idle (nothing touched for 4 s, everything quiet, camera settled): draw at most ~50 times a second; only candles and
+    // slow drifts move then, and a 144 Hz laptop does not need to render them 144 times a second
+    if (V.quiet > 4 && !FM && now - (V.lastDraw || 0) < 19) { V.dynGap = true; return; }
     if (FM && !FM.draw) return;
     var f0 = performance.now(), gq = V.gpuQ, q1 = null;
     if (gq) { while (gq.pend.length && gq.gl.getQueryParameter(gq.pend[0], gq.gl.QUERY_RESULT_AVAILABLE)) { var q0 = gq.pend.shift(); gq.res.push(gq.gl.getQueryParameter(q0, gq.gl.QUERY_RESULT) / 1e6); gq.free.push(q0); }
       if (gq.pend.length < 6) { q1 = gq.free.pop() || gq.gl.createQuery(); gq.gl.beginQuery(gq.ext.TIME_ELAPSED_EXT, q1); } }
+    // world matrices once per frame, here (the renders below then skip it); the shadow maps are redrawn only when a
+    // shadow caster or a shadow light actually moved (see shadowCache)
+    V.sc.updateMatrixWorld(); if (V.shc) V.shc.tick(dt, FM);
+    V.sc.matrixWorldAutoUpdate = false;
     R.info.reset(); if (V.post) V.post.render(V.sc, V.cam, t); else R.render(V.sc, V.cam);
+    V.sc.matrixWorldAutoUpdate = true;
+    if (!FM && !V.bench && !LD.on) dynRes(now, V.dynGap); V.dynGap = false; V.lastDraw = now;
     if (q1) { gq.gl.endQuery(gq.ext.TIME_ELAPSED_EXT); gq.pend.push(q1); }
     V.frames = (V.frames || 0) + 1; V.cpu = performance.now() - f0; V.ft = (V.ft || 0) * .9 + V.cpu * .1;
     // the load phase (first frames, texture swap-in) is kept apart so the bench can report it on its own
@@ -1053,6 +1130,68 @@
 
   var RM = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   var TEXP = ['map', 'roughnessMap', 'normalMap'];
+  /* ---------- the shadow maps, redrawn only when something in them changed ----------
+     Every frame used to redraw both 2048 px shadow maps, i.e. the whole scene twice more. Most of it never moves, so each
+     shadow light now keeps its map until a shadow caster moves, deforms, appears or disappears (then both maps are redrawn
+     that same frame), or the light itself moves (the candle key light jitters a few mm: its map follows at up to 75 Hz).
+     Casters marked userData.shSlow (the drifting eyes) refresh at up to 20 Hz. Everything is redrawn every 2 s regardless. */
+  function shadowCache() {
+    var lights = [], list = [], slowF = null, M = null, G = [], GS = null, VS = null, age = 0, first = true, T = 0, stats = { frames: 0, full: 0, light: 0, slow: 0 };
+    V.sc.traverse(function (o) { if (o.isLight && o.castShadow && o.shadow) { o.shadow.autoUpdate = false; o.shadow.needsUpdate = true; lights.push({ l: o, m: new Float64Array(32), last: -1, pMove: false, pSlow: false }); } });
+    if (!lights.length) return null;
+    function collect() {
+      list = []; V.sc.traverse(function (o) { if ((o.isMesh || o.isPoints) && o.castShadow) list.push(o); });
+      M = new Float64Array(list.length * 16); G = new Array(list.length); GS = new Float64Array(list.length); VS = new Uint8Array(list.length); slowF = new Uint8Array(list.length);
+      list.forEach(function (o, i) { for (var p = o; p; p = p.parent) if (p.userData && p.userData.shSlow) { slowF[i] = 1; break; } });
+      age = 0;
+    }
+    function wvis(o) { for (; o; o = o.parent) if (!o.visible) return 0; return 1; }
+    function cmp(a, off, e) { var ch = false; for (var k = 0; k < 16; k++) if (a[off + k] !== e[k]) { a[off + k] = e[k]; ch = true; } return ch; }
+    // casters: a move under ~1 mm (or ~1e-4 in the rotation/scale part) is below a shadow texel, so it does not count; the
+    // stored matrix only advances when a move counts, so slow drifts still add up and trigger. The rig's sub-millimetre
+    // tremble with the sound no longer redraws both maps every frame; the 2 s full refresh stays as the backstop.
+    function cmpTol(a, off, e) { for (var k = 0; k < 16; k++) { var d = a[off + k] - e[k]; if (d > (k > 11 ? 1e-3 : 1e-4) || d < (k > 11 ? -1e-3 : -1e-4)) { for (k = 0; k < 16; k++) a[off + k] = e[k]; return true; } } return false; }
+    // a cheap fingerprint of what a geometry or an instance buffer holds right now (versions alone change every frame
+    // for buffers that are rewritten with the same values, like the drawer's junk)
+    function sig(o) {
+      var g = o.geometry, s = g.attributes.position ? g.attributes.position.version : 0;
+      if (o.isInstancedMesh) { var a = o.instanceMatrix.array, n = o.count * 16, h = 0; for (var k = 0; k < n; k += 1) h += a[k] * ((k % 13) + 1); s += h * 1e-3 + o.count; }
+      return s;
+    }
+    collect();
+    return { stats: stats, tick: function (dt, FM) {
+      T += dt; age += dt; stats.frames++;
+      var all = first || FM; if (age > 2) { collect(); all = true; } first = false;
+      var fast = false, slow = false;
+      for (var i = 0; i < list.length; i++) {
+        var o = list[i], v = wvis(o), ch = v !== VS[i]; VS[i] = v;
+        if (v) { if (cmpTol(M, i * 16, o.matrixWorld.elements)) ch = true; var g = o.geometry, sg = sig(o); if (G[i] !== g || GS[i] !== sg) { G[i] = g; GS[i] = sg; ch = true; } }
+        if (ch) { if (slowF[i]) slow = true; else fast = true; }
+      }
+      for (var j = 0; j < lights.length; j++) {
+        var L = lights[j], l = L.l, mv = cmp(L.m, 0, l.matrixWorld.elements); if (l.target && cmp(L.m, 16, l.target.matrixWorld.elements)) mv = true;
+        if (mv) L.pMove = true; if (slow) L.pSlow = true;
+        var since = T - L.last, upd = all || fast || (L.pSlow && since >= .05) || (L.pMove && since >= 1 / 75);
+        if (upd) { l.shadow.needsUpdate = true; L.last = T; L.pMove = L.pSlow = false; if (all || fast) stats.full++; else if (mv) stats.light++; else stats.slow++; }
+      }
+    } };
+  }
+  // dynamic resolution: when back-to-back frames run slower than ~48 fps for 2 s, step down (High: 8x -> 4x MSAA first,
+  // then 85 % and 75 % resolution); step back up once frames are at the display's pace again for 5 s. A level that just
+  // failed is held off for 20 s, doubling each time, so it does not flip back and forth. ?dynres=0 turns it off.
+  function dynRes(now, gap) {
+    var D = V.dyn; if (!D) return;
+    if (gap || !V.lastDraw || now - V.lastDraw > 200 || V.hiCur || V.hiQ.length || document.hidden) { D.t0 = now; D.n = 0; D.s = 0; return; }
+    D.s += now - V.lastDraw; D.n++;
+    if (now - D.t0 < 1000 || D.n < 10) return;
+    var avg = D.s / D.n; D.t0 = now; D.n = 0; D.s = 0; D.avg = avg; if (avg < D.best) D.best = avg;
+    if (avg > 21) { D.slow++; D.fast = 0; } else if (avg < Math.max(D.best * 1.12, 8.4)) { D.fast++; D.slow = 0; } else { D.slow = 0; D.fast = 0; }
+    var to = D.lvl;
+    if (D.slow >= 2 && D.lvl < D.L.length - 1) { to = D.lvl + 1; D.hold[D.lvl] = now + D.wait; D.wait = Math.min(D.wait * 2, 160000); }
+    else if (D.fast >= 5 && D.lvl > 0 && now > (D.hold[D.lvl - 1] || 0)) to = D.lvl - 1;
+    if (to === D.lvl) return;
+    D.lvl = to; D.slow = D.fast = 0; D.best = 1e9; var c = D.L[to]; D.sc = c.sc; if (V.post) V.post.capS = c.ms; D.log.push([Math.round(now), to, +avg.toFixed(1)]); size();
+  }
   function lvMax(a) { var m = 0; for (var i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; }
   // replace the quick textures (and any clone of them, keeping its own repeat) with the full set, then free the old ones
   function swapTex(key, set) {

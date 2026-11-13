@@ -49,6 +49,8 @@ var HE_PARAMS = (function () {
   p('glass.size', 'Size', .25, 4, 1, { unit: 'x', exp: 1, adv: 1 });
   p('glass.fill', 'Water in glass', 0, 1, 0);
   p('glass.guard', 'Ear guard', 0, 1, 1, { sw: 1, adv: 1 });
+  p('glass.beat', 'Circling beat', 0, 1, 1, { adv: 1 });
+  p('glass.harm', 'Finger harmonics', 0, 1, 1, { adv: 1 });
   p('struck.object', 'Object', 0, 4, 2, { en: ['Ruler', 'Rod', 'Bell', 'Clock spring', 'Body'] });
   p('struck.pitch', 'Pitch', 30, 5000, 180, { unit: 'Hz', exp: 1 });
   p('struck.hard', 'Hardness', 0, 1, .6);
@@ -417,8 +419,8 @@ function HECoreFactory() {
     if (ct === 1) {
       // a wet finger: the (2,0) mode with its harmonics 20-40 dB down (the rubbing force is not a sine), and the
       // 4-8 Hz beat of the finger circling the rim past the vibration's nodes, faster as the finger speeds up
-      this.hg.run(L, n, .05, .06, .02, 0, 1 - Math.exp(-1 / (.03 * sr)), true);
-      var fr = TAU * (4 + 4 * Math.min(1, spd * 1.6)) / sr, fp = this.fp, fa = this.fa, faT = spd > .01 ? .42 : 0;
+      var hm = P['glass.harm'] === undefined ? 1 : P['glass.harm']; if (hm > 0) this.hg.run(L, n, .05 * hm, .06 * hm, .02 * hm, 0, 1 - Math.exp(-1 / (.03 * sr)), true);
+      var fr = TAU * (4 + 4 * Math.min(1, spd * 1.6)) / sr, fp = this.fp, fa = this.fa, faT = spd > .01 ? .42 * (P['glass.beat'] === undefined ? 1 : P['glass.beat']) : 0;
       for (i = 0; i < n; i++) { fp += fr; if (fp > TAU) fp -= TAU; fa += (faT - fa) * .0005; L[i] *= 1 - fa * .5 * Math.cos(fp); }
       this.fp = fp; this.fa = fa;
     }
@@ -572,48 +574,106 @@ function HECoreFactory() {
     this.p = p; this.exAt = 0; this.ebe = ebe; this.last = last; this.rat = rat; this.bz = bz; this.bz2 = bz2;
   };
 
-  /* ---------- 7. Junk tray + magnet: particle simulation driving micro-resonators ---------- */
+  /* ---------- 7. Junk drawer + magnet: particle simulation driving modal impacts ----------
+     Loose junk in a wooden drawer. Each item has a material (steel nut or washer, steel screw, brass, glass, wood) and a
+     size; every impact rings four inharmonic modes of that item, re-drawn a little on every hit (where it was struck and
+     how it landed), with higher modes dying faster, excited by a short contact pulse with a little grit (harder hits:
+     shorter contact, brighter). Impacts land at their own sample inside the 128-sample block, glancing hits set off
+     neighbours, scraping makes faint Poisson-timed micro-collisions, and items rattle as they come to rest. Everything
+     also knocks the drawer's own wooden box (Tray ring = how open it is: shut, it rings shorter and the junk is muffled).
+     Steel items cling to the magnet instead of buzzing against each other under it. */
+  var JUNK_R = [[1, 1.71, 2.63, 3.82], [1, 2.76, 5.40, 8.93], [1, 2.32, 4.25, 6.63], [1, 2.09, 3.66, 5.51], [1, 2.57, 4.13, 6.29]];
+  var JUNK_F = [[1500, 2300], [2000, 2800], [950, 1600], [2300, 3000], [520, 850]];   // first mode: lo + span * size draw
+  var JUNK_T = [.075, .06, .17, .13, .028];        // T60 of the first mode (s)
+  var JUNK_D = [5000, 7000, 3500, 9000, 1300];     // frequency-dependent damping: T60 = T / (1 + f / D)
+  var JUNK_C = [.18, .15, .25, .12, .7];           // contact time (ms) at a medium hit
+  var JUNK_B = [.3, .25, .3, .2, .9];              // how much of the hit goes into the drawer's wooden box
+  var JUNK_A = [1, .9, 1, .8, 1.3];                // level trim per material
+  var DRAWER_F = [143, 209, 291, 377, 503, 662, 874, 1163, 1530], DRAWER_WL = [1, .6, .9, .4, .8, .5, .6, .35, .3], DRAWER_WR = [.7, 1, .4, .9, .5, .8, .35, .6, .25];
   function Junk(E) {
-    this.E = E; var M = 80, r = new Rng(9001);
+    this.E = E; var M = 80, r = new Rng(9001), i;
     this.px = new Float32Array(M); this.py = new Float32Array(M); this.vx = new Float32Array(M); this.vy = new Float32Array(M); this.r = new Float32Array(M); this.cool = new Float32Array(M); this.h = new Float32Array(M);
-    for (var i = 0; i < M; i++) { this.px[i] = .08 + r.u() * .84; this.py[i] = .08 + r.u() * .84; this.r[i] = .012 + r.u() * .02; this.h[i] = r.u(); }
-    this.V = 24; this.va = new Float64Array(this.V * 10); this.vl = new Int32Array(this.V); this.vg = new Float32Array(this.V * 2); this.nv = 0;
-    this.tf = [163, 271, 388, 612, 931]; this.ta1 = new Float64Array(5); this.ta2 = new Float64Array(5); this.tb = new Float64Array(5); this.act = new Int32Array(24); this.ty1 = new Float64Array(5); this.ty2 = new Float64Array(5); this.tx1 = 0; this.tx2 = 0; this.tin = 0;
-    this.sl = 0; this.slT = 0; this.b1 = 0; this.b2 = 0; this.count = 40; this.mx = .5; this.my = .5; this.mon = false;
+    this.cS = new Uint8Array(M); this.cM = new Uint8Array(M); this.ps = new Float32Array(M); this.cl = new Uint8Array(M);
+    for (i = 0; i < M; i++) { this.px[i] = .08 + r.u() * .84; this.py[i] = .08 + r.u() * .84; this.r[i] = .012 + r.u() * .02; this.h[i] = r.u(); }
+    // materials: the steel bin holds nuts, washers and screws; the mixed bin also brass, glass (marbles, shards) and wood (pegs, dice)
+    for (i = 0; i < M; i++) { var u = r.u(); this.cS[i] = u < .6 ? 0 : 1; this.cM[i] = u < .3 ? 0 : u < .45 ? 1 : u < .68 ? 2 : u < .83 ? 3 : 4; }
+    // how far each item slides or rolls once let go (per 2.67 ms): flat washers stop short, round glass rolls on
+    this.fq = new Float32Array(M); for (i = 0; i < M; i++) this.fq[i] = this.cM[i] === 3 ? .955 + .02 * r.u() : .84 + .1 * r.u(); this.fqD = 0; this.frq = new Float32Array(M);
+    var V = this.V = 32; this.a1 = new Float64Array(V * 4); this.a2 = new Float64Array(V * 4); this.b = new Float64Array(V * 4); this.y1 = new Float64Array(V * 4); this.y2 = new Float64Array(V * 4);
+    this.del = new Int32Array(V); this.con = new Int32Array(V); this.cn = new Int32Array(V); this.life = new Int32Array(V); this.lv = new Float32Array(V); this.lk = new Float32Array(V);
+    this.ca = new Float32Array(V); this.gz = new Float32Array(V); this.gl = new Float32Array(V); this.gr = new Float32Array(V); this.bs = new Float32Array(V); this.dg = new Float32Array(V); this.act = new Int32Array(V);
+    // pending impacts (secondary hits, rest rattles, scrape grit): absolute frame, item, energy, kind
+    var Q = this.QN = 96; this.qt = new Float64Array(Q); this.qi = new Int32Array(Q); this.qe = new Float32Array(Q); this.qk = new Uint8Array(Q); this.qn = 0;
+    this.da1 = new Float64Array(9); this.da2 = new Float64Array(9); this.db = new Float64Array(9); this.dy1 = new Float64Array(9); this.dy2 = new Float64Array(9);
+    this.rng = new Rng(4242); this.count = 40; this.mx = .5; this.my = .5; this.mon = false; this.fc = 0; this.mvx = 0; this.mvy = 0; this.n = BL;
+    this.reset();
   }
-  Junk.prototype.reset = function () { this.va.fill(0); this.vl.fill(0); this.vx.fill(0); this.vy.fill(0); this.ty1.fill(0); this.ty2.fill(0); this.tx1 = this.tx2 = this.tin = 0; this.sl = this.slT = this.b1 = this.b2 = 0; };
-  Junk.prototype.tick = function (i, e, wall) {
-    var E = this.E, sr = E.sr, j = this.nv; this.nv = (j + 1) % this.V;
-    var mat = E.P['junk.mat'] | 0, brass = mat === 1 || (mat === 2 && this.h[i] > .5);
-    var f = (wall ? 700 : 1500 + 5500 * this.h[i]) * (.022 / this.r[i]) * (brass ? .62 : 1) * (.7 + .6 * E.material) * Math.min(4, Math.sqrt(E.pitchMul));
-    var t = (wall ? .05 : brass ? .11 : .06) * (.4 + E.matT * .6), amp = Math.min(1, e) * (wall ? .7 : .5), o = j * 10;
-    var rat = brass ? 2.32 : 2.76;
-    for (var m = 0; m < 2; m++) {
-      var fm = Math.min(f * (m ? rat : 1), sr * .42), R = Math.exp(-6.91 / (t * (m ? .6 : 1) * sr)), th = TAU * fm / sr;
-      this.va[o + m * 4] = 2 * R * Math.cos(th); this.va[o + m * 4 + 1] = R * R; this.va[o + m * 4 + 2] += amp * Math.sin(th) * (m ? .6 : 1);
+  Junk.prototype.reset = function () {
+    this.y1.fill(0); this.y2.fill(0); this.del.fill(0); this.con.fill(0); this.life.fill(0); this.lv.fill(0); this.vx.fill(0); this.vy.fill(0); this.ps.fill(0); this.cl.fill(0); this.qn = 0;
+    this.dy1.fill(0); this.dy2.fill(0); this.bx1 = this.bx2 = 0; this.sl = this.slT = this.b1 = this.b2 = 0; this.lpL = this.lpR = this.lpL2 = this.lpR2 = this.cL = this.cR = 0; this.mu = -1;
+  };
+  Junk.prototype.queue = function (t, i, e, k) { if (this.qn < this.QN) { var q = this.qn++; this.qt[q] = t; this.qi[q] = i; this.qe[q] = e; this.qk[q] = k; } };
+  // an impact of item i with energy e (about 0..2); wall: against the drawer's wood; off: sample offset inside the block
+  Junk.prototype.tick = function (i, e, wall, off) {
+    var E = this.E, sr = E.sr, rng = this.rng, V = this.V, lv = this.lv, j = 0, k, best = 1e9;
+    for (k = 0; k < V; k++) { if (this.life[k] <= 0) { j = k; best = -1; break; } if (lv[k] < best) { best = lv[k]; j = k; } }   // a free voice, else the quietest
+    var mat = E.P['junk.mat'] | 0, c = mat === 0 ? this.cS[i] : mat === 1 ? 2 : this.cM[i], R = JUNK_R[c], F = JUNK_F[c];
+    var hard = e / (1 + e), size = .022 / this.r[i];
+    // where it was struck and how it landed: the whole object shifts up to +-2.5 %, each mode another +-1.2 %
+    var f1 = (F[0] + F[1] * this.h[i]) * Math.pow(size, .7) * (.85 + .3 * E.material) * Math.min(4, Math.sqrt(E.pitchMul)) * (1 + .025 * rng.b());
+    var T = JUNK_T[c] * (.4 + E.matT * .6) * (wall ? .8 : 1) * (.8 + .4 * rng.u()), D = JUNK_D[c], o = j * 4, maxT = 0;
+    var amp = hard * (wall ? 1.1 : .8) * (.7 + .45 * rng.u()) * JUNK_A[c];
+    for (var m = 0; m < 4; m++) {
+      var f = f1 * R[m] * (1 + (m ? .012 * rng.b() : 0)), am = m ? (.15 + .85 * rng.u()) * (m === 1 ? .8 : m === 2 ? .55 : .4) : .6 + .4 * rng.u();
+      if (f > Math.min(16000, sr * .4)) { am = 0; f = 1000; }
+      var t = T / (1 + f / D) * (m ? 1 : 1), Rr = Math.exp(-6.91 / (t * sr)), th = TAU * f / sr;
+      this.a1[o + m] = 2 * Rr * Math.cos(th); this.a2[o + m] = Rr * Rr; this.b[o + m] = amp * am * Math.sin(th);
+      if (am > 0 && t > maxT) maxT = t;
     }
-    this.vl[j] = (sr * t * 1.5) | 0; this.vg[j * 2] = Math.cos(this.px[i] * 1.5708); this.vg[j * 2 + 1] = Math.sin(this.px[i] * 1.5708);
-    this.tin += amp * .6;
+    // contact: harder and smaller = shorter (brighter); a raised half-sine with a little grit
+    var cms = JUNK_C[c] * (1.25 - .6 * hard) * (.8 + .4 * rng.u()) * (wall ? 1.3 : 1), cn = Math.max(4, Math.round(cms * .001 * sr));
+    this.cn[j] = cn; this.con[j] = cn; this.ca[j] = Math.PI / (2 * cn); this.gz[j] = c === 4 ? .9 : .45;
+    this.del[j] = off > 0 ? off | 0 : 0; this.dg[j] = amp * .9;       // the direct contact click (band-limited by the pulse)
+    var pn = clamp(this.px[i] + .08 * rng.b(), 0, 1) * 1.5708; this.gl[j] = Math.cos(pn); this.gr[j] = Math.sin(pn);
+    this.bs[j] = (wall ? 1.4 : JUNK_B[c]) * (.5 + .5 * rng.u());
+    this.life[j] = (this.del[j] + cn + maxT * 1.4 * sr) | 0; this.lv[j] = amp; this.lk[j] = Math.exp(-6.91 * BL / (maxT * sr));
+    // a glancing hit sets a neighbour going a few ms later (no further chains)
+    if (!wall && off >= 0 && e > .25 && rng.u() < .3) this.queue(this.fc + (off > 0 ? off : 0) + (2 + 10 * rng.u()) * .001 * sr, (rng.u() * this.count) | 0, e * (.25 + .3 * rng.u()), 1);
   };
   Junk.prototype.sim = function (C, P, dt) {
-    var E = this.E, rng = E.rng, N = this.count = clamp(P['junk.count'] | 0, 4, 80), px = this.px, py = this.py, vx = this.vx, vy = this.vy, rr = this.r;
-    // agitation only while the magnet is down (touched, looped or held); released items settle with a few last ticks
+    var E = this.E, rng = this.rng, N = this.count = clamp(P['junk.count'] | 0, 4, 80), px = this.px, py = this.py, vx = this.vx, vy = this.vy, rr = this.r, ps = this.ps, cl = this.cl, n = this.n;
+    // agitation only while the magnet is down (touched, looped or held); released items glide, knock and rattle to rest
     var on = C.on, str = P['junk.magnet'] * (on ? .5 + C.p : 0), ag = on ? P['junk.agit'] + C.spd * .5 : 0, S = 0, i, j;
+    if (on && this.mon) { this.mvx = (C.x - this.mx) / dt; this.mvy = (C.y - this.my) / dt; } else { this.mvx = this.mvy = 0; }
     this.mon = on; if (on) { this.mx = C.x; this.my = C.y; }
-    var mx = this.mx, my = this.my, fr = Math.pow(.86, dt / .00267);
+    // the clump under the magnet: about the radius that N items pack into; inside it things press together instead of buzzing
+    if (this.fqD !== dt) { this.fqD = dt; for (i = 0; i < 80; i++) this.frq[i] = Math.pow(this.fq[i], dt / .00267); }
+    var mx = this.mx, my = this.my, frq = this.frq, ckR = .035 + .021 * Math.sqrt(N), ck = 1 - Math.pow(.45, dt / .00267), ck2 = 1 - Math.pow(.7, dt / .00267), mat = P['junk.mat'] | 0;
     for (i = 0; i < N; i++) {
-      if (on) { var dx = mx - px[i], dy = my - py[i], d2 = dx * dx + dy * dy + .003, d = Math.sqrt(d2), F = Math.min(60, str * 1.1 / d2); vx[i] += dx / d * F * dt; vy[i] += dy / d * F * dt; }
+      cl[i] = 0;
+      if (on) {
+        var dx = mx - px[i], dy = my - py[i], d2 = dx * dx + dy * dy + .003, d = Math.sqrt(d2), F = Math.min(60, str * 1.1 / d2);
+        // steel in the clump clings and rides with the magnet; brass, glass and wood in it are only jammed in among the rest
+        if (d < ckR) { var mg = mat === 0 || (mat === 2 && this.cM[i] < 2), kk = mg ? ck : ck2; cl[i] = 1; F *= .12; vx[i] += (this.mvx - vx[i]) * kk; vy[i] += (this.mvy - vy[i]) * kk; }
+        vx[i] += dx / d * F * dt; vy[i] += dy / d * F * dt;
+      }
       if (rng.u() < ag * .012) { vx[i] += rng.b() * .9; vy[i] += rng.b() * .9; }
-      vx[i] *= fr; vy[i] *= fr;
+      var fr = frq[i]; vx[i] *= fr; vy[i] *= fr;
       var sp = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
       if (sp > 3) { vx[i] *= 3 / sp; vy[i] *= 3 / sp; sp = 3; }
       if (sp < .012) { vx[i] = 0; vy[i] = 0; sp = 0; }
-      S += sp; px[i] += vx[i] * dt; py[i] += vy[i] * dt;
+      // coming to rest: a few settling rattles, closer and quieter each time (a nut rocking, a washer spinning down)
+      if (sp === 0 && ps[i] > .08 && !cl[i] && rng.u() < .7) {
+        var k = 1 + ((rng.u() * 3.2) | 0), tt = this.fc + n + rng.u() * .06 * E.sr, gap = (.012 + .035 * rng.u()) * E.sr, ee = Math.min(.5, ps[i] * .35) * (.6 + .6 * rng.u());
+        for (var q = 0; q < k; q++) { tt += gap; this.queue(tt, i, ee, 2); gap *= .5 + .25 * rng.u(); ee *= .45 + .25 * rng.u(); }
+      }
+      ps[i] = sp > ps[i] ? sp : sp === 0 && ps[i] > .08 ? 0 : ps[i] * .97; if (!cl[i]) S += sp;   // recent peak speed (cleared once it has rattled)
+      px[i] += vx[i] * dt; py[i] += vy[i] * dt;
       if (this.cool[i] > 0) this.cool[i] -= dt;
-      var r = rr[i], e = 0;
-      if (px[i] < r) { px[i] = r; e = -vx[i]; vx[i] *= -.4; } else if (px[i] > 1 - r) { px[i] = 1 - r; e = vx[i]; vx[i] *= -.4; }
-      if (py[i] < r) { py[i] = r; e = Math.max(e, -vy[i]); vy[i] *= -.4; } else if (py[i] > 1 - r) { py[i] = 1 - r; e = Math.max(e, vy[i]); vy[i] *= -.4; }
-      if (e > .15 && this.cool[i] <= 0) { this.tick(i, e * .8, true); this.cool[i] = .04; }
+      var r = rr[i], e = 0, pen = 0;
+      if (px[i] < r) { pen = r - px[i]; px[i] = r; e = -vx[i]; vx[i] *= -.4; } else if (px[i] > 1 - r) { pen = px[i] - 1 + r; px[i] = 1 - r; e = vx[i]; vx[i] *= -.4; }
+      if (py[i] < r) { pen = Math.max(pen, r - py[i]); py[i] = r; e = Math.max(e, -vy[i]); vy[i] *= -.4; } else if (py[i] > 1 - r) { pen = Math.max(pen, py[i] - 1 + r); py[i] = 1 - r; e = Math.max(e, vy[i]); vy[i] *= -.4; }
+      if (e > .15 && this.cool[i] <= 0) { this.tick(i, e * .8, true, this.when(pen, e, dt)); this.cool[i] = .03 + .02 * rng.u(); }
     }
     for (i = 0; i < N; i++) for (j = i + 1; j < N; j++) {
       var ax = px[j] - px[i]; var rs = rr[i] + rr[j]; if (ax > rs || ax < -rs) continue;
@@ -623,37 +683,64 @@ function HECoreFactory() {
       var rel = (vx[j] - vx[i]) * nx + (vy[j] - vy[i]) * ny;
       if (rel < 0) {
         var J = -rel * .7; vx[i] -= nx * J; vy[i] -= ny * J; vx[j] += nx * J; vy[j] += ny * J;
-        if (-rel > .07 && this.cool[i] <= 0) { this.tick(rr[i] < rr[j] ? i : j, -rel * 1.3, false); this.cool[i] = .025 + rng.u() * .03; }
+        var a = rr[i] < rr[j] ? i : j;
+        if (-rel > .07 && this.cool[a] <= 0 && !(cl[i] && cl[j])) { this.tick(a, -rel * 1.3, false, this.when(ov * 2, -rel, dt)); this.cool[a] = .02 + rng.u() * .035; }
       }
     }
     this.slT = Math.min(1, S * .035);
+    // scraping: faint micro-collisions at a Poisson rate that follows how much is sliding
+    var lam = 90 * this.slT * dt; while (lam > 0) { if (rng.u() < Math.min(1, lam)) this.queue(this.fc + rng.u() * n, (rng.u() * N) | 0, .03 + .1 * rng.u() * this.slT, 3); lam -= 1; }
+    // pending impacts that fall inside this block
+    var qn = this.qn, end = this.fc + n;
+    for (q = 0; q < qn; q++) if (this.qt[q] < end) {
+      var it = this.qi[q] < N ? this.qi[q] : (rng.u() * N) | 0; this.tick(it, this.qe[q], this.qk[q] === 2 && rng.u() < .3, Math.max(0, this.qt[q] - this.fc) | 0 || -1);
+      qn--; this.qt[q] = this.qt[qn]; this.qi[q] = this.qi[qn]; this.qe[q] = this.qe[qn]; this.qk[q] = this.qk[qn]; q--;
+    }
+    this.qn = qn;
   };
+  // when inside the block a contact began, from how deep it went and how fast it closed (plus a fraction of a ms of jitter)
+  Junk.prototype.when = function (pen, v, dt) { var f = 1 - pen / Math.max(1e-4, v * dt); f = clamp(f, 0, 1) * .85 + .15 * this.rng.u(); return Math.min(this.n - 1, Math.max(1, (f * this.n) | 0)); };
   Junk.prototype.render = function (L, R, n, C, P) {
-    var E = this.E, sr = E.sr, rng = E.rng; this.sim(C, P, n / sr);
-    var V = this.V, va = this.va, vl = this.vl, vg = this.vg, tray = P['junk.tray'], ta1 = this.ta1, ta2 = this.ta2, tb = this.tb, k;
-    for (k = 0; k < 5; k++) { var Rr = Math.exp(-6.91 / ((.08 + tray * .5) * E.matT / (1 + k * .4) * sr)), th = TAU * this.tf[k] * (.8 + .4 * E.material) / sr; ta1[k] = 2 * Rr * Math.cos(th); ta2[k] = Rr * Rr; tb[k] = (1 - Rr * Rr) / 2; }
-    var sl = this.sl, slT = this.slT, b1 = this.b1, b2 = this.b2, ty1 = this.ty1, ty2 = this.ty2, tx1 = this.tx1, tx2 = this.tx2, tin = this.tin; this.tin = 0;
-    var act = this.act, na = 0, any = slT > .001 || sl > .001;
-    for (k = 0; k < V; k++) if (vl[k] > 0) { act[na++] = k; vl[k] -= n; any = true; }
+    var E = this.E, sr = E.sr, rng = this.rng; this.n = n; this.sim(C, P, n / sr);
+    var V = this.V, a1 = this.a1, a2 = this.a2, bb = this.b, y1 = this.y1, y2 = this.y2, del = this.del, con = this.con, cnA = this.cn, ca = this.ca, gz = this.gz, gl = this.gl, gr = this.gr, bs = this.bs, dg = this.dg;
+    var tray = P['junk.tray'], k, act = this.act, na = 0, life = this.life;
+    for (k = 0; k < V; k++) if (life[k] > 0) { act[na++] = k; life[k] -= n; this.lv[k] *= this.lk[k]; if (life[k] <= 0) { var o0 = k * 4; y1[o0] = y1[o0 + 1] = y1[o0 + 2] = y1[o0 + 3] = y2[o0] = y2[o0 + 1] = y2[o0 + 2] = y2[o0 + 3] = 0; } }
+    // the drawer's wooden box: longer ring the further it is open; shut, it is a smaller, duller box
+    var mT = clamp(tray / .3, 0, 1); mT = mT * mT * (3 - 2 * mT); var muT = 1 - mT;
+    if (this.mu < 0) this.mu = muT;
+    var mu0 = this.mu, mu1 = mu0 + (muT - mu0) * .15; this.mu = mu1;
+    var da1 = this.da1, da2 = this.da2, dbb = this.db, dy1 = this.dy1, dy2 = this.dy2;
+    for (k = 0; k < 9; k++) { var t60 = (.05 + .13 * tray) / (1 + k * .15) * (.6 + .4 * E.matT), Rr = Math.exp(-6.91 / (t60 * sr)), th = TAU * DRAWER_F[k] * (1 + .15 * mu1) / sr; da1[k] = 2 * Rr * Math.cos(th); da2[k] = Rr * Rr; dbb[k] = (1 - Rr * Rr) * .5; }
+    var muff = mu0 > .002 || mu1 > .002, fcA = 16000 * Math.pow(800 / 16000, mu0), fcB = 16000 * Math.pow(800 / 16000, mu1), lcA = 1 - Math.exp(-TAU * fcA / sr), lcB = 1 - Math.exp(-TAU * fcB / sr);
+    var cLc = 1 - Math.exp(-TAU * 7000 / sr), cL = this.cL, cR = this.cR, lpL = this.lpL, lpR = this.lpR, lpL2 = this.lpL2, lpR2 = this.lpR2;
+    var sl = this.sl, slT = this.slT, b1 = this.b1, b2 = this.b2, bx1 = this.bx1, bx2 = this.bx2, any = slT > .001 || sl > .001 || na > 0, bodyG = 2.2 * (.4 + .6 * tray + .8 * mu1);
     for (var i = 0; i < n; i++) {
-      var l = 0, r = 0;
+      var l = 0, r = 0, cx = 0, bx = 0;
       for (var q = 0; q < na; q++) {
-        var o = act[q] * 10, y = va[o] * va[o + 3] - va[o + 1] * va[o + 4] + va[o + 2]; va[o + 2] = 0; va[o + 4] = va[o + 3]; va[o + 3] = y;
-        var yb = va[o + 5] * va[o + 8] - va[o + 6] * va[o + 9] + va[o + 7]; va[o + 7] = 0; va[o + 9] = va[o + 8]; va[o + 8] = yb;
-        var sum = y + yb;
-        l += sum * vg[act[q] * 2]; r += sum * vg[act[q] * 2 + 1];
+        var v = act[q], o = v * 4, x = 0;
+        if (del[v] > 0) del[v]--;
+        else if (con[v] > 0) { var c0 = cnA[v] - con[v]; x = Math.sin((c0 + .5) * ca[v] * 2) * ca[v] * (1 + gz[v] * rng.b()); con[v]--; var xc = x * dg[v] * cnA[v] * .35; cx += xc * (gl[v] + gr[v]) * .5; bx += x * bs[v]; }
+        var y = a1[o] * y1[o] - a2[o] * y2[o] + bb[o] * x; y2[o] = y1[o]; y1[o] = y; var s = y;
+        y = a1[o + 1] * y1[o + 1] - a2[o + 1] * y2[o + 1] + bb[o + 1] * x; y2[o + 1] = y1[o + 1]; y1[o + 1] = y; s += y;
+        y = a1[o + 2] * y1[o + 2] - a2[o + 2] * y2[o + 2] + bb[o + 2] * x; y2[o + 2] = y1[o + 2]; y1[o + 2] = y; s += y;
+        y = a1[o + 3] * y1[o + 3] - a2[o + 3] * y2[o + 3] + bb[o + 3] * x; y2[o + 3] = y1[o + 3]; y1[o + 3] = y; s += y;
+        l += s * gl[v]; r += s * gr[v];
       }
+      // sliding over wood: band-passed noise with a little grit, also scraping the box
       sl += .002 * (slT - sl);
-      var nzz = rng.b() * sl; b1 += .35 * (nzz - b1); b2 += .12 * (b1 - b2); var sn = (b1 - b2) * .35;
-      var x = (i === 0 ? tin : 0) + sn * .4, tr = 0, xd = x - tx2;
-      for (k = 0; k < 5; k++) { var ty = ta1[k] * ty1[k] - ta2[k] * ty2[k] + tb[k] * xd + 1e-18; ty2[k] = ty1[k]; ty1[k] = ty; tr += ty; }
-      tx2 = tx1; tx1 = x; tr *= 1.2 * (.3 + tray);
+      var nzz = rng.b() * sl * (rng.u() < .08 ? 2.5 : 1); b1 += .35 * (nzz - b1); b2 += .12 * (b1 - b2); var sn = (b1 - b2) * .35;
+      bx += sn * .02;
+      cL += cLc * (cx - cL);
+      var dx = bx - bx2, dL = 0, dR = 0; bx2 = bx1; bx1 = bx;
+      for (k = 0; k < 9; k++) { var yd = da1[k] * dy1[k] - da2[k] * dy2[k] + dbb[k] * dx + 1e-18; dy2[k] = dy1[k]; dy1[k] = yd; dL += yd * DRAWER_WL[k]; dR += yd * DRAWER_WR[k]; }
+      var jl = (l + cL + sn * .045 + dL * bodyG) * 3.2, jr = (r + cL + sn * .045 + dR * bodyG) * 3.2;
+      if (muff) { var u = i / n, lc = lcA + (lcB - lcA) * u, mg = 1 - .5 * (mu0 + (mu1 - mu0) * u); lpL += lc * (jl - lpL); lpL2 += lc * (lpL - lpL2); lpR += lc * (jr - lpR); lpR2 += lc * (lpR - lpR2); jl = lpL2 * mg; jr = lpR2 * mg; }
       // a gentle soft knee keeps pile-ups of ticks from slamming the master limiter
-      var jl = (l + sn * .7 + tr) * .18, jr = (r + sn * .7 + tr) * .18;
       L[i] = jl / (1 + .5 * (jl < 0 ? -jl : jl)); R[i] = jr / (1 + .5 * (jr < 0 ? -jr : jr));
     }
-    this.sl = sl; this.b1 = b1; this.b2 = b2; this.tx1 = tx1; this.tx2 = tx2;
-    return any || tin > 0;
+    if (!muff) { lpL = lpL2 = lpR = lpR2 = 0; }
+    this.sl = sl; this.b1 = b1; this.b2 = b2; this.bx1 = bx1; this.bx2 = bx2; this.cL = cL + 1e-18; this.lpL = lpL; this.lpR = lpR; this.lpL2 = lpL2; this.lpR2 = lpR2; this.fc += n;
+    return any;
   };
 
   /* ---------- 8. Aura pad: granular cloud over a capture of the instrument's own dry bus ---------- */

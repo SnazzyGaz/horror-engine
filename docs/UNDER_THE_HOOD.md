@@ -22,10 +22,13 @@ src/
   io.js               presets, performance files and their schemas, WAV and zip writers, offline render
   ui.js               page UI: voice rack, knobs, Surface pad, keys, MIDI, recording, presets
   machine2.js         the 3D Machine (default view): scene, parts, hit zones, gestures, camera
+  altar.js            the Altar skin (?skin=altar): same zones and handlers, different parts
+  sculpt.js           its sculpting kit: distance fields to meshes, swept tubes, the blood/rust shader
   look.js             the Machine's look: post chain, mesh merging, contact shadows
   machine.js          the first Machine, at ?machine=v1
   body.html, style.css
 assets/textures/      CC0 photo-scanned texture sets as WebP (see CREDITS.md)
+assets/crypt_assets.js  Altar crypt textures and scanned skulls, packed (see CREDITS.md)
 vendor/three.min.js   three.js r160 (MIT)
 ```
 

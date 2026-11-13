@@ -42,7 +42,7 @@ window.HELook = (function () {
   Post.prototype.setSize = function (w, h) {
     w = Math.max(2, w | 0); h = Math.max(2, h | 0);
     // 8x MSAA up to about 2 megapixels; above that 4x (the extra samples cost more than they show at that density)
-    var sm = this.fixedS ? this.maxS : (w * h > 2.2e6 ? Math.min(4, this.maxS) : this.maxS); if (sm !== this.rt.samples) { this.rt.samples = sm; this.rt.dispose(); }
+    var sm = this.fixedS ? this.maxS : (w * h > 2.2e6 ? Math.min(4, this.maxS) : this.maxS); if (this.capS) sm = Math.min(sm, this.capS); if (sm !== this.rt.samples) { this.rt.samples = sm; this.rt.dispose(); }
     this.rt.setSize(w, h); this.mComp.uniforms.res.value.set(w, h);
     for (var i = 0; i < this.levels; i++) { w = Math.max(1, w >> 1); h = Math.max(1, h >> 1); this.bl[i].setSize(w, h); }
   };

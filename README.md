@@ -31,6 +31,30 @@ Every part is bolted to one wooden body heard through a contact mic, so a knock 
 <img src="docs/media/still_wheel.jpg" width="49%" alt="The hurdy-gurdy wheel and its crank on the right of the cabinet, with the drumhead and the wine glass behind"> <img src="docs/media/still_ruler.jpg" width="49%" alt="Four steel rulers hanging over the front edge of the cabinet below the slate, the brass sunburst inlay underneath">
 <img src="docs/media/still_glass.jpg" width="49%" alt="The wine glass under its brass tap, a dark bottle, the glass pane and the drumhead in the middle of the cabinet"> <img src="docs/media/still_fx_panel.jpg" width="49%" alt="The brass FX panel on the mast: a blue-green display reading -12st, a Send slider, six knobs (Shift, Detune, Feedback, Return, Aura, Hall) and the Freeze and Loop buttons">
 
+## Skins
+
+The Machine has two skins. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address.
+
+![The Altar skin: a blood-stained altar with a ribcage harp, bones in a tray of blood, a goat idol over an iron plate and a wheel cranked through a skull](docs/media/altar.jpg)
+
+| Workshop | Altar |
+|---|---|
+| Slack string, e-bow, slide bar | Ribcage harp strung with gut, lodestone, knuckle slide |
+| Waterphone rods in a water tray | Long bones standing in a tray of blood |
+| Hurdy-gurdy wheel and crank | A wheel cranked through a skull on a spike |
+| Wine glass and tap | Cracked skull bowl and a bleeding spout |
+| Glass pane, slate, bottle | Black mirror, grave slate, bottle |
+| Steel rulers and clamp, bow saw, clock spring | Rusted blades under an iron strap, bone saw, iron serpent |
+| Drumhead | Stitched hide drumhead |
+| Thunder sheet | Iron plate under a horned goat idol |
+| Spring tank | Rusty coils beside hanging entrails |
+| Junk drawer and magnet | Drawer of bones and teeth, stirred by a claw |
+| Superballs | Eyes on stalks |
+| Lamp (Aura) | The altar candle |
+| Brass FX panel, body sunburst | Bone dials and a pentagram carved into the altar front |
+
+The Altar is built in code like the rest (`src/sculpt.js`, `src/altar.js`). Most of the bones, the idol and the blood are distance fields and procedural work meshed at load; the human skulls and the beam-mounted goat skull are packed scans (see [CREDITS.md](CREDITS.md)).
+
 ## The FX panel
 
 The brass panel on the mast holds the effects that sit after the instruments:
@@ -102,6 +126,7 @@ It is a single HTML page that uses three.js for the machine and Web Audio for th
 Horror Engine by Garyck Arntzen ([@_mintydoge](https://x.com/_mintydoge)). MIT licence; see [LICENSE](LICENSE).
 
 - The surface textures are CC0 scans from Poly Haven and ambientCG, listed in [CREDITS.md](CREDITS.md).
+- The beam-mounted goat skull on the Altar skin is "Goat Skull" by [Bohnen](https://sketchfab.com/BOHNEN), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ([Sketchfab](https://sketchfab.com/3d-models/goat-skull-99b738abd7d34b27a38b363900856043)).
 - three.js r160 is © the three.js authors under the MIT licence ([vendor/three.LICENSE](vendor/three.LICENSE)).
 - The bowed-string friction curve follows the bow-table idea published in STK by Perry R. Cook and Gary P. Scavone. The spring tank's dispersion follows the model by Välimäki, Parker and Abel (2010).
 - Inspired by the Apprehension Engine by Mark Korven and Tony Duggan-Smith; not affiliated.

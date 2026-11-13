@@ -10,6 +10,8 @@ Every voice reads the same four things from your hand: **where** you touch (x an
 
 **The Machine** (the default tab). Drag a part of the cabinet to play it. When the pointer is over a part, a hint at the top of the view says what that part does. Drag empty space or the room to look around, use the wheel to zoom, and right-drag to orbit from anywhere. `F6` `F7` `F8` `F9` move the camera to the left, middle, right and the panel, and `Home` shows the whole machine. `K` makes the camera follow the part you play. `D` is demo mode, with the hints hidden and a slow drift.
 
+The Machine has two skins, Workshop and Altar. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address. The parts are listed under [Skins](../README.md#skins) in the README.
+
 **The Surface.** A flat pad for the selected voice (choose it with `1`–`9` or the rack). The labels on the pad edges say what x and y do for that voice.
 
 **Pressure.** A pen uses its real pressure. With a mouse, hold `Shift` for a hard touch (100%) or `Alt` for a soft one (30%). Otherwise the wheel sets the resting pressure in 5% steps (it starts at 60%). On the Machine, the wheel changes pressure while you are holding a part and zooms otherwise.
