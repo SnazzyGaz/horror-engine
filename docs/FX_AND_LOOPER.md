@@ -72,7 +72,7 @@ Each layer in the list has:
 
 **Clear all** removes every layer.
 
-`Ctrl+Z` and `Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo looper changes, up to 50 steps.
+`Ctrl+Z` and `Ctrl+Y` (or `Ctrl+Shift+Z`) undo and redo looper changes, up to 50 steps. The same undo also covers knobs, presets, Defaults and the Tune & place offsets.
 
 ### A workflow that works
 
@@ -97,6 +97,10 @@ Press **Record** (or `R`) to start, and press again to stop. The take is saved a
 **Format.** 32-bit float is the default and keeps pre-limiter stems intact. With 24-bit, the stems get a 6.02 dB pad (multiply by 2 to restore) to make room for peaks above full scale. If any samples still clip, the app tells you to use float for that take.
 
 **Length.** A mix-only take runs up to 10 minutes, and a take with stems up to 4.
+
+**Save what I just played** (`Shift+R`, or **Last min**) works without pressing Record: the last minute of the mix is always kept, and this saves it as a WAV with its `.horror.json`. Render that file with Stems on for stems. In the first five minutes of a session they add up to the saved WAV exactly; after that the file starts from a checkpoint just before the minute, so the stems are a fresh performance of the same moves.
+
+With **Your sound in** on, a take with stems also gets an `input` stem. Render cannot replay your sound, so it re-renders the machine alone.
 
 ### Re-rendering a performance
 

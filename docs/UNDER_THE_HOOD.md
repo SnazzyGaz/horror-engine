@@ -21,7 +21,7 @@ src/
   engine.js           the DSP: voices, effects, macros, moments, looper, recorder
   io.js               presets, performance files and their schemas, WAV and zip writers, offline render
   ui.js               page UI: voice rack, knobs, Surface pad, keys, MIDI, recording, presets
-  machine2.js         the 3D Machine (default view): scene, parts, hit zones, gestures, camera
+  machine2.js         the 3D Machine (built behind the Surface at load): scene, parts, hit zones, gestures, camera
   altar.js            the Altar skin (?skin=altar): same zones and handlers, different parts
   sculpt.js           its sculpting kit: distance fields to meshes, swept tubes, the blood/rust shader
   look.js             the Machine's look: post chain, mesh merging, contact shadows

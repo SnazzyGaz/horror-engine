@@ -2,17 +2,19 @@
 
 This is a field guide to the nine voices: what each one is, how to play it on the Machine and on the Surface, what every knob does, and where it earns its place in a score. 
 
-[Ways to play](#ways-to-play) · [I. E-bow string](#i-e-bow-string) · [II. Hurdy-gurdy](#ii-hurdy-gurdy) · [III. Bowed metal](#iii-bowed-metal) · [IV. Glass](#iv-glass) · [V. Struck metal](#v-struck-metal) · [VI. Spring tank](#vi-spring-tank) · [VII. Junk tray](#vii-junk-tray) · [VIII. Aura](#viii-aura) · [IX. Superball](#ix-superball) · [Shared parts](#shared-parts) · [Macros](#macros) · [Moments](#moments) · [Presets](#presets) · [Keys](#keys)
+[Ways to play](#ways-to-play) · [I. E-bow string](#i-e-bow-string) · [II. Hurdy-gurdy](#ii-hurdy-gurdy) · [III. Bowed metal](#iii-bowed-metal) · [IV. Glass](#iv-glass) · [V. Struck metal](#v-struck-metal) · [VI. Spring tank](#vi-spring-tank) · [VII. Junk tray](#vii-junk-tray) · [VIII. Aura](#viii-aura) · [IX. Superball](#ix-superball) · [Shared parts](#shared-parts) · [Tune & place](#tune--place) · [Macros](#macros) · [Moments](#moments) · [Saving, undo and sharing](#saving-undo-and-sharing) · [Your sound in](#your-sound-in) · [Presets](#presets) · [Keys](#keys)
 
 ## Ways to play
 
 Every voice reads the same four things from your hand: **where** you touch (x and y), **how hard** (pressure), and **how fast** you move. Bowed, scraped, cranked and rubbed voices make no sound until you move. Speed is the bow.
 
-**The Machine** (the default tab). Drag a part of the cabinet to play it. When the pointer is over a part, a hint at the top of the view says what that part does. Drag empty space or the room to look around, use the wheel to zoom, and right-drag to orbit from anywhere. `F6` `F7` `F8` `F9` move the camera to the left, middle, right and the panel, and `Home` shows the whole machine. `K` makes the camera follow the part you play. `D` is demo mode, with the hints hidden and a slow drift.
+**Surface first.** The page opens on the Surface so you can play at once, while the 3D Machine warms up behind it (a note beside the tabs shows its progress). When it is ready the tab lights up; if you have not started playing the Surface (and did not pick it last time), the view switches over by itself. Add `?view=machine` to the address to open on the Machine and its loading screen instead.
+
+**The Machine.** Drag a part of the cabinet to play it. When the pointer is over a part, a hint at the top of the view says what that part does. Drag empty space or the room to look around, use the wheel to zoom, and right-drag to orbit from anywhere. `Shift+F6` `Shift+F7` `Shift+F8` `Shift+F9` move the camera to the left, middle, right and the panel, and `Home` shows the whole machine. `K` makes the camera follow the part you play. `D` is demo mode, with the hints hidden and a slow drift.
 
 The Machine has two skins, Workshop and Altar. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address. The parts are listed under [Skins](../README.md#skins) in the README.
 
-**The Surface.** A flat pad for the selected voice (choose it with `1`–`9` or the rack). The labels on the pad edges say what x and y do for that voice.
+**The Surface.** A flat pad for the selected voice (choose it with `1`–`9` or the rack). It fills the space the window leaves it, with one line of key hints underneath. The labels on the pad edges say what x and y do for that voice.
 
 **Pressure.** A pen uses its real pressure. With a mouse, hold `Shift` for a hard touch (100%) or `Alt` for a soft one (30%). Otherwise the wheel sets the resting pressure in 5% steps (it starts at 60%). On the Machine, the wheel changes pressure while you are holding a part and zooms otherwise.
 
@@ -105,7 +107,7 @@ Each voice also feeds the shared wooden **Body** by a fixed amount. Struck metal
 **On the Surface.** x is the bow position along the object, which changes which modes speak. y is bend, or overhang for a ruler. Speed is bow speed; with no motion there is no sound. Pressure picks the mode.
 
 **Knobs.**
-- **Object**: Ruler, Rod, Saw or Clock spring.
+- **Object**: Ruler, Rod, Saw, Clock spring or Cymbal (a bowed cymbal: a shimmering, inharmonic sheet of partials; there is a *Bowed Cymbal* preset).
 - **Size** (40–4000 Hz, default 330): the fundamental for the rod, saw and clock spring. A ruler takes its pitch from *Ruler length* instead.
 - **Pressure**: bow force, times your pressure. Light pressure favours high modes and heavy pressure favours low ones. A change of more than about 15% knocks the bow loose for an instant, and it catches on a new mode.
 - **Bow speed**: how much bow your hand speed gives. It is also the speed Hold uses.
@@ -273,6 +275,19 @@ Every part is bolted to one wooden box heard through a contact mic. On the Altar
 
 Knock the bare wood on the Machine (the spine) and everything on it rings along.
 
+## Tune & place
+
+Under each voice's panel, **Tune & place** holds four offsets that belong to that instrument only:
+
+- **Tune**: −24 to +24 semitones (integer).
+- **Fine**: −100 to +100 cents.
+- **Material**: −100% to +100%, added to the Material macro and clamped to 0–100%.
+- **Distance**: −100% to +100%, added to the Distance macro and clamped to 0–100%.
+
+They never replace the macros. Dread stays global. The room lighting and fog still follow the macros only; offsets change the sound, not the altar picture. A brass dot on the voice in the rack marks a non-zero offset. **Reset** on the panel zeros that voice. **Defaults** under the voice list zeros every voice: the first click asks **Sure?**, the second applies it, and the button becomes **Undo** for eight seconds (the looper's Ctrl+Z is left alone). Built-in presets and a Load of an older file without offsets set them back to zero.
+
+Offsets are ordinary parameters, so they travel in `localStorage`, preset **Save** / **Load**, and `.horror.json` performances (schema 1.3.0 and later; files from 1.2.0 and earlier still validate and load with zero offsets). Custom Moments do not store offsets of their own: a Moment records which instrument it plays, and replay uses that instrument's current Tune & place.
+
 ## Macros
 
 Four large knobs that move many things at once. MIDI CC 20–23 control them in this order.
@@ -305,6 +320,49 @@ These are scripted gestures that play the machine for you. They are buttons on t
 - **Heartbeat** (`F4`): two low, muffled thumps, lub then dub, at about 54 bpm, rising toward 70 with Dread. Each beat ducks the string, the wheel and the Aura by 3–9 dB.
 - **In the walls** (`F5`): bursts of the junk tray, short glass scrapes, spring drips and low knocks at random. Dread makes them come more often.
 
+### Your own Moments
+
+1. In **Moments**, press **Record moment**. Play any voices, on the Machine or Surface, with mouse, pen, keyboard or MIDI. Move knobs and macros too.
+2. Press **Stop moment**. Silence before the first touch or knob move is trimmed. Held strokes are released at the end. The maximum capture is ten minutes; loop playback and other Moments are not captured, only your live gestures and knob moves.
+3. Type a name inline (default **Moment 6**, then 7, etc.) and **Save**. **Discard** drops it. If you start a new capture before naming the previous one, it saves that one under its displayed name.
+4. Press the new button or its key (**F6–F12** for the first seven custom Moments) to play it once. Press again to stop. Longer resonances and reverb ring out naturally; **Esc** clears everything.
+
+These are gestures, not samples: the models perform the phrase again. Every firing gets gentle, seeded ghost-style variation: about ±5% duration, ±10% pressure and automation depth, plus a small contact-position offset. Offline Render reproduces the variations from the take exactly. Ordinary loops play their stored strokes; Ghost mode improvises much more freely.
+
+#### Knobs and automation
+
+Continuous knobs and macros are **relative in normalised knob travel**. A Dread move from 0.2 to 0.6 lifts the current Dread by about 0.4 (clamped at the limits). Exponential controls, such as pitch or decay, move by the same fraction of their logarithmic knob travel. Switches, choices and integer selectors are **absolute**. Automation uses the captured control points (step playback at audio-block resolution).
+
+Playback doesn't move the UI knobs. They show your live base values. Turning one during playback changes the base the automation rides on. At the end, or when stopped, every affected parameter goes back to its latest live value. Overlapping relative moves add; if several Moments set an absolute choice, the most recently started active one wins. Live gestures take voice priority over custom Moments, which share the finite voice instances with the looper.
+
+#### Manage and share
+
+The **…** menu on a custom Moment has:
+
+- **Name field**: edit, then Enter or leave the field to rename.
+- **Voice**: keep **Voices as played**, or route all gestures to one of the nine voices. Knob automation still addresses its original controls. Changing the name or voice stops the running copy, if any.
+- **Export**: a small `.horror-moment.json` file (no rendered audio).
+- **↑**: move it earlier in the panel (changes F-key and MIDI order).
+- **Delete**, then **Sure?**: remove it.
+
+**Import** accepts Moment files, or imports the Moment library embedded in a preset/performance. Identical IDs and contents are skipped; a conflicting copy gets a fresh ID. Preset/performance Load adds its Moments to yours rather than destroying your library. Old files without custom Moments still work.
+
+Moments live in `localStorage` under `horror-engine.moments`. They are specific to this browser/profile and local-page origin: use Export or preset Save for a backup or to move between app copies. Preset **Save** embeds the library; performance files embed it plus the historical definition/trigger events, so editing or deleting a Moment later does not change a recorded take. **Render…** runs those events through the shared engine offline.
+
+## Saving, undo and sharing
+
+**Save what I just played** (`Shift+R`, or **Last min**). You do not have to press Record first: the last minute of the mix is always kept, so this saves it as a WAV in a zip with its `.horror.json` performance file. Render that file with Stems on to get the same minute as stems. In the first five minutes of a session the stems add up to the saved mix exactly; after that the file starts from a checkpoint a little before the minute (the looper, knobs, held notes and running Moments are rebuilt there), so the stems are a fresh performance of the same moves and will not add up to the saved WAV exactly.
+
+**Undo** (`Ctrl+Z`, redo `Ctrl+Y` or `Ctrl+Shift+Z`, or the arrows in the toolbar) covers knobs, presets, loaded files, share links, Defaults, Reset, the Tune & place offsets and the looper. A knob drag is one step; wheel, key and MIDI moves on the same knob are grouped.
+
+**MIDI learn.** Right-click any knob, switch or selector (long-press on a touch screen), choose **MIDI learn…**, then move a control on your controller. CC 0–119 on any channel can be learned; a learned CC wins over the fixed ones on its channel, one CC drives one control, and the same menu forgets one mapping or all of them. Learned controls show a small green dot. Mappings are kept in this browser. MPE is not supported.
+
+**Share links.** **Link** copies an address ending in `#s=…` that rebuilds every setting (and the selected voice and preset name) when opened. A damaged link changes nothing.
+
+## Your sound in
+
+Press **Your sound in** on the Hall & Master strip, then **Mic / line** (the browser asks for permission; echo cancelling, noise suppression and auto gain are off) or **File**. Your sound goes through the spring tank, the body, the hall, the harmonizer and the Aura; **Dry** is its own level in the mix. Stop or Silence (`Esc`) ends it. When it is off, nothing reaches the mix. Recordings with stems get an extra *input* stem. Render cannot replay your sound, so a performance file made while it was on says so, and re-renders the machine alone.
+
 ## Presets
 
 The Preset menu resets every setting and then applies a few:
@@ -317,6 +375,7 @@ The Preset menu resets every setting and then applies a few:
 - **Drowned Choir**: bowed rods in water through the harmonizer with feedback.
 - **Blaster Beam**: the struck string with a two-octave slide, through the harmonizer and the piezo.
 - **Sub Basement**: everything 14 semitones down, far away, with a 20-second hall.
+- **Bowed Cymbal**: Bowed Metal's Cymbal object at 520 Hz, bowed at the edge into a 9-second hall.
 
 **Save** writes every setting to a `.json` preset. **Load** reads a preset or the starting sound of a performance file.
 
@@ -338,6 +397,7 @@ Every key the app answers to. Keys are ignored while a text field or menu has fo
 | `H` | Hold the selected voice on / off |
 | `F` | Freeze the Aura on / off |
 | `F1`–`F5` | Moments: Riser, Stinger, Drone bed, Heartbeat, In the walls |
+| `F6`–`F12` | Your first seven Moments, in panel order (some browsers keep `F11`/`F12` for themselves) |
 | `Esc` | Silence: stop every voice and moment, turn off Hold (except the Aura's) and Freeze, clear the hall. Loop layers carry on at their next stroke. |
 
 ### Looper
@@ -347,7 +407,7 @@ Every key the app answers to. Keys are ignored while a text field or menu has fo
 | `Space` | Start a gesture loop / close it |
 | `G` | Ghost the newest layer on / off |
 | `Backspace` | Remove the newest layer |
-| `Ctrl+Z` | Undo a looper change (up to 50) |
+| `Ctrl+Z` | Undo: knobs, presets, offsets and the looper (up to 50) |
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
 
 On a Mac, `Cmd` works in place of `Ctrl`.
@@ -357,6 +417,7 @@ On a Mac, `Cmd` works in place of `Ctrl`.
 | Keys | What it does |
 |---|---|
 | `R` | Start / stop recording (saves a zip) |
+| `Shift+R` | Save what I just played: the last minute |
 
 ### Knobs (when a knob has focus)
 
@@ -374,7 +435,7 @@ On a Mac, `Cmd` works in place of `Ctrl`.
 | Drag a part | Play it (the hint at the top says how) |
 | Drag empty space, or right-drag anywhere | Look around |
 | Mouse wheel | Zoom; while you hold a part, change pressure instead |
-| `F6` `F7` `F8` `F9` | Camera to the left, middle, right, panel |
+| `Shift+F6` `Shift+F7` `Shift+F8` `Shift+F9` | Camera to the left, middle, right, panel |
 | `Home` | Camera on the whole machine |
 | `K` | Follow the part you play on / off |
 | `D` | Demo mode on / off (hints hidden, slow drift) |
@@ -382,4 +443,11 @@ On a Mac, `Cmd` works in place of `Ctrl`.
 
 ### MIDI
 
-In browsers with Web MIDI, once audio is started: notes play the selected voice with velocity, and CC 20, 21, 22 and 23 move Dread, Distance, Material and Pitch.
+Start audio first and grant MIDI access if prompted.
+
+- **Channels 1–15**: notes play the selected voice.
+- **Channel 16** is reserved for Moment toggles: note **36** is Riser, **37** Stinger, **38** Drone bed, **39** Heartbeat, **40** In the walls; **41** is your first custom Moment, **42** the second, up to note 127. Note-off doesn't stop it; another note-on toggles it off. Use note numbers: octave names vary between controllers.
+- **CC 24–43**, any channel: Moments **1–20**, fired only when the value rises from below 64 to 64 or above. **CC 29** is the first custom Moment. Send a low value to re-arm that CC.
+- **CC 20–23**: Dread, Distance, Material, Pitch.
+
+Any knob can also be mapped with [MIDI learn](#saving-undo-and-sharing).

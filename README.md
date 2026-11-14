@@ -8,7 +8,7 @@ A playable machine for horror sound that runs in your browser: nine physical mod
 
 ## What it is
 
-Horror Engine is a single-page instrument for scoring slow dread. You play it with the mouse, a pen, the computer keyboard or MIDI, and you can play it two ways. In **The Machine**, a 3D view of the instrument, you bow, scrape, strike and crank each part. It has two skins, Workshop and Altar, that share every voice; only the look changes (see [Skins](#skins)). **The Surface** is a flat gesture pad for the selected voice. Each sound is synthesised live from a model of a real object: a slack string, a rosined wheel, steel rulers, glass, springs, a tray of bolts.
+Horror Engine is a single-page instrument for scoring slow dread. You play it with the mouse, a pen, the computer keyboard or MIDI, and you can play it two ways. In **The Machine**, a 3D view of the instrument, you bow, scrape, strike and crank each part. It has two skins, Workshop and Altar, that share every voice; only the look changes (see [Skins](#skins)). **The Surface** is a flat gesture pad for the selected voice; the page opens on it so you can play at once while the Machine loads behind it. Each sound is synthesised live from a model of a real object: a slack string, a rosined wheel, steel rulers, glass, springs, a tray of bolts.
 
 It owes its idea to the [Apprehension Engine](https://apprehensionengine.com/), the acoustic horror instrument conceived by composer Mark Korven and luthier Tony Duggan-Smith and built by Duggan-Smith. This project is not affiliated with either of them, and it uses none of their recordings or images. It is a separate, software take on the same idea: odd objects on a resonant box, played by hand.
 
@@ -94,9 +94,12 @@ The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io
 
 ```
 node test/engine.js
+node test/moments.js
+node test/offsets.js
+node test/v14.js
 ```
 
-That checks that performance files load, presets round-trip, and an offline render is deterministic, finite and limited. The same script runs on every push and pull request.
+That checks that performance files load, presets round-trip, an offline render is deterministic, finite and limited, custom Moments and the per-voice offsets replay exactly, and the 1.4 file features (last minute, audio input, Bowed Cymbal) behave. `test/moments-dom.js` and `test/v14-dom.js` check the UI in a fake DOM (`npm install jsdom@24` first). All of them run on every push and pull request.
 
 **Browsers.** Use a current desktop Chrome or Edge. Firefox should work. Safari has not been tested. The machine needs WebGL (WebGL 2 for the full lighting), and the audio needs Web Audio with AudioWorklet. If AudioWorklet is missing, the engine falls back to the main thread ("compatibility mode"), with more latency. Use headphones or decent speakers: a lot of this lives below 60 Hz.
 
@@ -113,9 +116,35 @@ That checks that performance files load, presets round-trip, and an offline rend
 | `Shift` / `Alt` | Hard / soft touch |
 | `Space` | Start or close a gesture loop |
 | `F1`–`F5` | Moments: Riser, Stinger, Drone bed, Heartbeat, In the walls |
+| `F6`–`F12` | Your saved Moments in panel order; press again to stop (browser may reserve F11/F12) |
 | `H` / `F` | Hold the voice / freeze the Aura |
 | `R` | Record |
+| `Shift+R` | Save what I just played (the last minute) |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Esc` | Silence everything |
+
+## Your own Moments
+
+Press **Record moment**, play on any voice and move knobs or macros, then press it again. Name it in the inline field and **Save**. It becomes a new button after the built-in five, starting at **F6**. Leading silence is trimmed; it captures gestures and automation, not audio. Each press performs the phrase once through the models, with a little variation in timing, position, pressure and automation depth. Press again to stop it.
+
+The **…** menu lets you rename, change voice, delete, export a `.horror-moment.json` file or move a Moment earlier. **Import** brings one back. Your Moments persist in this browser, travel inside saved presets and performances, and replay with **Render…**. Export a copy before clearing browser data. Works in the Machine and Surface, with either skin.
+
+Continuous knob moves are **relative**, in knob travel: a Dread sweep from 20% to 60% adds about 40% to today's Dread. Switches and choices are **absolute**. Your live knobs stay where you put them; any moves during playback update the base, and automation releases back to that base when it ends. [Details and MIDI mapping](docs/INSTRUMENTS.md#your-own-moments).
+
+## Tune & place
+
+Each voice has a **Tune & place** row under its panel: **Tune** (semitones), **Fine** (cents), and **Material** and **Distance** offsets. They add on top of the four Macros, so you can drop just the springs a fifth or sit only the junk further down the corridor, and the macros still move the whole machine. A brass dot appears on a voice that isn't at zero. **Reset** on that panel clears that voice; **Defaults** under the voice list clears every voice (click **Sure?** to confirm; **Undo** then appears for a few seconds). Offsets save in presets, performances and this browser; a Moment plays on the instrument it recorded, using that instrument's current offsets. Older `.horror.json` files still load.
+
+## Save, undo, MIDI learn, share, your sound
+
+- **Save what I just played** (`Shift+R` or **Last min**): the last minute is always kept, so a happy accident is never lost. You get a zip with the WAV and its performance file.
+- **Undo / redo** (`Ctrl+Z` / `Ctrl+Y`, or the toolbar arrows) for knobs, presets, Defaults, the Tune & place offsets and the looper.
+- **MIDI learn**: right-click (or long-press) any knob, choose **MIDI learn…** and move a controller. A green dot marks a mapped knob. MPE is not supported.
+- **Share links**: **Link** copies an address that rebuilds your exact settings.
+- **Bowed Cymbal**: a new Object for Bowed Metal, with its own preset.
+- **Your sound in** (Hall & Master strip): run a mic, a line input or an audio file through the spring tank, the body, the hall, the harmonizer and the Aura.
+
+The details are in [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md#saving-undo-and-sharing).
 
 ## Getting sound out
 
@@ -127,7 +156,7 @@ There is no plugin. Two ways that work:
    - Every take also includes a `.horror.json` performance file. **Render…** plays it back through the engine offline and writes the WAVs again.
 2. **Loopback.** Route the browser's output into your DAW with a loopback device and record it live against picture. Use BlackHole on macOS, VB-Cable or VoiceMeeter on Windows, or PipeWire or JACK on Linux.
 
-MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. A MIDI or VST version may come later. The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
+MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. Channel 16 is reserved for Moments: notes 36–40 fire the built-in five, 41 onwards your own. CC 24–43 on any channel fire Moments 1–20 on a rise past 64. Notes on channels 1–15 play the selected voice. A MIDI or VST version may come later. The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
 
 ## How it's built
 
