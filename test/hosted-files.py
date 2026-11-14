@@ -1,4 +1,3 @@
-import re
 #!/usr/bin/env python3
 """Check that a hosted (--hosted) build only references files that exist.
 Usage: python3 test/hosted-files.py DEST
