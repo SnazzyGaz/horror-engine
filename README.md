@@ -88,7 +88,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000/
 ```
 
-The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io/horror-engine/) is built from `src/` on every push to `main` by a GitHub Action and deployed to GitHub Pages. Pushing a tag `v*` attaches the same build, zipped with `LICENSE`, `CREDITS.md` and `vendor/`, to a GitHub Release.
+The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io/horror-engine/) is built from `src/` on every push to `main` by a GitHub Action and deployed to GitHub Pages. That hosted build loads each skin's textures and models as separate, cacheable files, and fetches the Altar crypt assets only when the Altar skin is chosen (the Workshop skin never downloads them). Docs are on the same site: the [README](README.html), [instrument guide](docs/INSTRUMENTS.html), [FX and looper](docs/FX_AND_LOOPER.html), [recipes](docs/RECIPES.html) and [how it is built](docs/UNDER_THE_HOOD.html). Pushing a tag `v*` attaches the single-file (inlined) build, zipped with `LICENSE`, `CREDITS.md` and `vendor/`, to a GitHub Release, for opening from disk.
 
 **Tests.** The engine and file I/O run in Node, with no browser or GPU. From the repo root:
 
@@ -131,7 +131,7 @@ MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers th
 
 ## How it's built
 
-It is a single HTML page that uses three.js for the machine and Web Audio for the sound. Edit the files in `src/` and run `python3 build.py` (needs Pillow) to rebuild `index.html`. Do not commit the rebuilt `index.html`; GitHub Actions builds it for the live site and for Releases. See [docs/UNDER_THE_HOOD.md](docs/UNDER_THE_HOOD.md).
+It is a single HTML page that uses three.js for the machine and Web Audio for the sound. Edit the files in `src/` and run `python3 build.py` (needs Pillow) to rebuild the inlined `index.html` used for `file://` and Releases. Do not commit that rebuilt `index.html`. The live site is a second, hosted build (`python3 build.py --hosted DEST`, needs Pillow and the `markdown` package) that keeps the same look and models but loads textures as files, and loads Altar assets only for the Altar skin. GitHub Actions runs the hosted build for Pages and the inlined build for Releases. See [docs/UNDER_THE_HOOD.md](docs/UNDER_THE_HOOD.md).
 
 ## Credits and licence
 

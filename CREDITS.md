@@ -27,7 +27,7 @@ Licences: Poly Haven assets are CC0 (https://polyhaven.com/license); ambientCG a
 
 ## Altar skin (`?skin=altar`)
 
-Crypt textures and the scanned human skull are CC0 1.0 (public domain), packed into `assets/crypt_assets.js` and loaded only for that skin. The beam-mounted goat skull is CC BY 4.0.
+Crypt textures and the scanned human skull are CC0 1.0 (public domain), packed into `assets/crypt_assets.js`. On the hosted site they are fetched only when the Altar skin is chosen (the Workshop skin never downloads them). The double-click / `file://` build still inlines them in `index.html`, but they are only decoded and uploaded to the GPU for the Altar skin. The beam-mounted goat skull is CC BY 4.0.
 
 | Used for | Source | Asset | Author(s) |
 |---|---|---|---|

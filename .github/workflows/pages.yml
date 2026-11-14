@@ -16,23 +16,19 @@ concurrency:
 
 jobs:
   build:
-    name: Build the single-file app
+    name: Build the hosted site
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Pillow
-        run: pip install pillow
-      - name: Build index.html from source
-        run: python3 build.py
-      - name: Assemble the Pages site
-        run: |
-          mkdir -p _site
-          cp index.html LICENSE CREDITS.md _site/
-          cp .nojekyll _site/
-          cp -r vendor _site/
+      - name: Install build deps
+        run: pip install pillow markdown
+      - name: Build the hosted site from source
+        run: python3 build.py --hosted _site
+      - name: Check the split build references existing files
+        run: python3 test/hosted-files.py _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

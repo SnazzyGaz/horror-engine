@@ -15,8 +15,8 @@ This document covers how Horror Engine makes its sound, how the 3D machine is pu
 ## Files
 
 ```
-index.html            snapshot of the built app (no longer updated in git; CI builds it for Pages and Releases)
-build.py              assembles src/ and the textures into index.html
+index.html            snapshot of the inlined app (no longer updated in git; CI builds it for Releases)
+build.py              `python3 build.py` writes the inlined index.html; `--hosted DEST` writes the Pages site
 src/
   engine.js           the DSP: voices, effects, macros, moments, looper, recorder
   io.js               presets, performance files and their schemas, WAV and zip writers, offline render
@@ -111,7 +111,7 @@ Telemetry comes back to the page every 1024 frames: peaks per voice, limiter gai
 
 `machine2.js` builds the cabinet in three.js from code; there are no model files. Every playable part has an invisible **zone** with a *kind* (`play`, `bowtap`, `knock`, `puck`, `knob`, `tray`, `wand` and so on) and a handler in the `HD` table. A handler turns pointer movement into the same `{x, y, pressure}` gestures the Surface sends, and sets any parameters the part implies. For example, the slate sets Glass to Chalkboard and Chalk, and a ruler tap sets Struck to Ruler. The hint text for each part lives in `HINT`.
 
-The textures are CC0 photo scans. `build.py` embeds them as base64 WebP, because WebGL will not load image files from `file://`. Web Workers decode them and build mip chains off the main thread. Half-size sets load first and the full-size sets stream in after.
+The textures are CC0 photo scans. The inlined build (`python3 build.py`) embeds them as base64 WebP, because WebGL will not load image files from `file://`. The hosted build (`python3 build.py --hosted DEST`) leaves them as files and fetches only the sets for the skin you are on: Workshop never downloads the Altar crypt textures or scanned skulls, and Altar skips the workshop-only sets (walnut, brick, and so on). Shared sets such as oak, floor, steel, iron and crinkle are used by both. Web Workers decode them and build mip chains off the main thread. Half-size sets load first and the full-size sets stream in after.
 
 **High detail** renders into an MSAA HDR buffer, which `look.js` finishes with bloom, ACES tone mapping, a vignette and dither (this needs WebGL 2). **Low detail** (`?quality=low`) turns off shadows and the post chain, keeps the half-size textures and renders at a pixel ratio of 1. The sound is identical in both.
 

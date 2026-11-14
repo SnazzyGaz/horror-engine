@@ -97,9 +97,10 @@
   function fbm(x, y, o) { var s = 0, a = .5, f = 1; for (var i = 0; i < (o || 4); i++) { s += a * vn(x * f, y * f); f *= 2.03; a *= .5; } return s / (1 - Math.pow(.5, o || 4)); }
   function smooth(a, b, x) { var t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
   var ANISO = 8, V_TEXMS = 0;
-  /* ---------- photo-scanned PBR sets (CC0: Poly Haven, ambientCG; see CREDITS.md). build.py embeds them as base64 WebP in
-     window.HE_TEX = { key: { c, n, r, s, avg } } (colour, OpenGL normal, roughness; s = packed size), so file:// works. The
-     workers decode them (createImageBitmap + OffscreenCanvas), build the mip chain, and send pixel data back. ---------- */
+  /* ---------- photo-scanned PBR sets (CC0: Poly Haven, ambientCG; see CREDITS.md). The file:// / Release build
+     embeds them as base64 WebP in window.HE_TEX = { key: { c, n, r, s, avg } } so it works offline. The hosted
+     build sets c, n, r to file URLs and fetches only the sets for the skin you are on. Workers decode them
+     (createImageBitmap + OffscreenCanvas), build the mip chain, and send pixel data back. ---------- */
   // tile: metres per repeat (UVs are in metres, see HELook.worldUV); rot: turn 90 degrees so the grain runs along u
   var TSPEC = {
     oak: { tile: 1.83, rot: 1 }, walnut: { tile: 1.8, rot: 1 }, ebony: { tile: 1, rot: 1 }, floor: { tile: 3 }, brick: { tile: 3 }, plaster: { tile: 2 },
@@ -127,25 +128,41 @@
   // rows come out bottom-up (v = 0 first), the DataTexture convention used throughout
   function dtex(T, data, w, h, srgb, sp) { var mip = Array.isArray(data), q = new T.DataTexture(mip ? data[0].data : data, w, h, T.RGBAFormat, T.UnsignedByteType); if (mip) { q.mipmaps = data; q.generateMipmaps = false; } else q.generateMipmaps = true; q.minFilter = T.LinearMipmapLinearFilter; q.magFilter = T.LinearFilter; q.wrapS = q.wrapT = T.RepeatWrapping; q.anisotropy = ANISO; if (srgb) q.colorSpace = T.SRGBColorSpace; if (sp) { q.repeat.set(1 / sp.tile, 1 / sp.tile); if (sp.rot) q.rotation = Math.PI / 2; } q.userData.he = 1; q.needsUpdate = true; return q; }
   function texSet(T, key, p) { var sp = TSPEC[key]; return { map: dtex(T, p.c, p.w, p.h, true, sp), roughnessMap: dtex(T, p.r, p.w, p.h, false, sp), normalMap: dtex(T, p.n, p.w, p.h, false, sp), w: p.w, h: p.h }; }
-  // decode one WebP (base64) at size w into bottom-up RGBA bytes: in a worker (OffscreenCanvas) or, as a fallback, here
-  function texDecode(b64, w) {
-    var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return createImageBitmap(new Blob([u], { type: 'image/webp' }), { resizeWidth: w, resizeHeight: w, resizeQuality: 'high', imageOrientation: 'flipY', colorSpaceConversion: 'none', premultiplyAlpha: 'none' }).then(function (bm) {
-      var cv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, w) : (function () { var c = document.createElement('canvas'); c.width = c.height = w; return c; })();
-      var x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(bm, 0, 0); if (bm.close) bm.close(); return x.getImageData(0, 0, w, w).data;
+  // decode one WebP (a base64 string, or a URL in the hosted build) at size w into bottom-up RGBA bytes
+  function texIsPath(s) { return typeof s === 'string' && s.length < 2048 && (s.indexOf('/') >= 0 || /\.webp(\?|$)/i.test(s) || /^(https?:|blob:)/i.test(s)); }
+  function texAbs(s) { if (!texIsPath(s)) return s; try { return new URL(s, (typeof location !== 'undefined' && location.href) || self.location.href).href; } catch (e) { return s; } }
+  var _texBuf = {};
+  function texBytes(src) {
+    if (_texBuf[src]) return Promise.resolve(_texBuf[src]);
+    var load;
+    if (texIsPath(src)) load = fetch(src, { cache: 'force-cache' }).then(function (r) { if (!r.ok) throw new Error('tex ' + src + ' ' + r.status); return r.arrayBuffer(); }).then(function (b) { return new Uint8Array(b); });
+    else { var bin = atob(src), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); load = Promise.resolve(u); }
+    return load.then(function (u) { _texBuf[src] = u; return u; });
+  }
+  function texDecode(src, w) {
+    return texBytes(src).then(function (u) {
+      return createImageBitmap(new Blob([u], { type: 'image/webp' }), { resizeWidth: w, resizeHeight: w, resizeQuality: 'high', imageOrientation: 'flipY', colorSpaceConversion: 'none', premultiplyAlpha: 'none' }).then(function (bm) {
+        var cv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, w) : (function () { var c = document.createElement('canvas'); c.width = c.height = w; return c; })();
+        var x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(bm, 0, 0); if (bm.close) bm.close(); return x.getImageData(0, 0, w, w).data;
+      });
     });
   }
   function texJob(j) { var t0 = Date.now(); return Promise.all([texDecode(j.c, j.w), texDecode(j.n, j.w), texDecode(j.r, j.w)]).then(function (a) {
     return { key: j.key, phase: j.phase, w: j.w, h: j.w, c: mipChain(a[0], j.w, j.w, 'c'), n: mipChain(a[1], j.w, j.w, 'n'), r: mipChain(a[2], j.w, j.w, 'r'), ms: Date.now() - t0 }; }); }
   function texWorkers(jobs, onTex, onFail) {
-    var src = [mipChain, texDecode, texJob].map(function (f) { return f.toString(); }).join('\n') +
+    var src = 'var _texBuf = {};\n' + [texIsPath, texAbs, texBytes, mipChain, texDecode, texJob].map(function (f) { return f.toString(); }).join('\n') +
       '\nonmessage = function (e) { var q = e.data, k = 0; (function next() { if (k >= q.length) return; texJob(q[k++]).then(function (m) { var tr = [];\n' +
       '  ["c", "r", "n"].forEach(function (c) { m[c].forEach(function (l) { tr.push(l.data.buffer); }); }); postMessage(m, tr); next(); }, function (er) { postMessage({ err: String(er && er.message || er) }); }); })(); };';
     var url, ws = [], n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1, jobs.length)), left = jobs.length;
     if (typeof OffscreenCanvas === 'undefined' || !window.createImageBitmap) { onFail('no OffscreenCanvas'); return null; }
     try { url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' })); for (var i = 0; i < n; i++) ws.push(new Worker(url)); } catch (e) { onFail(e); return null; }
-    // half sets first, largest first, dealt round-robin so the workers finish together
-    var lists = ws.map(function () { return []; }); jobs.slice().sort(function (a, b) { return (a.phase === 'half' ? 0 : 1) - (b.phase === 'half' ? 0 : 1) || b.cost - a.cost; }).forEach(function (j, i) { lists[i % n].push(j); });
+    // half sets first; keep a key's half and full jobs on the same worker so a hosted fetch is reused
+    var lists = ws.map(function () { return []; }), by = {};
+    jobs.forEach(function (j) { (by[j.key] || (by[j.key] = [])).push(j); });
+    Object.keys(by).sort(function (a, b) { return (by[b][0].cost || 0) - (by[a][0].cost || 0); }).forEach(function (k, i) {
+      by[k].sort(function (a, b) { return (a.phase === 'half' ? 0 : 1) - (b.phase === 'half' ? 0 : 1); });
+      by[k].forEach(function (j) { lists[i % n].push(j); });
+    });
     ws.forEach(function (w, i) { w.onmessage = function (e) { if (e.data.err) { ws.forEach(function (x) { x.terminate(); }); return onFail(e.data.err); } onTex(e.data); if (--left === 0) { ws.forEach(function (x) { x.terminate(); }); URL.revokeObjectURL(url); } }; w.onerror = function (e) { ws.forEach(function (x) { x.terminate(); }); onFail(e.message || e); }; w.postMessage(lists[i]); });
     return ws;
   }
@@ -187,7 +204,7 @@
     Object.keys(TSPEC).forEach(function (k) { var sp = TSPEC[k], av = (HT[k] && HT[k].avg) || [128, 110, 90]; tx[k] = { map: one(av, true, sp), roughnessMap: one([200, 200, 200], false, sp), normalMap: one([128, 128, 255], false, sp), w: 1, h: 1 }; });
     var halfQ = [], hiQ = [], hiFail = null, noHi = low || /[?&]hitex=0/.test(location.search), jobs = [];
     var SKIP = SK ? { brick: 1, plaster: 1, walnut: 1, ebony: 1, brass: 1, alu: 1, vellum: 1, cloth: 1, stone: 1 } : { aWall: 1, aFloor: 1, aSheet: 1 };
-    Object.keys(TSPEC).forEach(function (k) { if (SKIP[k]) return; var d = HT[k]; if (!d) return; var hs = Math.max(16, d.s >> 1); jobs.push({ key: k, phase: 'half', w: hs, c: d.c, n: d.n, r: d.r, cost: hs * hs }); if (!noHi) jobs.push({ key: k, phase: 'full', w: d.s, c: d.c, n: d.n, r: d.r, cost: d.s * d.s }); });
+    Object.keys(TSPEC).forEach(function (k) { if (SKIP[k]) return; var d = HT[k]; if (!d) return; var hs = Math.max(16, d.s >> 1); jobs.push({ key: k, phase: 'half', w: hs, c: texAbs(d.c), n: texAbs(d.n), r: texAbs(d.r), cost: hs * hs }); if (!noHi) jobs.push({ key: k, phase: 'full', w: d.s, c: texAbs(d.c), n: texAbs(d.n), r: texAbs(d.r), cost: d.s * d.s }); });
     var nTex = jobs.filter(function (j) { return j.phase === 'half'; }).length;
     var genMs = [], ws = texWorkers(jobs, function (d) { genMs.push([d.key, d.phase, d.ms]); (d.phase === 'half' ? halfQ : hiQ).push(d); }, function (e) { hiFail = String(e && e.message || e); if (V) V.hiFail = hiFail; });
     // no workers: decode the half sets here (async, so the page still comes up), and stay on them
@@ -1199,7 +1216,21 @@
       if (t0 !== old[nm]) { var c2 = nt.clone(); c2.repeat.copy(t0.repeat); c2.offset.copy(t0.offset); nt = c2; } m[nm] = nt; if (gone.indexOf(t0) < 0) gone.push(t0); }); }); });
     TEXP.forEach(function (nm) { if (gone.indexOf(old[nm]) < 0) gone.push(old[nm]); }); gone.forEach(function (t0) { t0.dispose(); }); V.tx[key] = set;
   }
+  function whenCryptReady(fn) {
+    if (!SK || (window.HE_CRYPT && window.HE_CRYPT.models)) { fn(); return; }
+    if (window.__heCryptWait) { window.__heCryptWait.push(fn); return; }
+    window.__heCryptWait = [fn];
+    var s = document.createElement('script');
+    s.src = 'assets/crypt_models.js';
+    s.onload = s.onerror = function (ev) {
+      var wait = window.__heCryptWait || []; window.__heCryptWait = null;
+      if (ev && ev.type === 'error') console.warn('Horror Engine: Altar models did not load (assets/crypt_models.js).');
+      wait.forEach(function (f) { f(); });
+    };
+    document.head.appendChild(s);
+  }
   function show(which, quiet) {
+    if (which === 'machine' && !V && SK && !(window.HE_CRYPT && window.HE_CRYPT.models)) { whenCryptReady(function () { show(which, quiet); }); return; }
     if (which === 'machine' && !V && !build()) { $('tabNote').textContent = window.THREE ? 'This browser could not start WebGL.' : 'The 3D view needs vendor/three.min.js next to index.html.'; which = 'surface'; LD.hide(); }
     if (which !== 'machine' && !V) LD.hide();
     tab = which; var m = which === 'machine';
