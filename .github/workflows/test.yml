@@ -15,6 +15,28 @@ jobs:
         run: node test/engine.js
       - name: Check texture path detection
         run: node test/tex-path.js
+      - name: Custom Moments
+        run: node test/moments.js
+      - name: Per-voice Tune & place offsets
+        run: node test/offsets.js
+      - name: v1.4 files, last minute, audio input, Bowed Cymbal
+        run: node test/v14.js
+
+  dom:
+    name: UI checks (jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install jsdom
+        run: npm install --no-save --no-package-lock jsdom@24
+      - name: Moments UI
+        run: node test/moments-dom.js
+      - name: Undo, MIDI learn, share links, last minute UI
+        run: node test/v14-dom.js
 
   hosted:
     name: Hosted build files
