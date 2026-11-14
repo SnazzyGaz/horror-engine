@@ -129,7 +129,10 @@
   function dtex(T, data, w, h, srgb, sp) { var mip = Array.isArray(data), q = new T.DataTexture(mip ? data[0].data : data, w, h, T.RGBAFormat, T.UnsignedByteType); if (mip) { q.mipmaps = data; q.generateMipmaps = false; } else q.generateMipmaps = true; q.minFilter = T.LinearMipmapLinearFilter; q.magFilter = T.LinearFilter; q.wrapS = q.wrapT = T.RepeatWrapping; q.anisotropy = ANISO; if (srgb) q.colorSpace = T.SRGBColorSpace; if (sp) { q.repeat.set(1 / sp.tile, 1 / sp.tile); if (sp.rot) q.rotation = Math.PI / 2; } q.userData.he = 1; q.needsUpdate = true; return q; }
   function texSet(T, key, p) { var sp = TSPEC[key]; return { map: dtex(T, p.c, p.w, p.h, true, sp), roughnessMap: dtex(T, p.r, p.w, p.h, false, sp), normalMap: dtex(T, p.n, p.w, p.h, false, sp), w: p.w, h: p.h }; }
   // decode one WebP (a base64 string, or a URL in the hosted build) at size w into bottom-up RGBA bytes
-  function texIsPath(s) { return typeof s === 'string' && s.length < 2048 && (s.indexOf('/') >= 0 || /\.webp(\?|$)/i.test(s) || /^(https?:|blob:)/i.test(s)); }
+  // hosted builds pass file URLs; the file:// build passes base64 WebP (starts UklGR). A short
+  // base64 string often contains '/' and used to be mistaken for a path, so the worker fetched it
+  // from the page origin and the rest of the set never arrived.
+  function texIsPath(s) { return typeof s === 'string' && !/^UklGR/i.test(s) && (/^(https?:|blob:)/i.test(s) || /^assets\//.test(s) || /\.webp(\?|$)/i.test(s)); }
   function texAbs(s) { if (!texIsPath(s)) return s; try { return new URL(s, (typeof location !== 'undefined' && location.href) || self.location.href).href; } catch (e) { return s; } }
   var _texBuf = {};
   function texBytes(src) {
