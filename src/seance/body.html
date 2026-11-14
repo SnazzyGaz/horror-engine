@@ -1,0 +1,136 @@
+<div class="win">
+<header class="top">
+  <div class="brand"><b>Horror Engine</b><small>S&eacute;ance</small></div>
+  <div class="preset">
+    <button class="ib" id="pPrev" aria-label="Previous preset" title="Previous preset">&#8249;</button>
+    <div class="pname" id="pName"><small id="pNum">01/09</small><button id="pTitle" title="Browse presets">Cold Cellar</button><i id="pEdit"></i><button id="pStar" class="star" aria-pressed="false" title="Star this preset">&#9733;</button></div>
+    <button class="ib" id="pNext" aria-label="Next preset" title="Next preset">&#8250;</button>
+    <button class="tb" id="pBrowse" aria-expanded="false" aria-controls="browse">Browse</button>
+    <select id="preset" aria-label="Preset" hidden></select>
+  </div>
+  <div class="tools">
+    <span class="recb" id="recBadge" hidden title="Recording (R stops it and saves a zip)">&#9679; Rec <b id="recT">00:00</b></span>
+    <button class="ib" id="undo" aria-label="Undo" disabled>&#8630;</button><button class="ib" id="redo" aria-label="Redo" disabled>&#8631;</button>
+    <button class="tb" id="mlBtn" aria-pressed="false" title="MIDI learn: press, then click any knob, switch or selector and move a control on your controller">MIDI learn</button>
+    <div class="meter" title="Output level, left and right. Ember bar: limiter gain reduction."><div><i id="mL"></i></div><div><i id="mR"></i></div><div class="gr"><b id="mG"></b></div></div>
+    <button class="ib" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="menu">&#8801;</button>
+  </div>
+</header>
+<main class="grid" id="grid">
+  <ol class="circle" id="rack" aria-label="Voices"></ol>
+  <section class="board" id="board" aria-label="Spirit board: the playing surface">
+    <canvas id="pad" tabindex="0" aria-label="Spirit board. Drag to play the selected voice; press harder (Shift, a pen, or the mouse wheel) to drive it."></canvas>
+    <div class="who"><b id="whoName"></b><small id="hn"></small></div>
+    <span class="ax ax-x" id="hx"></span><span class="ax ax-y" id="hy"></span>
+    <span class="reading"><span id="hl"></span><span id="hp"></span></span>
+    <button class="plaque bye" id="panic" title="Silence: stop every voice, your sound in, and clear the hall (Esc)"><b>Goodbye</b><small>Silence &middot; Esc</small></button>
+    <div id="wake"><button class="tb" id="wakeBtn">Wake the board</button><p>or simply touch it</p></div>
+  </section>
+  <aside class="side">
+    <section class="macros"><h2>Macros <small>CC 20&ndash;23</small></h2><div class="mgrid" id="macros"></div></section>
+    <section class="moms"><h2>Moments <small>Yes &amp; No are on the board</small></h2>
+      <div class="mscroll">
+        <div class="mpads" id="moments"></div>
+        <div class="mpads cmoments" id="cmoments"></div>
+      </div>
+      <div class="cmname" id="cmNameRow" hidden><input type="text" id="cmName" maxlength="40" aria-label="Name for the new moment"><button class="tb sm" id="cmKeep">Save</button><button class="tb sm" id="cmDrop">Discard</button></div>
+      <div class="cmbar"><button class="cap" id="cmRec" aria-pressed="false" title="Capture a moment: every gesture on any voice plus knob and macro moves from now until you press it again">&#9679; Record moment</button><button class="tb sm" id="cmImp" title="Import a .horror-moment.json file">Import</button><input type="file" id="cmFile" accept=".json,application/json" hidden></div>
+    </section>
+    <section class="pins"><h2><span id="pinT">Pinned</span><small>this voice</small></h2><div class="prow" id="pins"></div></section>
+  </aside>
+
+  <section class="drawer" id="drVoice" hidden aria-label="Voice detail">
+    <div class="dhead"><h2 id="dvT">Voice</h2><p>Every knob of the selected voice: the model, its channel strip, and Tune &amp; place on top of the Macros.</p><button class="tb sm" id="offReset" title="Reset every instrument's tune, material and distance to zero" disabled>Defaults</button><button class="ib dclose" aria-label="Close">&#8964;</button></div>
+    <div class="dbody"><section class="voice" id="voice" aria-live="off"></section></div>
+  </section>
+  <section class="drawer" id="drFx" hidden aria-label="Effects and signal flow">
+    <div class="dhead"><h2>Effects &middot; signal flow</h2><p>Every voice sends into shared returns, then the Master. The sends on the left belong to the selected voice.</p><button class="ib dclose" aria-label="Close">&#8964;</button></div>
+    <div class="flow">
+      <div class="node srcn"><h3 id="fxSrcT">Voice I sends</h3><p>Grit &rarr; Level &rarr; Pan<br>&rarr; Distance &rarr; dry</p><div class="knobs sendk" id="sendk"></div><p class="also">Body is shared: every voice is bolted to the box. Your sound in has its own sends.</p></div>
+      <svg class="wires" viewBox="0 0 120 400" preserveAspectRatio="none" aria-hidden="true"><path d="M0 200 C 60 200, 60 50, 120 50"/><path d="M0 200 C 60 200, 60 150, 120 150"/><path d="M0 200 C 60 200, 60 250, 120 250"/><path d="M0 200 C 60 200, 60 350, 120 350"/></svg>
+      <div class="returns">
+        <div class="node ret"><h3>Hall <small>the huge reverb</small></h3><div class="knobs" id="hallk"></div></div>
+        <div class="node ret"><h3>Spring tank <small>voice VI's tank</small></h3><div class="knobs" id="sprk"></div></div>
+        <div class="node ret"><h3>Harmonizer <small>pitch-shifted return</small></h3><div class="knobs" id="harmk"></div></div>
+        <div class="node ret"><h3>Body &amp; piezo <small>the wooden box</small></h3><div class="knobs" id="bodyk"></div></div>
+      </div>
+      <svg class="wires" viewBox="0 0 80 400" preserveAspectRatio="none" aria-hidden="true"><path d="M0 50 C 40 50, 40 200, 80 200"/><path d="M0 150 C 40 150, 40 200, 80 200"/><path d="M0 250 C 40 250, 40 200, 80 200"/><path d="M0 350 C 40 350, 40 200, 80 200"/></svg>
+      <div class="node mst"><h3>Master</h3><div class="knobs" id="masterk"></div><p id="limT">Limiter 0.0 dB</p><p class="outp">&rarr; out</p></div>
+    </div>
+  </section>
+  <section class="drawer" id="drLoop" hidden aria-label="Gesture looper">
+    <div class="dhead"><h2>Gesture looper</h2><p>Loops store what your hand did, not audio, so each pass is performed again by the models. Hand a layer to a Ghost and it keeps improvising with your strokes.</p><button class="ib dclose" aria-label="Close">&#8964;</button></div>
+    <div class="dbody">
+      <div class="looprow">
+        <button class="tb" id="loopRec" aria-pressed="false" title="Start or stop a loop layer (Space)">&#9679; Loop a gesture</button>
+        <label class="chk" title="Off (default): new layers lock to the first layer's cycle, so overdubs stay in time. On: the new layer keeps its own length and drifts against the others."><input type="checkbox" id="free"> Free length</label>
+        <button class="tb sm" id="loopClear">Clear all</button>
+        <span class="hint">Space starts and stops a layer &middot; G ghosts the newest &middot; Backspace removes it</span>
+      </div>
+      <ul id="layers"></ul>
+    </div>
+  </section>
+  <section class="drawer" id="drIn" hidden aria-label="Your sound in">
+    <div class="dhead"><h2>Your sound in</h2><p>A mic, a line input or a file, through the spring, body, hall, harmonizer and Aura. Dry is its own level in the mix.</p><button class="ib dclose" aria-label="Close">&#8964;</button></div>
+    <div class="dbody"><div class="infx" id="inPanel"><div class="inbar"><button class="tb sm" id="inMic" aria-pressed="false" title="Use a microphone or line input (the browser asks first). Echo cancelling, noise suppression and auto gain are off.">Mic / line</button><button class="tb sm" id="inFileBtn" aria-pressed="false" title="Play an audio file through the machine">File</button><label class="chk" title="Loop the file"><input type="checkbox" id="inLoop" checked> Loop</label><button class="tb sm" id="inStop" disabled>Stop</button><input type="file" id="inFile" accept="audio/*" hidden><span class="inmeter" title="Input level"><i id="inMeter"></i></span><span id="inState">Off</span></div><div class="knobs" id="inputk"></div></div></div>
+  </section>
+
+  <nav class="rail" aria-label="Drawers">
+    <button class="rt" data-dr="drVoice" aria-expanded="false"><b>Voice</b><span id="sumVoice">E-bow String</span></button>
+    <button class="rt" data-dr="drFx" aria-expanded="false"><b>Effects</b><span id="sumFx"></span></button>
+    <button class="rt" data-dr="drLoop" aria-expanded="false"><b>Looper</b><span id="sumLoop">empty</span></button>
+    <button class="rt" data-dr="drIn" aria-expanded="false"><b>Your sound in</b><span id="sumIn">off</span></button>
+    <span class="sp"></span>
+    <span class="seg" role="group" aria-label="Keyboard octave" title="Octave of the computer-keyboard notes ([ and ])"><button id="octDn" aria-label="Octave down">Oct &minus;</button><b id="octV">0</b><button id="octUp" aria-label="Octave up">+</button></span>
+    <button class="tb" id="holdBtn" aria-pressed="false" title="Hold: keep the selected voice sounding hands-free (H)">Hold</button>
+    <button class="tb" id="frzBtn" aria-pressed="false" title="Freeze Aura: pin the granular pad (F)">Freeze Aura</button>
+  </nav>
+  <nav class="chain" id="chain" aria-label="Signal flow"></nav>
+</main>
+</div>
+
+<div class="pop" id="browse" hidden role="dialog" aria-label="Presets">
+  <div class="phead"><input type="search" id="bFind" placeholder="Find a preset" aria-label="Find a preset"><button class="tb sm" id="bStarred" aria-pressed="false">&#9733; Starred</button></div>
+  <ul id="bList"></ul>
+  <div class="pfoot"><button class="tb sm" id="psave" title="Save every setting as a preset file">Save file&hellip;</button><button class="tb sm" id="pload" title="Load a preset or performance file">Load file&hellip;</button><input type="file" id="pfile" accept=".json,application/json" hidden></div>
+</div>
+<div class="pop menu" id="menu" hidden role="menu" aria-label="Menu">
+  <button class="mi" id="retro" role="menuitem" title="The last minute as a WAV, plus its performance file">Save the last minute <kbd>Shift+R</kbd></button>
+  <button class="mi" id="share" role="menuitem" title="Copy a short link that rebuilds these settings">Copy share link</button>
+  <button class="mi" id="power" role="menuitem">Start audio</button>
+  <button class="mi" id="aboutBtn" role="menuitem">Guide &amp; keys</button>
+  <p id="status">Audio is off</p>
+</div>
+
+<div hidden aria-hidden="true">
+  <button id="rec" aria-pressed="false"></button><span id="rectime">00:00</span><input type="checkbox" id="stems"><select id="bits"><option value="32" selected>32</option><option value="24">24</option></select>
+  <button id="render"></button><input type="file" id="rfile"><progress id="rprog" max="1" value="0"></progress>
+  <button id="inToggle"></button>
+</div>
+
+<dialog id="about" aria-labelledby="abt">
+  <h2 id="abt">Horror Engine &middot; S&eacute;ance</h2>
+  <p>A side-tester of the plugin layout: the Surface is a spirit board. Same engine, same sound, same keys. By Garyck Arntzen (<a href="https://x.com/_mintydoge" target="_blank" rel="noopener">x.com/_mintydoge</a>).</p>
+  <h3>The board</h3>
+  <ul>
+    <li>Pick a voice from the row of tokens (or keys <kbd>1</kbd>&ndash;<kbd>9</kbd>), then drag on the board. The glass planchette follows your hand and the letter under it lights.</li>
+    <li>Across is x, up is y, exactly as on the old Surface; the corners name what they do for this voice. For pitched voices the brass rule along the top marks semitones (0 is the centre).</li>
+    <li>Pressure: a pen uses its own; with a mouse hold <kbd>Shift</kbd> for hard, <kbd>Alt</kbd> for soft, or roll the wheel over the board.</li>
+    <li><b>Yes</b> fires the Stinger, <b>No</b> the Riser, <b>Goodbye</b> is Silence.</li>
+  </ul>
+  <h3>Around it</h3>
+  <ul>
+    <li>Right column: the four Macros, the Moments (your own too: Record moment, play, Record moment again) and the Pinned knobs of the selected voice.</li>
+    <li>Bottom: Voice, Effects, Looper and Your sound in open a drawer over the board. The strip under them is the signal flow; click a part of it to open its drawer.</li>
+    <li>Knobs: drag up and down (Shift for fine), wheel, double-click to reset, right-click for MIDI learn. Or press MIDI learn at the top, then click a knob.</li>
+    <li>Presets: &lsaquo; &rsaquo; step through them, Browse lists and stars them. Undo and redo cover knobs, presets and the looper.</li>
+  </ul>
+  <h3>Keys</h3>
+  <dl><dt><kbd>1</kbd>&ndash;<kbd>9</kbd></dt><dd>Select a voice</dd><dt><kbd>Z</kbd>&hellip;<kbd>/</kbd>, <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd>&hellip;<kbd>P</kbd></dt><dd>Chromatic notes, two rows an octave apart</dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Octave down, up</dd><dt><kbd>Space</kbd></dt><dd>Start or stop a loop layer</dd><dt><kbd>G</kbd>, <kbd>Backspace</kbd></dt><dd>Ghost, remove the newest layer</dd><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd></dt><dd>Undo, redo</dd><dt><kbd>F1</kbd>&ndash;<kbd>F5</kbd></dt><dd>Riser, Stinger, Drone bed, Heartbeat, In the walls</dd><dt><kbd>F6</kbd>&ndash;<kbd>F12</kbd></dt><dd>Your own moments, in order</dd><dt><kbd>H</kbd> <kbd>F</kbd> <kbd>Esc</kbd></dt><dd>Hold, Freeze Aura, Silence</dd><dt><kbd>Shift</kbd>+<kbd>R</kbd></dt><dd>Save the last minute</dd><dt><kbd>R</kbd></dt><dd>Record (kept from the full page; a badge shows while it runs, R again saves a zip)</dd></dl>
+  <h3>MIDI</h3>
+  <p>Notes play the selected voice; CC 20&ndash;23 move Dread, Distance, Material and Pitch. Moments: notes on channel 16 from C2 (36) fire Riser, Stinger, Drone bed, Heartbeat, In the walls, then your own; CC 24&ndash;43 fire them too. Learned CCs win over the fixed ones on their channel.</p>
+  <h3>Notices</h3>
+  <p>MIT licence, &copy; 2026 Garyck Arntzen. The bowed-string friction curve follows the bow-table idea published in STK by Perry R. Cook and Gary P. Scavone. Fonts: IM FELL English SC (Igino Marini), Crimson Pro (The Crimson Pro Project Authors) and IBM Plex Mono (IBM), all under the SIL Open Font License 1.1 (see OFL.txt).</p>
+  <p><button class="tb" id="aboutClose">Close</button></p>
+</dialog>
+<div id="toast" role="status" hidden></div>

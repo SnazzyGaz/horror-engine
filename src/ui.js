@@ -939,7 +939,7 @@
       midiMap: function () { return MMAP; }, learn: learnStart, onMidi: onMidi, applyAll: applyAll, shareOpen: shareOpen,
       hooks: HK, knob: knob, toggle: toggle, segment: segment, fmt: fmt, DEF: DEF, PRESETS: PRESETS, MOMENTS: MOMENTS, panic: panic, momentToggle: momentToggle,
       loopToggle: loopToggle, shareLink: shareLink, oct: function (n) { return n === undefined ? octave : setOct(n); }, ctlEls: function () { return ctlEls; },
-      learning: function () { return learnId; }, analyser: function () { return analyser; }, ctx: function () { return ctx; }, sel: function () { return sel; } };
+      learning: function () { return learnId; }, learnStop: learnStop, analyser: function () { return analyser; }, ctx: function () { return ctx; }, sel: function () { return sel; } };
   }
   boot();
 })();

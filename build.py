@@ -4,6 +4,7 @@
 Usage:
   python3 build.py                 write ./index.html with textures inlined as base64
   python3 build.py --hosted DEST   write a Pages site that loads textures as files
+  python3 build.py --seance [DEST] write the Seance plugin-layout tester (default ./seance/index.html)
 """
 import os, sys, re, json, base64, shutil
 
@@ -220,6 +221,35 @@ def write_hosted(dest):
     print('  crypt_models.js', os.path.getsize(os.path.join(dest, 'assets', 'crypt_models.js')), 'bytes')
 
 
+def seance_html():
+    """The Seance side-tester: the plugin layout with the spirit-board Surface. Same engine, io and ui.js; no Machine,
+    so no three.js and no textures. Fonts are embedded (SIL OFL, see vendor/fonts/OFL.txt) so it works from file://."""
+    fdir = os.path.join(here, 'vendor', 'fonts')
+    def face(fam, fn, style='normal', weight='400'):
+        b = base64.b64encode(open(os.path.join(fdir, fn), 'rb').read()).decode()
+        return ('@font-face{font-family:"%s";src:url(data:font/woff2;base64,%s) format("woff2");font-style:%s;font-weight:%s;font-display:block}\n'
+                % (fam, b, style, weight))
+    fonts = (face('HE Fell', 'IMFellEnglishSC-Regular.woff2') + face('HE Crimson', 'CrimsonPro-VariableFont_wght.woff2', 'normal', '200 900')
+             + face('HE Crimson', 'CrimsonPro-Italic-VariableFont_wght.woff2', 'italic', '200 900') + face('HE Mono', 'IBMPlexMono-Regular.woff2'))
+    eng = rd('engine.js').replace("if (typeof module !== 'undefined') module.exports = { HE_SOURCES: HE_SOURCES, HE_PARAMS: HE_PARAMS, HECoreFactory: HECoreFactory };", "")
+    io = rd('io.js').replace("if (typeof module !== 'undefined') module.exports = HE_IO;", "")
+    return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+            '<title>Horror Engine \u00b7 S\u00e9ance</title>\n'
+            '<style>\n' + fonts + '[hidden]{display:none!important}\n' + rd('seance/style.css') + '</style>\n</head>\n<body>\n'
+            + rd('seance/body.html')
+            + '\n<script>\n' + eng + '\n</script>\n<script>\n' + io + '\n</script>\n<script>\n' + rd('ui.js')
+            + '\n</script>\n<script>\n' + rd('seance/seance.js') + '\n</script>\n</body>\n</html>\n')
+
+
+def write_seance(dest):
+    os.makedirs(dest, exist_ok=True)
+    html = seance_html()
+    open(os.path.join(dest, 'index.html'), 'w', encoding='utf-8').write(html)
+    shutil.copy2(os.path.join(here, 'vendor', 'fonts', 'OFL.txt'), os.path.join(dest, 'OFL.txt'))
+    print('seance', os.path.join(dest, 'index.html'), len(html), 'bytes')
+
+
 def write_inline():
     html = scripts('<script>\n' + texjs_inline() + '\n</script>')
     path = os.path.join(here, 'index.html')
@@ -233,7 +263,9 @@ if __name__ == '__main__':
         if len(args) != 2:
             sys.exit('usage: python3 build.py --hosted DEST')
         write_hosted(args[1])
+    elif args and args[0] == '--seance':
+        write_seance(args[1] if len(args) > 1 else os.path.join(here, 'seance'))
     elif args:
-        sys.exit('usage: python3 build.py  OR  python3 build.py --hosted DEST')
+        sys.exit('usage: python3 build.py  OR  python3 build.py --hosted DEST  OR  python3 build.py --seance [DEST]')
     else:
         write_inline()
