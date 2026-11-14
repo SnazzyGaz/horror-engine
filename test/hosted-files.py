@@ -1,3 +1,4 @@
+import re
 #!/usr/bin/env python3
 """Check that a hosted (--hosted) build only references files that exist.
 Usage: python3 test/hosted-files.py DEST
@@ -34,8 +35,9 @@ def main(dest):
     check('assets/tex.js' in html, 'index.html loads assets/tex.js')
     check('crypt_assets.js' not in html, 'index.html does not inline or link crypt_assets.js')
     check('window.HE_CRYPT =' not in html and 'window.HE_CRYPT=' not in html, 'index.html does not inline HE_CRYPT models (they load on demand)')
-    # inlined textures would be multi-megabyte base64 webp
-    check('UklGR' not in html, 'index.html does not inline WebP base64')
+    # inlined textures would be long base64 WebP payloads (RIFF header UklGR).
+    # A short UklGR in a comment or regex in the decoder does not count.
+    check(not re.search(r'UklGR[A-Za-z0-9+/=]{80,}', html), 'index.html does not inline WebP base64')
     check(os.path.getsize(index) < 2_000_000, 'index.html is well under 2 MB (was ~9.6 MB inlined): %d' % os.path.getsize(index))
 
     src = open(texjs, encoding='utf-8').read()
