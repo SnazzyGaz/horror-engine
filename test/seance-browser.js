@@ -37,7 +37,8 @@ function finish(code) { clearTimeout(killer); try { proc.kill(); } catch (e) { }
   const cmd = (method, params) => new Promise(r => { const i = ++id; wait[i] = r; ws.send(JSON.stringify({ id: i, method, params: params || {} })); });
   const ev = async (expr) => { const r = await cmd('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); return r.result && r.result.result ? r.result.result.value : r; };
   await cmd('Runtime.enable'); await cmd('Log.enable'); await cmd('Page.enable');
-  const shot = async (name) => { const r = await cmd('Page.captureScreenshot', { format: 'png' }); const f = path.join(out, name + '.png'); fs.writeFileSync(f, Buffer.from(r.result.data, 'base64')); report.shots.push(f); };
+  const TEXTS = '(function(){var o=[];document.querySelectorAll("body *").forEach(function(e){if(!e.childNodes.length)return;var t="";e.childNodes.forEach(function(n){if(n.nodeType===3)t+=n.textContent});t=t.trim();if(!t)return;var r=e.getBoundingClientRect();if(r.width<1||r.height<1)return;var cs=getComputedStyle(e);if(cs.visibility==="hidden")return;var op=1;for(var a=e;a&&a.nodeType===1;a=a.parentElement){op*=+getComputedStyle(a).opacity;if(a.hidden)return}o.push({t:t.slice(0,40),x:r.left,y:r.top,w:r.width,h:r.height,c:cs.color,fs:parseFloat(cs.fontSize),fw:cs.fontWeight,op:op,dis:!!e.closest("button:disabled")})});return o})()';
+  const shot = async (name) => { const r = await cmd('Page.captureScreenshot', { format: 'png' }); const f = path.join(out, name + '.png'); fs.writeFileSync(f, Buffer.from(r.result.data, 'base64')); report.shots.push(f); if (states) fs.writeFileSync(path.join(out, name + '.texts.json'), JSON.stringify(await ev(TEXTS))); };
   const url = 'file://' + (process.platform === 'win32' ? '/' : '') + path.resolve(page).replace(/\\/g, '/');
   for (const [w, h] of sizes) {
     await cmd('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
@@ -70,6 +71,8 @@ function finish(code) { clearTimeout(killer); try { proc.kill(); } catch (e) { }
     await ev('document.getElementById("pBrowse").click()'); await sleep(200); await shot('seance_browse'); await ev('document.getElementById("pBrowse").click()');
     await ev('document.getElementById("menuBtn").click()'); await sleep(200); await shot('seance_menu'); await ev('document.getElementById("menuBtn").click()');
     await ev('__he.select(4)'); await sleep(300); await shot('seance_struck');
+    await ev('__he.select(3);__seance.drawer("drVoice",true)'); await sleep(300); await shot('seance_glass_voice');
+    await ev('__seance.drawer("drVoice",false);__he.select(6)'); await sleep(600); await shot('seance_junk');
   }
   await sleep(200);
   finish(report.errors.length || !report.audio.ok ? 1 : 0);

@@ -18,7 +18,7 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--ground)}
 body{color:var(--bone);font:500 15px/1.25 var(--serif);min-width:1100px;min-height:680px}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
-button:disabled{opacity:.45;cursor:default}
+button:disabled{opacity:.62;cursor:default}
 h2,h3,h4,p{margin:0}
 kbd{font:400 12px var(--mono)}
 :focus-visible{outline:2px solid var(--live);outline-offset:2px}
@@ -35,7 +35,7 @@ kbd{font:400 12px var(--mono)}
 .pname small{font:400 12px var(--mono);color:var(--dim);flex:none}
 .pname #pTitle{font:600 17px var(--serif);color:var(--live);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:left}
 .pname i{font:italic 400 14px var(--serif);color:var(--dim);flex:1;white-space:nowrap}
-.star{color:var(--line2);font-size:16px;width:22px;height:22px}
+.star{color:var(--dim);font-size:16px;width:22px;height:22px}
 .star[aria-pressed="true"]{color:var(--gilt)}
 .tb{height:30px;padding:0 13px;border:1px solid var(--line2);border-radius:15px;font:500 14px var(--serif);color:var(--bone2);white-space:nowrap;flex:none}
 .tb.sm{height:26px;padding:0 10px;font-size:14px}
@@ -86,7 +86,7 @@ kbd{font:400 12px var(--mono)}
 .plaque.bye:active{background:rgba(224,118,74,.18)}
 .ax{position:absolute;font:400 13px var(--mono);color:var(--bone2);pointer-events:none;white-space:nowrap}
 .ax-x{left:28px;bottom:24px;max-width:calc(50% - 150px);overflow:hidden;text-overflow:ellipsis}
-.ax-y{left:22px;top:62%;transform:rotate(-90deg);transform-origin:0 0}
+.ax-y{left:22px;top:74%;transform:rotate(-90deg);transform-origin:0 0}
 .reading{position:absolute;right:28px;bottom:24px;font:400 13px var(--mono);color:var(--live);pointer-events:none;display:flex;gap:14px;white-space:nowrap}
 .reading #hl:empty{display:none}
 #wake{position:absolute;left:50%;top:75%;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
@@ -102,7 +102,7 @@ kbd{font:400 12px var(--mono)}
 .moms{flex:1;display:flex;flex-direction:column;min-height:0}
 .mscroll{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
 .mpads{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.cmoments{margin-top:6px}.cmoments:empty{display:none}
+.cmoments{margin-top:6px}.cmoments:empty::before{content:"Your own moments land here: press Record moment, play anything, then press it again.";grid-column:1/-1;display:block;padding:8px 10px;border:1px dashed var(--line2);border-radius:8px;font:italic 400 13px/1.3 var(--serif);color:var(--dim)}
 .mpads>button,.mpads .cm>button:first-child{position:relative;text-align:left;min-height:56px;padding:6px 9px;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:rgba(14,11,10,.6);width:100%}
 .mpads button span{display:block;font:600 15px/1.15 var(--serif);color:var(--bone);padding-right:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mpads button small{display:block;font:italic 400 13px/1.2 var(--serif);color:var(--dim);margin-top:2px}
@@ -133,7 +133,7 @@ kbd{font:400 12px var(--mono)}
 .dial::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:conic-gradient(from 225deg,var(--gilt) calc(var(--v)*270deg),#33281f 0 270deg,transparent 0);
  -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 3px),#000 calc(100% - 2.5px));mask:radial-gradient(closest-side,transparent calc(100% - 3px),#000 calc(100% - 2.5px))}
 .dial i{position:absolute;left:calc(50% - 1px);top:14%;width:2px;height:36%;border-radius:1px;background:var(--live);transform-origin:50% 100%;transform:rotate(calc(-135deg + var(--v)*270deg))}
-.knob span{font:600 14px/1.15 var(--serif);color:var(--bone);white-space:nowrap}
+.knob span{font:600 14px/1.1 var(--serif);color:var(--bone);white-space:normal;max-width:100%;overflow-wrap:break-word}
 .knob output{font:400 12px/1.2 var(--mono);color:var(--live);white-space:nowrap;font-variant-numeric:tabular-nums}
 .knob small{font:italic 400 13px/1.15 var(--serif);color:var(--dim)}
 .knob.big{width:118px}
@@ -216,6 +216,8 @@ body.picking .knob,body.picking .vgrid .btn,body.picking .seg,body.picking .tg .
 .seglab{font:600 14px var(--serif);color:var(--bone2);margin-right:4px}
 .vgrid .seg .btn{height:26px;padding:0 10px;font-size:14px}
 .mrow{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-start}
+.vgrid .knob{width:70px}.vgrid .knobs{gap:8px 2px}
+.vgrid>div:last-child .knob{width:62px}.vgrid>div:last-child .knobs{flex-wrap:nowrap}
 .water h4{margin-top:0}
 .vgrid .sub{margin-top:8px}
 .offsets{margin-top:10px}
