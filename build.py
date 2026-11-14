@@ -27,6 +27,6 @@ html = ('<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<style>\nbody{margin:0}[hidden]{display:none!important}\n' + rd('style.css') + '</style>\n</head>\n<body>\n'
         + rd('body.html')
         + '\n<script src="vendor/three.min.js"></script>'
-        + '\n<script>\n' + eng + '\n</script>\n<script>\n' + io + '\n</script>\n<script>\n' + rd('ui.js') + '\n</script>\n<script>\n' + rd('look.js') + '\n</script>\n<script>\n' + texjs() + '\n</script>\n<script>\n' + rd('sculpt.js') + '\n</script>\n<script>\n' + rd('altar.js') + '\n</script>\n<script>\n' + rd('machine2.js') + '\n</script>\n<script>\n' + rd('machine.js') + '\n</script>\n</body>\n</html>\n')
+        + '\n<script>\n' + eng + '\n</script>\n<script>\n' + io + '\n</script>\n<script>\n' + rd('ui.js') + '\n</script>\n<script>\n' + rd('look.js') + '\n</script>\n<script>\n' + texjs() + '\n</script>\n<script>\n' + rd('sculpt.js') + '\n</script>\n<script>\n' + rd('altar.js') + '\n</script>\n<script>\n' + rd('machine2.js') + '\n</script>\n</body>\n</html>\n')
 open(os.path.join(here, 'index.html'), 'w', encoding='utf-8').write(html)
 print('index.html', len(html), 'bytes')

@@ -1,11 +1,10 @@
-/* Machine V2: one continuous instrument. Every part is bolted to one wooden
-   spine and plays the same engine gestures as the Surface. ?machine=v1 brings back the first Machine.
+/* The Machine: one continuous instrument. Every part is bolted to one wooden
+   spine and plays the same engine gestures as the Surface.
    Horror Engine (c) 2026 Garyck Arntzen (https://x.com/_mintydoge), MIT licence. */
 (function () {
   'use strict';
   var Q = new URLSearchParams(location.search);
-  window.__heMachine = (Q.get('machine') || 'v2').toLowerCase() === 'v1' ? 'v1' : 'v2';
-  if (window.__heMachine !== 'v2') { var ml0 = document.getElementById('mload'); if (ml0) ml0.hidden = true; return; }
+  window.__heMachine = 'v2';
   var H = window.__he, $ = function (id) { return document.getElementById(id); };
   var host = $('machine'), padEl = $('pad'), V = null, tab = 'surface', TAU = Math.PI * 2;
   var PR0 = 1;   // the renderer's base pixel ratio (before the cap and the dynamic scale)
