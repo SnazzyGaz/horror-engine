@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Attach the double-click build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: pip install pillow
+      - name: Build index.html from source
+        run: python3 build.py
+      - name: Zip the double-click build
+        run: |
+          mkdir -p dist/horror-engine
+          cp index.html LICENSE CREDITS.md dist/horror-engine/
+          cp -r vendor dist/horror-engine/
+          cd dist
+          zip -r "../horror-engine-${GITHUB_REF_NAME}.zip" horror-engine
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "horror-engine-${GITHUB_REF_NAME}.zip" \
+            --title "Horror Engine ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --repo "${{ github.repository }}"

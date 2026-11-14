@@ -73,9 +73,13 @@ The looper records what your hand did, not audio, so every pass is played again 
 
 Horror Engine is one HTML page (with `vendor/three.min.js` beside it). It needs no install and no server.
 
-1. Download or clone this repository.
-2. Open `index.html` in a desktop browser. It works straight from disk (`file://`).
-3. Press **Start audio**, then drag a part of the machine.
+**Double-click build.** Download the zip from [Releases](https://github.com/SnazzyGaz/horror-engine/releases). It contains `index.html`, `vendor/`, `LICENSE` and `CREDITS.md`. Unzip it, open `index.html` in a desktop browser (it works from `file://`), press **Start audio**, then drag a part of the machine.
+
+The `index.html` at the root of this repository is a snapshot kept so existing clones and the current GitHub Pages site keep working. It is **no longer updated** when the source changes. Until the first tagged release, use that snapshot or rebuild from source. After that, get the current double-click build from Releases, or rebuild:
+
+```
+python3 build.py    # needs Pillow: pip install pillow
+```
 
 If your browser is strict about local files, serve the folder instead:
 
@@ -84,7 +88,15 @@ python3 -m http.server 8000
 # then open http://localhost:8000/
 ```
 
-It also runs as-is on GitHub Pages or any static host.
+The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io/horror-engine/) is built from `src/` on every push to `main` by a GitHub Action and deployed to GitHub Pages. Pushing a tag `v*` attaches the same build, zipped with `LICENSE`, `CREDITS.md` and `vendor/`, to a GitHub Release.
+
+**Tests.** The engine and file I/O run in Node, with no browser or GPU. From the repo root:
+
+```
+node test/engine.js
+```
+
+That checks that performance files load, presets round-trip, and an offline render is deterministic, finite and limited. The same script runs on every push and pull request.
 
 **Browsers.** Use a current desktop Chrome or Edge. Firefox should work. Safari has not been tested. The machine needs WebGL (WebGL 2 for the full lighting), and the audio needs Web Audio with AudioWorklet. If AudioWorklet is missing, the engine falls back to the main thread ("compatibility mode"), with more latency. Use headphones or decent speakers: a lot of this lives below 60 Hz.
 
@@ -119,7 +131,7 @@ MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers th
 
 ## How it's built
 
-It is a single HTML page that uses three.js for the machine and Web Audio for the sound. To change it, edit the files in `src/` and run `python3 build.py` (needs Pillow) to rebuild `index.html`.
+It is a single HTML page that uses three.js for the machine and Web Audio for the sound. Edit the files in `src/` and run `python3 build.py` (needs Pillow) to rebuild `index.html`. Do not commit the rebuilt `index.html`; GitHub Actions builds it for the live site and for Releases. See [docs/UNDER_THE_HOOD.md](docs/UNDER_THE_HOOD.md).
 
 ## Credits and licence
 
