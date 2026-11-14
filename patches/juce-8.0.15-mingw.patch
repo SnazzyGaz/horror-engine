@@ -1,0 +1,110 @@
+diff --git a/modules/juce_core/native/juce_SystemStats_windows.cpp b/modules/juce_core/native/juce_SystemStats_windows.cpp
+index 15aa581..4000496 100644
+--- a/modules/juce_core/native/juce_SystemStats_windows.cpp
++++ b/modules/juce_core/native/juce_SystemStats_windows.cpp
+@@ -80,7 +80,7 @@ static int findNumberOfPhysicalCores() noexcept
+   #pragma intrinsic (__rdtsc)
+  #endif
+ 
+- #if JUCE_CLANG
++ #if JUCE_CLANG || JUCE_MINGW
+ static void callCPUID (int result[4], uint32 type)
+ {
+   uint32 la = 0, lb = 0, lc = 0, ld = 0;
+diff --git a/modules/juce_core/system/juce_TargetPlatform.h b/modules/juce_core/system/juce_TargetPlatform.h
+index 7850b4c..56d53db 100644
+--- a/modules/juce_core/system/juce_TargetPlatform.h
++++ b/modules/juce_core/system/juce_TargetPlatform.h
+@@ -110,7 +110,13 @@
+   #endif
+ 
+   #ifdef __MINGW32__
+-    #error "MinGW is not supported. Please use an alternative compiler."
++    // Horror Engine: MinGW-w64 build (patches/juce-8.0.15-mingw.patch)
++    #define JUCE_MINGW 1
++    #ifdef _WIN64
++      #define JUCE_64BIT 1
++    #else
++      #define JUCE_32BIT 1
++    #endif
+   #endif
+ 
+   /** If defined, this indicates that the processor is little-endian. */
+diff --git a/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp b/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
+index d0752ef..5b3c9c2 100644
+--- a/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
++++ b/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
+@@ -220,7 +220,7 @@ namespace JPEGHelpers
+ {
+     using namespace jpeglibNamespace;
+ 
+-   #if ! (JUCE_WINDOWS && (JUCE_MSVC || JUCE_CLANG))
++   #if ! (JUCE_WINDOWS && (JUCE_MSVC || JUCE_CLANG || JUCE_MINGW))
+     using jpeglibNamespace::boolean;
+    #endif
+ 
+diff --git a/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp b/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
+index e1c9708..72335b1 100644
+--- a/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
++++ b/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
+@@ -34,6 +34,10 @@
+ 
+ namespace juce
+ {
++
++#if JUCE_MINGW
++ enum { D2D1_SATURATION_PROP_SATURATION = 0 };
++#endif
+ /*  Resulting pages are arranged in rows from left to right, then top to bottom
+ */
+ static std::vector<Direct2DPixelDataPage> makePages (ComSmartPtr<ID2D1Device1> device,
+diff --git a/modules/juce_graphics/native/juce_DirectX_windows.cpp b/modules/juce_graphics/native/juce_DirectX_windows.cpp
+index ccbd6ca..fecb6f4 100644
+--- a/modules/juce_graphics/native/juce_DirectX_windows.cpp
++++ b/modules/juce_graphics/native/juce_DirectX_windows.cpp
+@@ -622,7 +622,7 @@ DxgiAdapter::Ptr Direct2DDeviceResources::findAdapter (const DxgiAdapters& adapt
+ 
+     ComSmartPtr<IDXGIDevice> device;
+     JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wlanguage-extension-token")
+-    surface->GetDevice (__uuidof (device), (void**) device.resetAndGetPointerAddress());
++    surface->GetDevice (__uuidof (IDXGIDevice), (void**) device.resetAndGetPointerAddress());
+     JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+ 
+     return findAdapter (adapters, device);
+diff --git a/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h b/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
+index e2e6c14..701b772 100644
+--- a/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
++++ b/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
+@@ -35,6 +35,10 @@
+ namespace juce
+ {
+ 
++#if JUCE_MINGW && ! defined (CaretPosition_Unknown)
++ enum { CaretPosition_Unknown = 0, CaretPosition_EndOfLine = 1, CaretPosition_BeginningOfLine = 2 };
++#endif
++
+ //==============================================================================
+ class UIATextProvider  : public UIAProviderBase,
+                          public ComBaseClassHelper<ITextProvider2>
+diff --git a/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp b/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
+index 344e93c..b440d80 100644
+--- a/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
++++ b/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
+@@ -144,7 +144,7 @@ public:
+ 
+         ComSmartPtr<IDXGIDevice> device;
+         JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wlanguage-extension-token")
+-        chain->GetDevice (__uuidof (device), (void**) device.resetAndGetPointerAddress());
++        chain->GetDevice (__uuidof (IDXGIDevice), (void**) device.resetAndGetPointerAddress());
+         JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+ 
+         createBuffer (Direct2DDeviceResources::findAdapter (directX->adapters, device));
+@@ -188,7 +188,7 @@ private:
+ 
+         ComSmartPtr<IDXGISurface> surface;
+         JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wlanguage-extension-token")
+-        if (const auto hr = chain->GetBuffer (0, __uuidof (surface), reinterpret_cast<void**> (surface.resetAndGetPointerAddress())); FAILED (hr))
++        if (const auto hr = chain->GetBuffer (0, __uuidof (IDXGISurface), reinterpret_cast<void**> (surface.resetAndGetPointerAddress())); FAILED (hr))
+             return nullptr;
+         JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+ 
