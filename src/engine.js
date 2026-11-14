@@ -16,6 +16,10 @@ var HE_PARAMS = (function () {
     p(s + '.drive', 'Grit', 0, 1, d[3], { grp: 'ch' });
     p(s + '.hold', 'Hold', 0, 1, d[4], { sw: 1 });
     p(s + '.mute', 'Mute', 0, 1, 0, { sw: 1 });
+    p(s + '.tune', 'Tune', -24, 24, 0, { unit: 'st', int: 1, bi: 1, off: 1 });
+    p(s + '.cents', 'Fine', -100, 100, 0, { unit: 'c', int: 1, bi: 1, off: 1 });
+    p(s + '.matOff', 'Material', -1, 1, 0, { unit: '%', bi: 1, off: 1 });
+    p(s + '.distOff', 'Distance', -1, 1, 0, { unit: '%', bi: 1, off: 1 });
   });
   p('ebow.pitch', 'Pitch', 30, 400, 55, { unit: 'Hz', exp: 1 });
   p('ebow.sustain', 'Drive', 0, 1, .55);
@@ -34,7 +38,7 @@ var HE_PARAMS = (function () {
   p('hurdy.buzz', 'Dog buzz', 0, 1, .3);
   p('hurdy.rosin', 'Rosin', 0, 1, .4, { adv: 1 });
   p('hurdy.melody', 'Melody on X', 0, 1, 0, { sw: 1, adv: 1 });
-  p('bowed.object', 'Object', 0, 3, 0, { en: ['Ruler', 'Rod', 'Saw', 'Clock spring'] });
+  p('bowed.object', 'Object', 0, 4, 0, { en: ['Ruler', 'Rod', 'Saw', 'Clock spring', 'Cymbal'] });
   p('bowed.size', 'Size', 40, 4000, 330, { unit: 'Hz', exp: 1 });
   p('bowed.press', 'Pressure', 0, 1, .5);
   p('bowed.speed', 'Bow speed', 0, 1, .4);
@@ -101,6 +105,14 @@ var HE_PARAMS = (function () {
   p('rev.mix', 'Return', 0, 1, .8);
   p('master.tone', 'Tilt', -1, 1, 0, { bi: 1 });
   p('master.vol', 'Volume', -30, 6, 0, { unit: 'dB' });
+  // your own sound in (mic, line or a file): dry level and sends into the spring, the body, the hall, the harmonizer and
+  // the Aura. Session settings: presets and share links leave them alone. With the input off they do nothing at all.
+  p('input.level', 'Dry', -60, 6, -12, { unit: 'dB' });
+  p('input.spr', 'Spring', 0, 1, .35);
+  p('input.body', 'Body', 0, 1, .4);
+  p('input.rev', 'Hall', 0, 1, .35);
+  p('input.hsend', 'Harmonizer', 0, 1, 0);
+  p('input.aura', 'Aura', 0, 1, .6);
   return L;
 })();
 
@@ -323,7 +335,9 @@ function HECoreFactory() {
     { r: [1, 6.267, 17.55, 34.39, 56.84, 84.91, 2.89, 11.3, 25.2], g: [1, .8, .6, .45, .3, .2, .25, .2, .15], t: 2.2 },
     { r: [1, 2.756, 5.404, 8.933, 13.34, 18.64, 24.81, 31.87], g: [1, .85, .7, .6, .5, .4, .3, .25], t: 3 },
     { r: [1, 2.02, 3.01, 4.08, 5.03, 6.1, 7.2, 8.15, 9.3, 10.4], g: [1, .8, .7, .6, .5, .45, .4, .35, .3, .25], t: 3.5 },
-    { r: [1, 1.47, 2.09, 2.56, 3.19, 3.86, 4.31, 5.12, 5.87, 6.73, 7.61, 8.44, 9.6, 11.1], g: [1, .9, .8, .8, .7, .7, .6, .6, .5, .5, .4, .4, .3, .3], t: 1.6 }
+    { r: [1, 1.47, 2.09, 2.56, 3.19, 3.86, 4.31, 5.12, 5.87, 6.73, 7.61, 8.44, 9.6, 11.1], g: [1, .9, .8, .8, .7, .7, .6, .6, .5, .5, .4, .4, .3, .3], t: 1.6 },
+    // cymbal: a thin circular plate (Bessel-like ratios, crowded and inharmonic); bowed at the edge it screams and shimmers
+    { r: [1, 1.59, 2.14, 2.3, 2.65, 2.92, 3.16, 3.5, 3.6, 4.06, 4.6, 5.13, 5.65, 6.25], g: [.8, 1, .9, .7, .8, .6, .7, .55, .5, .5, .45, .4, .35, .3], t: 4.5 }
   ];
   function Bowed(E) { this.E = E; this.m = new Fric(14); this.vb = new Float32Array(BL); this.nz = new Float32Array(BL); this.pg = new Float32Array(BL); this.v = 0; this.bend = .5; this.wob = 0; this.hg = new HG(); this.lpr = -1; this.kk = 0; }
   Bowed.prototype.reset = function () { this.m.reset(); this.v = 0; this.lpr = -1; };
@@ -989,7 +1003,10 @@ function HECoreFactory() {
     this.tL = fa(); this.tR = fa(); this.dL = fa(); this.dR = fa(); this.rvIn = fa(); this.spIn = fa(); this.rL = fa(); this.rR = fa();
     // stems: 9 voices, hall return, reverse swell, harmonizer return, body. Each runs through its own copy of the linear master chain (tilt, volume,
     // HPF) and the limiter look-ahead delay, so the stems sum to the pre-limiter mix sample for sample and line up with it.
-    this.NST = NS + 4; this.LA = Math.round(.002 * sr);
+    // stem NS + 4 is the audio input (mic, line or a file). While the input is off it is skipped entirely (no master
+    // chain, no denormal guard), so a session or render without input is bit-identical to an engine without one.
+    this.NST = NS + 5; this.LA = Math.round(.002 * sr);
+    this.inL = fa(); this.inR = fa(); this.inOn = false; this.inAct = false; this.inE = 0; this.inTail = 0; this.inPk = 0; this.inG = -1;
     this.body = new Body(this); this.harm = new Harmz(this); this.bdIn = fa(); this.hmIn = fa();
     // water: 16 slow wobble signals (two incommensurate sines each), one per mode, shared by everything in the "bowl"
     this.wv = new Float64Array(16); this.wph = new Float64Array(32); this.water = 0;
@@ -1010,10 +1027,15 @@ function HECoreFactory() {
     bq(0, 0, 2000, .5412); bq(1, 0, 2000, 1.3066); bq(2, 1, 5000, .5412); bq(3, 1, 5000, 1.3066);
     this.eg = { c: egc, z: new Float64Array(32), env: 0, rel: Math.exp(-1 / (.1 * sr)), ceil: .19, gr: 1 };
     this.dread = .2; this.distance = .15; this.material = .5; this.pitchSt = 0; this.pitchMul = 1; this.mPitch = 0; this.mDread = 0; this.autoFreeze = false; this.revBoost = 0;
+    this.vOff = [];
+    for (i = 0; i < NS; i++) this.vOff.push({ pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7, distance: .15, dist: { lc: 1, dg: 1, wd: 1, bass: 0, bc: 0, aS: 0, rg: 1 } });
+    this.gMac = { pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7 };
     this.ring = [new Float32Array(65536), new Float32Array(65536)]; this.rw = 0; this.sw = [new Float32Array(60000), new Float32Array(60000)]; this.swN = 0; this.swP = 0; this.swEnd = -1; this.mAura = 0; this.duckE = 0; this.dr2 = 0;
     this.lkw = 0; this.lh = 1; this.hw = new Float64Array(256).fill(1); this.hp2 = 0; this.lg = 1; this.gr = 1; this.pkL = 0; this.pkR = 0;
     this.frame = 0; this.layers = []; this.recL = null; this.lid = 1; this.lane = null; this.lver = 0; this.undo = []; this.redo = []; this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null };
-    this.macros();
+    // custom moments: definitions, the ones playing, the live knob values they ride on, and the capture in progress
+    this.cmDefs = {}; this.cms = []; this.cmBase = {}; this.cmSl = []; this.recM = null; this.cmN = 0;
+    this.macros(); this.voiceMacros();
   }
   Engine.prototype.macros = function () {
     var P = this.P, D = clamp((P['macro.dread'] || 0) + this.mDread, 0, 1), M = P['macro.material']; if (M === undefined) M = .5;
@@ -1022,6 +1044,32 @@ function HECoreFactory() {
     this.pitchSt += ((P['macro.pitch'] || 0) + this.mPitch - this.pitchSt) * .25; this.pitchMul = Math.pow(2, this.pitchSt / 12);
     this.detune = pw(D, 2, 15, 60); this.instab = pw(D, .5, 1, 2.5); this.rough = pw(D, 0, .15, .5); this.subAmt = pw(D, 0, .2, .6) + (this.pitchSt < -12 ? .3 : 0); this.driveOff = pw(D, 0, .15, .4);
     this.matT = pw(M, .3, 1, 1.6); this.matSlope = pw(M, 3, .7, .3); this.matStretch = pw(M, 0, .02, .05); this.matBright = pw(M, .15, .7, 1);
+    var g = this.gMac; g.pitchSt = this.pitchSt; g.pitchMul = this.pitchMul; g.material = this.material; g.matT = this.matT; g.matSlope = this.matSlope; g.matStretch = this.matStretch; g.matBright = this.matBright;
+  };
+  // per-voice Tune, Material and Distance offsets add on top of the macros (they never replace them)
+  Engine.prototype.voiceMacros = function () {
+    var P = this.P, sr = this.sr, i;
+    for (i = 0; i < NS; i++) {
+      var nm = HE_S[i], o = this.vOff[i];
+      var pT = (P['macro.pitch'] || 0) + this.mPitch + (P[nm + '.tune'] || 0) + (P[nm + '.cents'] || 0) / 100;
+      o.pitchSt += (pT - o.pitchSt) * .25; o.pitchMul = Math.pow(2, o.pitchSt / 12);
+      var Mt = P['macro.material']; if (Mt === undefined) Mt = .5;
+      var M = clamp(Mt + (P[nm + '.matOff'] || 0), 0, 1);
+      o.material += (M - o.material) * .2; M = o.material;
+      o.matT = pw(M, .3, 1, 1.6); o.matSlope = pw(M, 3, .7, .3); o.matStretch = pw(M, 0, .02, .05); o.matBright = pw(M, .15, .7, 1);
+      var Dt = clamp((this.mom.stinger ? 0 : (P['macro.distance'] || 0)) + (P[nm + '.distOff'] || 0), 0, 1);
+      o.distance += (Dt - o.distance) * .1;
+      var D = o.distance, Dd = o.dist;
+      Dd.lc = Math.min(1, 1 - Math.exp(-TAU * 20000 * Math.pow(.06, D) / sr)); Dd.dg = db(-15 * D); Dd.wd = 1 - .6 * D; Dd.bass = (db(4) - 1) * (1 - D); Dd.bc = 1 - Math.exp(-TAU * 150 / sr); Dd.aS = D * .3; Dd.rg = db(-5 * D);
+    }
+  };
+  Engine.prototype.useVoice = function (s) {
+    var o = this.vOff[s];
+    this.pitchSt = o.pitchSt; this.pitchMul = o.pitchMul; this.material = o.material; this.matT = o.matT; this.matSlope = o.matSlope; this.matStretch = o.matStretch; this.matBright = o.matBright;
+  };
+  Engine.prototype.useGlobals = function () {
+    var g = this.gMac;
+    this.pitchSt = g.pitchSt; this.pitchMul = g.pitchMul; this.material = g.material; this.matT = g.matT; this.matSlope = g.matSlope; this.matStretch = g.matStretch; this.matBright = g.matBright;
   };
   Engine.prototype.gesture = function (slot, s, k, x, y, p, hz) { return this.gesture2(this.slots[s][slot], s, k, x, y, p, hz); };
   Engine.prototype.gesture2 = function (S, s, k, x, y, p, hz) {
@@ -1039,6 +1087,7 @@ function HECoreFactory() {
   Engine.prototype.user = function (s, k, x, y, p, hz) {
     this.gesture(0, s, k, x, y, p, hz);
     if (this.recL) this.recL.ev.push({ t: this.frame, s: s, k: k, x: x, y: y, p: p, hz: hz || 0 });
+    if (this.recM) this.recM.ev.push({ t: this.frame - this.recM.start, s: s, k: k, x: x, y: y, p: p, hz: hz || 0 });
   };
   // contact priority per source: live touch, then moments/auto, then loop layers (oldest first), then hold.
   // Each active contact keeps the instance it got (sticky); a new contact takes a free instance or steals the lowest-priority one.
@@ -1051,11 +1100,13 @@ function HECoreFactory() {
     var dt = BL / this.sr, act = this.act, s, j, k;
     for (s = 0; s < NS; s++) { this.smooth(this.slots[s][0], dt); this.smooth(this.slots[s][1], dt); }
     for (j = 0; j < this.layers.length; j++) this.smooth(this.layers[j].sl, dt);
+    for (j = 0; j < this.cmSl.length; j++) this.smooth(this.cmSl[j], dt);
     for (s = 0; s < NS; s++) {
       var sl = this.slots[s], cv = this.Cv[s], nv = cv.length, n = 0;
       if (sl[0].on) act[n++] = sl[0];
       if (sl[1].on) act[n++] = sl[1];
       for (j = 0; j < this.layers.length; j++) { var Ly = this.layers[j]; if (Ly.src === s && Ly.sl.on) act[n++] = Ly.sl; }
+      for (j = 0; j < this.cmSl.length; j++) { var Cs = this.cmSl[j]; if (Cs.src === s && Cs.on) act[n++] = Cs; }
       // release instances whose contact ended
       for (k = 0; k < nv; k++) { var o = cv[k].own; if (o && (!o.on || o.src !== s)) cv[k].own = null; }
       for (j = 0; j < n; j++) {
@@ -1089,7 +1140,7 @@ function HECoreFactory() {
   Engine.prototype.snap = function () {
     return { frame: this.frame, lane: this.lane ? { start: this.lane.start, len: this.lane.len } : null, L: this.layers.map(function (L) { return { id: L.id, src: L.src, len: L.len, origin: L.origin, ev: L.ev, mute: L.mute, ghost: L.ghost, seed: L.seed }; }) };
   };
-  Engine.prototype.pushUndo = function () { this.undo.push(this.snap()); if (this.undo.length > 50) this.undo.shift(); this.redo.length = 0; };
+  Engine.prototype.pushUndo = function () { this.ucnt = (this.ucnt || 0) + 1; this.undo.push(this.snap()); if (this.undo.length > 50) this.undo.shift(); this.redo.length = 0; };
   Engine.prototype.restore = function (S) {
     for (var i = 0; i < this.layers.length; i++) this.layers[i].sl.on = false;
     this.lane = S.lane ? { start: S.lane.start, len: S.lane.len } : null;
@@ -1192,11 +1243,79 @@ function HECoreFactory() {
   };
   Engine.prototype.moment = function (id, on, arg) {
     var M = this.mom, sr = this.sr;
+    if (typeof id === 'string' && id.indexOf('c:') === 0) return this.cmToggle(id.slice(2), on);
     if (id === 'riser') { if (on && !M.riser) { M.riser = { t: 0, dur: (arg || 8) * sr }; M.ret = null; } else if (!on && M.riser) this.riserEnd(false); }
     else if (id === 'stinger') { if (!M.stinger) { M.stinger = { t: 0, hit: false }; this.swell(.8); } }
     else if (id === 'drone') { if (on) M.drone = { t: 0, next: 20 * sr, tgt: 0 }; else if (M.drone) { M.drone = null; this.auto(1, false); this.auto(0, false); this.autoFreeze = false; } }
     else if (id === 'heart') { if (on) M.heart = { next: 0, dub: -1, drift: 0 }; else M.heart = null; }
     else if (id === 'walls') { if (on) M.walls = { next: sr * .3, jk: 0, gl: 0, jx: .5, jy: .5, jvx: 0, jvy: 0, gx: .5, gdx: 0 }; else if (M.walls) { M.walls = null; this.auto(6, false); this.auto(3, false); } }
+  };
+
+  /* custom moments: a captured phrase (gestures on any voice plus knob and macro moves) played once through the models.
+     Times arrive in seconds and become frames here. Each firing gets its own seeded variation (tempo, position, pressure,
+     depth of the knob moves), like a ghost but gentler. Continuous knobs ride on top of where the live knob is (relative,
+     in normalised knob travel); switches and choices are set outright. While a moment holds a knob, live moves of that knob
+     update the base it rides on, and the knob returns to that live value when the last moment using it ends. */
+  function cmN(L, v) { return L.exp ? Math.log(Math.max(1e-9, v) / L.min) / Math.log(L.max / L.min) : (v - L.min) / (L.max - L.min); }
+  function cmD(L, n) { n = clamp(n, 0, 1); var v = L.exp ? L.min * Math.pow(L.max / L.min, n) : L.min + (L.max - L.min) * n; return L.int ? Math.round(v) : v; }
+  Engine.prototype.cmDefine = function (id, d) {
+    for (var i = this.cms.length - 1; i >= 0; i--) if (this.cms[i].id === id) this.cmStop(this.cms[i]);
+    if (!d || !d.ev) { delete this.cmDefs[id]; return; }
+    var sr = this.sr, ev = [], lanes = [];
+    d.ev.forEach(function (e, j) { if (e && e.length >= 3) ev.push({ f: Math.round(e[0] * sr), j: j, s: e[1] | 0, k: e[2], x: +e[3] || 0, y: +e[4] || 0, p: +e[5] || 0, hz: +e[6] || 0 }); });
+    ev.sort(function (a, b) { return a.f - b.f || a.j - b.j; });
+    (d.lanes || []).forEach(function (L) {
+      if (!L || !L.k || !L.pts || !L.pts.length || !(L.max > L.min)) return;
+      lanes.push({ k: L.k, min: L.min, max: L.max, exp: !!L.exp && L.min > 0, int: !!L.int, abs: !!L.abs, pts: L.pts.map(function (q) { return [Math.round(q[0] * sr), +q[1]]; }) });
+    });
+    var len = Math.round((+d.len || 0) * sr); ev.forEach(function (e) { if (e.f > len) len = e.f; }); lanes.forEach(function (L) { var t = L.pts[L.pts.length - 1][0]; if (t > len) len = t; });
+    this.cmDefs[id] = { id: id, v: typeof d.voice === 'number' && d.voice >= 0 && d.voice < NS ? d.voice | 0 : -1, ev: ev, lanes: lanes, len: len };
+  };
+  Engine.prototype.cmToggle = function (id, on) {
+    var I = null; for (var i = 0; i < this.cms.length; i++) if (this.cms[i].id === id) I = this.cms[i];
+    if (I && !on) this.cmStop(I); else if (!I && on) this.cmStart(id);
+  };
+  Engine.prototype.cmStart = function (id) {
+    var d = this.cmDefs[id]; if (!d) return;
+    var seed = (this.rng.s ^ Math.imul(++this.cmN, 2654435761) ^ this.frame) >>> 0, r = new Rng(seed || 1), ins = this.instab || 1;
+    var I = { id: id, d: d, pos: 0, i: 0, li: d.lanes.map(function () { return -1; }), sl: {}, str: 1 + r.b() * .05, xo: r.b() * .03 * ins, pm: .9 + r.u() * .2, dm: .9 + r.u() * .2 };
+    d.lanes.forEach(function (L) { var B = this.cmBase[L.k]; if (!B) B = this.cmBase[L.k] = { v: this.P[L.k], n: 0, L: L }; B.n++; }, this);
+    this.cms.push(I); this.cmSlots();
+  };
+  Engine.prototype.cmStop = function (I) {
+    for (var s in I.sl) I.sl[s].on = false;
+    I.d.lanes.forEach(function (L) { var B = this.cmBase[L.k]; if (B && --B.n <= 0) { this.P[L.k] = B.v; delete this.cmBase[L.k]; } }, this);
+    var k = this.cms.indexOf(I); if (k >= 0) this.cms.splice(k, 1);
+    this.cmSlots();
+  };
+  Engine.prototype.cmSlots = function () { var a = []; this.cms.forEach(function (I) { for (var s in I.sl) a.push(I.sl[s]); }); this.cmSl = a; };
+  // a live knob move: while a custom moment holds that knob it moves the base the moment rides on
+  Engine.prototype.setP = function (k, v) {
+    var B = this.cmBase[k]; if (B) B.v = v; else this.P[k] = v;
+    if (this.recM) this.recM.pv.push({ t: this.frame - this.recM.start, k: k, v: v });
+  };
+  Engine.prototype.cmRun = function () {
+    if (!this.cms.length) return;
+    var sum = {}, ab = {}, done = [], grew = false;
+    for (var q = 0; q < this.cms.length; q++) {
+      var I = this.cms[q], d = I.d, ev = d.ev;
+      I.pos += BL / I.str;
+      while (I.i < ev.length && ev[I.i].f <= I.pos) {
+        var e = ev[I.i++], s = d.v >= 0 ? d.v : e.s, S = I.sl[s];
+        if (!S) { S = I.sl[s] = new Slot(s); grew = true; }
+        this.gesture2(S, s, e.k, clamp(e.x + I.xo, 0, 1), e.y, clamp(e.p * I.pm, 0, 1), e.hz);
+      }
+      for (var l = 0; l < d.lanes.length; l++) {
+        var L = d.lanes[l], j = I.li[l];
+        while (j + 1 < L.pts.length && L.pts[j + 1][0] <= I.pos) j++;
+        I.li[l] = j; if (j < 0) continue;
+        if (L.abs) ab[L.k] = L.pts[j][1]; else sum[L.k] = (sum[L.k] || 0) + L.pts[j][1] * I.dm;
+      }
+      if (I.pos >= d.len && I.i >= ev.length) done.push(I);
+    }
+    if (grew) this.cmSlots();
+    for (var k in this.cmBase) { var B = this.cmBase[k]; if (k in ab) this.P[k] = ab[k]; else if (k in sum) this.P[k] = cmD(B.L, cmN(B.L, B.v) + sum[k]); }
+    for (q = 0; q < done.length; q++) this.cmStop(done[q]);
   };
   Engine.prototype.swell = function (sec) {
     var n = Math.min(60000, (sec * this.sr) | 0); if (!this.sw) this.sw = [new Float32Array(60000), new Float32Array(60000)];
@@ -1338,7 +1457,7 @@ function HECoreFactory() {
     var eg = this.eg, guard = s === 3 && P['glass.guard'] > .5;
     if (s === 3 && !guard) { eg.env = 0; }
     var hs = P[nm + '.hsend'] || 0, bw = BODY_W[s] * (P['body.amt'] || 0), hb = this.hmIn, bb = this.bdIn, kn = this.kn, kw = s === 5 ? 0 : bw, sy = this.symB, sw = s === 1 ? 1 + bw : s === 0 || s === 5 ? 0 : bw;
-    var Dd = this.dist, lc = Dd.lc, dg = Dd.dg, wd = Dd.wd, bass = Dd.bass, bc = Dd.bc, aS = Dd.aS, rg = Dd.rg, lo = st.lo, md = st.md, dpL = this.dpL, dpR = this.dpR;
+    var Dd = this.vOff[s].dist, lc = Dd.lc, dg = Dd.dg, wd = Dd.wd, bass = Dd.bass, bc = Dd.bc, aS = Dd.aS, rg = Dd.rg, lo = st.lo, md = st.md, dpL = this.dpL, dpR = this.dpR;
     if (drv > .005) {
       var pre = 1 + drv * drv * 40, mk = 1 / Math.pow(pre, .55), tc = 1 - Math.exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / this.sr);
       for (var c = 0; c < (stereo ? 2 : 1); c++) {
@@ -1395,7 +1514,7 @@ function HECoreFactory() {
   };
   Engine.prototype.process = function (oL, oR) {
     var P = this.P, sr = this.sr, i, s, C = this.C, st, tL = this.tL, tR = this.tR;
-    this.momRun(); this.loopRun(); this.contacts(); this.macros();
+    this.momRun(); this.cmRun(); this.loopRun(); this.contacts(); this.macros(); this.voiceMacros();
     this.dL.fill(0); this.dR.fill(0); this.dpL.fill(0); this.dpR.fill(0); this.rvIn.fill(0); this.spIn.fill(0); this.bdIn.fill(0); this.hmIn.fill(0);
     // water wobble: rate follows Slosh (and the amount), 0.3-3 Hz
     var wl = P['water.level'] || 0, wt = P['water.tilt'] || 0; this.wLevel += (wl - this.wLevel) * .2; this.wTilt += (wt - this.wTilt) * .2;
@@ -1403,6 +1522,7 @@ function HECoreFactory() {
     var tv = Math.abs(this.wTilt - this.wTilt0) * sr / BL; this.wTilt0 = this.wTilt; this.sl = Math.max(this.sl * Math.exp(-6.91 * BL / (1.5 * sr)), Math.min(1, tv * .35)); if (this.sl < 1e-6) this.sl = 0;
     var wet = Math.min(1, wl * 2 + (P['water.amt'] || 0)), wa = Math.min(1, (P['water.amt'] || 0) + this.sl * .8 * wet); this.water = wa;
     var t0 = this.symIn; this.symIn = this.symB; this.symB = t0; t0.fill(0); this.kn.fill(0); this.symG = (P['ebow.sym'] || 0) * .0009;
+    if (this.inAct) this.inputRun(P);
     var sp0 = 0; for (i = 0; i < BL; i += 4) { var sa0 = this.symIn[i] < 0 ? -this.symIn[i] : this.symIn[i]; if (sa0 > sp0) sp0 = sa0; } this.symPk = sp0;
     if (wa > 0) { var wr = TAU * (.3 + 2.7 * Math.max(P['water.slosh'] || 0, this.sl) + .4 * wa) * BL / sr, wph = this.wph; for (var wk = 0; wk < 16; wk++) { wph[wk] += wr * (.55 + .9 * ((wk * .618034) % 1)); wph[wk + 16] += wr * (.31 + .7 * ((wk * .414214) % 1)); this.wv[wk] = .65 * Math.sin(wph[wk]) + .35 * Math.sin(wph[wk + 16] + wk); } }
     var D = this.distance, Dd = this.dist;
@@ -1410,6 +1530,7 @@ function HECoreFactory() {
     var order = ORDER;
     for (var q = 0; q < NS; q++) {
       s = order[q]; st = this.strip[s];
+      this.useVoice(s);
       if (s === 7) this.src[7].capture(this.dpL, this.dpR, BL);
       if (s === 5 && P['body.spring'] > 0) this.knock(P['body.spring']);
       var cv = this.Cv[s], wake = s === 5 && (this.spInPk > 1e-5 || this.src[5].exc > 0) || s === 0 && this.symG > 0 && this.symPk > 1e-5, k;
@@ -1425,6 +1546,7 @@ function HECoreFactory() {
       if (raw < 2e-5 && !wake) st.quiet++; else st.quiet = 0;
       this.stripRun(s, stereo, s < 3 || s === 7);
     }
+    this.useGlobals();
     // harmonizer and body returns: their own stems, into the dry sum, and a little into the hall
     var hmL = this.stemL[NS + 2], hmR = this.stemR[NS + 2], bdL = this.stemL[NS + 3], bdR = this.stemR[NS + 3], rvI = this.rvIn;
     this.harm.render(this.hmIn, hmL, hmR, BL, P); this.body.render(this.bdIn, bdL, bdR, BL, P);
@@ -1448,6 +1570,7 @@ function HECoreFactory() {
     var uL = this.uL, uR = this.uR, sumL = this.sumL, sumR = this.sumR, w0 = this.lkw, LA = this.LA;
     uL.fill(0); uR.fill(0); sumL.fill(0); sumR.fill(0);
     for (s = 0; s < NST; s++) {
+      if (s === NS + 4 && !this.inAct) continue;
       var M = this.ms[s], c;
       for (c = 0; c < 2; c++) {
         var b = c ? this.stemR[s] : this.stemL[s], u = c ? uR : uL, sm = c ? sumR : sumL, lk = M.lk[c], tl = M.tl[c], hx = M.hx[c], hy = M.hy[c], w = w0;
@@ -1480,17 +1603,48 @@ function HECoreFactory() {
     this.lg = lg; if (mgr < this.gr) this.gr = mgr; if (pL > this.pkL) this.pkL = pL; if (pR > this.pkR) this.pkR = pR;
     this.frame += BL;
   };
+  // your own sound through the machine: dry (its own stem), plus sends into the spring tank, the wooden body, the hall,
+  // the harmonizer and the Aura's capture bus. Switching on or off fades over one block; after an off the stem runs a few
+  // more blocks (the look-ahead delay empties), then its chain state is cleared and it is skipped again.
+  Engine.prototype.inputRun = function (P) {
+    var iL = this.inL, iR = this.inR, sL = this.stemL[NS + 4], sR = this.stemR[NS + 4], i;
+    if (!this.inOn && this.inE <= 0) {
+      if (--this.inTail > 0) { sL.fill(0); sR.fill(0); this.inPk = 0; return; }
+      this.inAct = false; this.inG = -1; this.inPk = 0; sL.fill(0); sR.fill(0);
+      var M = this.ms[NS + 4]; for (var c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; M.lk[c].fill(0); }
+      return;
+    }
+    var gT = db(P['input.level']), g = this.inG < 0 ? gT : this.inG, gi = (gT - g) / BL, e = this.inE, eT = this.inOn ? 1 : 0, ei = (eT - e) / BL;
+    var sp = P['input.spr'], bd = P['input.body'] * .5, rv = P['input.rev'], hs = P['input.hsend'], au = P['input.aura'], pk = 0;
+    for (i = 0; i < BL; i++) {
+      g += gi; e += ei;
+      var l = iL[i] * e, r = iR[i] * e, m = (l + r) * .5;
+      this.spIn[i] += m * sp; this.bdIn[i] += m * bd; this.rvIn[i] += m * rv; this.hmIn[i] += m * hs; this.dpL[i] += l * au; this.dpR[i] += r * au;
+      l *= g; r *= g; sL[i] = l; sR[i] = r; this.dL[i] += l; this.dR[i] += r;
+      var a = m < 0 ? -m : m; if (a > pk) pk = a;
+    }
+    this.inG = gT; this.inE = eT; this.inPk = pk > 1e-9 ? pk : 0; if (pk > 1e-9) this.strip[5].quiet = 0;
+    if (!this.inOn) { this.inTail = Math.ceil(this.LA / BL) + 2; iL.fill(0); iR.fill(0); }
+  };
+  Engine.prototype.input = function (on) {
+    on = !!on; if (on === this.inOn) return;
+    this.inOn = on; if (on) { this.inAct = true; this.inTail = 0; }
+  };
   Engine.prototype.panic = function () {
     for (var s = 0; s < NS; s++) { this.slots[s][0].on = this.slots[s][1].on = false; for (var j = 0; j < this.inst[s].length; j++) { this.inst[s][j].reset(); this.Cv[s][j].own = null; } }
     for (j = 0; j < this.layers.length; j++) { this.layers[j].sl.on = false; if (this.layers[j].gs) this.layers[j].gs.cur = null; }
+    while (this.cms.length) this.cmStop(this.cms[0]);
     this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null }; this.mPitch = 0; this.mDread = 0; this.mAura = 0; this.duckE = 0; this.dr2 = 0; this.swN = 0; this.autoFreeze = false;
     for (var k = 0; k < 8; k++) this.rev.b[k].fill(0);
     this.body.reset(); this.harm.reset();
   };
 
   /* host: message handling, telemetry and record taps; shared by the AudioWorklet and the fallback node */
-  function Host(sr, post) {
+  // opt.retro: seconds of rolling master-mix history kept for "Save what I just played" (absent: none, as offline)
+  function Host(sr, post, opt) {
     this.e = new Engine(sr); this.post = post; this.tc = 0; this.rec = null; this.CH = 4096;
+    var rs = opt && opt.retro > 0 ? Math.ceil(opt.retro * sr / BL) * BL : 0;
+    this.rt = rs ? { N: rs, L: new Float32Array(rs), R: new Float32Array(rs), w: 0, fill: 0, job: null } : null;
     // every message carries a sequence number q; the host reports the frame it was applied at, so the main thread can
     // write a performance log that replays bit-exactly offline
     this.ap = new Float64Array(1024); this.apn = 0; this.pool = []; this.tsp = new Float32Array(NS); this.tly = []; this.tjp = new Float32Array(81 * 3 + 3);
@@ -1501,14 +1655,46 @@ function HECoreFactory() {
     if (m.q !== undefined) { this.ap[this.apn++] = m.q; this.ap[this.apn++] = e.frame; if (this.apn >= 1022) { this.post({ t: 'ap', ap: this.ap.slice(0, this.apn) }); this.apn = 0; } }
     switch (m.t) {
       case 'init': for (var k in m.params) e.P[k] = m.params[k]; if (m.seed) e.rng = new Rng(m.seed); this.ready = true; break;
-      case 'p': e.P[m.k] = m.v; break;
+      case 'p': e.setP(m.k, m.v); break;
+      case 'cmdef': e.cmDefine(String(m.id), m.def); break;
+      case 'cmrec':
+        if (m.on) { if (!e.recM) { var p0 = {}; for (var pk in e.P) p0[pk] = e.cmBase[pk] ? e.cmBase[pk].v : e.P[pk]; e.recM = { start: e.frame, ev: [], pv: [], p0: p0 }; } }
+        else if (e.recM) {
+          var RM = e.recM, held = {}; e.recM = null;
+          RM.ev.forEach(function (x) { if (x.k === 'd') held[x.s] = 1; else if (x.k === 'u') delete held[x.s]; });
+          for (var hs in held) RM.ev.push({ t: e.frame - RM.start, s: +hs, k: 'u', x: 0, y: 0, p: 0, hz: 0 });
+          var used = {}; RM.pv.forEach(function (x) { used[x.k] = RM.p0[x.k]; });
+          this.post({ t: 'cmrec', sr: e.sr, dur: e.frame - RM.start, ev: RM.ev, pv: RM.pv, p0: used });
+        }
+        break;
       case 'g': e.user(m.s, m.k, m.x, m.y, m.p, m.hz); break;
       case 'moment': e.moment(m.id, m.on, m.arg); break;
       case 'loop': e.loopCmd(m); break;
       case 'panic': e.panic(); break;
       case 'rec': if (m.on) { this.rec = { stems: !!m.stems, fill: 0, mix: this.buf(), st: null, pk: new Float32Array(this.e.NST) }; if (m.stems) this.newStems(); } else { this.flush(true); this.rec = null; } break;
       case 'ret': this.ret(m.b); break;
+      case 'input': e.input(m.on); if (!m.on) { e.inL.fill(0); e.inR.fill(0); } break;
+      case 'retro': this.retro(m.sec || 60); break;
+      // the looper's layers at this frame, for the main thread's log checkpoints ("Save what I just played")
+      case 'lsnap': this.post({ t: 'lsnap', q: m.q, f: e.frame, snap: e.snap() }); break;
     }
+  };
+  // "Save what I just played": copy the last sec seconds (whole blocks) of the master mix out of the ring, a slice per
+  // block so the audio thread never stalls; the ring is half a second longer than the longest grab, so nothing is
+  // overwritten meanwhile. start/end are engine frames: the performance log knows exactly what was played between them.
+  Host.prototype.retro = function (sec) {
+    var T = this.rt, e = this.e; if (!T) { this.post({ t: 'retro', n: 0, total: 0, start: e.frame, end: e.frame, last: true, d: new Float32Array(0) }); return; }
+    if (T.job) return;
+    var n = Math.min(T.fill, Math.round(sec * e.sr), T.N - Math.round(.5 * e.sr)); n = Math.max(0, Math.floor(n / BL) * BL);
+    T.job = { n: n, pos: 0, start: (T.w - n + T.N) % T.N, end: e.frame };
+    if (n <= 0) { this.post({ t: 'retro', n: 0, total: 0, start: e.frame, end: e.frame, last: true, d: new Float32Array(0) }); T.job = null; }
+  };
+  Host.prototype.retroStep = function () {
+    var T = this.rt, J = T.job, k = Math.min(16384, J.n - J.pos), d = new Float32Array(k * 2), j = (J.start + J.pos) % T.N;
+    for (var i = 0; i < k; i++) { d[i * 2] = T.L[j]; d[i * 2 + 1] = T.R[j]; if (++j === T.N) j = 0; }
+    J.pos += k; var last = J.pos >= J.n;
+    this.post({ t: 'retro', n: k, total: J.n, start: J.end - J.n, end: J.end, last: last, d: d }, [d.buffer]);
+    if (last) T.job = null;
   };
   // recorder buffers come back from the main thread after use, so a long take does not allocate on the audio thread
   Host.prototype.buf = function () { return this.pool.length ? this.pool.pop() : new Float32Array(this.CH * 2); };
@@ -1521,11 +1707,15 @@ function HECoreFactory() {
     this.post(msg, tr);
     if (!last) { r.mix = this.buf(); r.fill = 0; if (r.stems) this.newStems(); }
   };
-  Host.prototype.block = function (L, R, off) {
+  // IL, IR: optional audio input for this block (same offset), read only while the input is on
+  Host.prototype.block = function (L, R, off, IL, IR) {
     var e = this.e, oL = this.oL, oR = this.oR, i;
     if (!this.ready) { for (i = 0; i < BL; i++) { L[off + i] = 0; R[off + i] = 0; } return; }
+    if (e.inOn && IL) { var iR = IR || IL; for (i = 0; i < BL; i++) { e.inL[i] = IL[off + i]; e.inR[i] = iR[off + i]; } }
     e.process(oL, oR);
     for (i = 0; i < BL; i++) { L[off + i] = oL[i]; R[off + i] = oR[i]; }
+    var T = this.rt;
+    if (T) { var w = T.w, N = T.N; for (i = 0; i < BL; i++) { T.L[w] = oL[i]; T.R[w] = oR[i]; if (++w === N) w = 0; } T.w = w; if (T.fill < N) T.fill = Math.min(N, T.fill + BL); if (T.job) this.retroStep(); }
     var r = this.rec;
     if (r) {
       var f = r.fill * 2;
@@ -1544,7 +1734,7 @@ function HECoreFactory() {
       for (i = 0; i < e.layers.length; i++) { var Ly = e.layers[i]; ly.push({ id: Ly.id, src: Ly.src, len: Ly.len / e.sr, pos: Ly.pos / Ly.len, mute: Ly.mute, ghost: Ly.ghost }); }
       if (this.wantJunk) { jp = this.tjp.subarray(0, jn * 3 + 3); for (i = 0; i < jn; i++) { jp[i * 3] = J.px[i]; jp[i * 3 + 1] = J.py[i]; jp[i * 3 + 2] = J.r[i]; } jp[jn * 3] = J.mx; jp[jn * 3 + 1] = J.my; jp[jn * 3 + 2] = J.mon ? 1 : 0; }
       var ap = null; if (this.apn) { ap = this.ap.slice(0, this.apn); this.apn = 0; }
-      this.post({ t: 'tm', ap: ap, f: e.frame, ly: ly, pk: [e.pkL, e.pkR], gr: e.gr, sp: sp, rec: !!e.recL, lane: e.lane ? e.lane.len / e.sr : 0, nu: e.undo.length, nr: e.redo.length, mom: { riser: M.riser ? M.riser.t / M.riser.dur : -1, stinger: !!M.stinger, drone: !!M.drone, heart: !!M.heart, walls: !!M.walls }, jp: jp, frz: e.src[7].frozen, bp: e.body.pk, hp: e.harm.pk });
+      this.post({ t: 'tm', ap: ap, f: e.frame, inp: e.inPk, uc: e.ucnt || 0, ly: ly, pk: [e.pkL, e.pkR], gr: e.gr, sp: sp, rec: !!e.recL, lane: e.lane ? e.lane.len / e.sr : 0, nu: e.undo.length, nr: e.redo.length, mom: { riser: M.riser ? M.riser.t / M.riser.dur : -1, stinger: !!M.stinger, drone: !!M.drone, heart: !!M.heart, walls: !!M.walls, c: e.cms.map(function (I) { return [I.id, Math.min(1, I.pos / Math.max(1, I.d.len))]; }), cr: e.recM ? (e.frame - e.recM.start) / e.sr : -1 }, jp: jp, frz: e.src[7].frozen, bp: e.body.pk, hp: e.harm.pk });
       e.body.pk = 0; e.harm.pk = 0;
       e.pkL = 0; e.pkR = 0; e.gr = 1;
     }

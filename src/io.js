@@ -4,9 +4,26 @@
 function HEIOFactory() {
   'use strict';
   if (typeof HECoreFactory === 'undefined' && typeof require === 'function') { var M_ = require('./engine.js'); globalThis.HECoreFactory = M_.HECoreFactory; globalThis.HE_PARAMS = M_.HE_PARAMS; globalThis.HE_SOURCES = M_.HE_SOURCES; }
-  var VERSION = '1.1.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
+  var VERSION = '1.4.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
   var SRC_IDS = ['ebow', 'hurdy', 'bowedMetal', 'glass', 'struckMetal', 'springTank', 'junkTray', 'aura', 'superball'];
   var SCHEMAS = {"performance":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/performance/1","title":"Horror Engine performance file (v1)","type":"object","required":["format","version","engine","seed","sampleRate","durationFrames","preset","lanes"],"additionalProperties":false,"properties":{"format":{"const":"horror-engine.performance"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"meta":{"type":"object","properties":{"title":{"type":"string"},"author":{"type":"string","default":"Garyck Arntzen"},"created":{"type":"string","format":"date-time"},"notes":{"type":"string"}}},"engine":{"type":"object","required":["version","codeHash"],"properties":{"version":{"type":"string"},"codeHash":{"type":"string","description":"FNV-1a hash of the shared DSP code text, e.g. fnv1a:1a2b3c4d"}}},"seed":{"$ref":"#/$defs/uint32"},"sampleRate":{"const":48000,"description":"Canonical frame rate. All frame values are at this rate."},"durationFrames":{"type":"integer","minimum":0},"tempo":{"type":["number","null"],"minimum":40,"maximum":200},"preset":{"oneOf":[{"$ref":"#/$defs/presetRef"},{"$ref":"#/$defs/inlinePreset"}]},"macros":{"$ref":"#/$defs/macroState"},"automation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}},"lanes":{"type":"array","maxItems":3,"items":{"type":"object","required":["id","lengthFrames","layers"],"properties":{"id":{"enum":["A","B","C"]},"lengthFrames":{"type":"integer","minimum":4800},"startFrame":{"type":"integer","minimum":0,"default":0},"gainDb":{"type":"number","minimum":-60,"maximum":6},"printed":{"type":"boolean","default":false},"reversed":{"type":"boolean","default":false},"layers":{"type":"array","items":{"$ref":"#/$defs/layer"}}}}},"ghosts":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/ghost"}},"moments":{"type":"array","items":{"$ref":"#/$defs/moment"}},"liveEvents":{"type":"array","items":{"$ref":"#/$defs/event"}},"markers":{"type":"array","items":{"type":"object","required":["frame","label"],"properties":{"frame":{"type":"integer","minimum":0},"label":{"type":"string"}}}}},"$defs":{"uint32":{"type":"integer","minimum":0,"maximum":4294967295},"unit":{"type":"number","minimum":0,"maximum":1},"sourceId":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"presetRef":{"type":"object","required":["ref"],"properties":{"ref":{"type":"string"},"hash":{"type":"string"}}},"macroState":{"type":"object","properties":{"dread":{"$ref":"#/$defs/unit"},"distance":{"$ref":"#/$defs/unit"},"material":{"$ref":"#/$defs/unit"},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"event":{"type":"object","required":["f","type"],"properties":{"f":{"type":"integer","minimum":0,"description":"Frame. Absolute for liveEvents; lane-relative for layer events."},"type":{"enum":["down","move","up","note","noteOff","param","trigger"]},"c":{"type":"integer","minimum":0,"maximum":15,"description":"contact / voice id"},"src":{"$ref":"#/$defs/sourceId"},"x":{"$ref":"#/$defs/unit"},"y":{"$ref":"#/$defs/unit"},"p":{"$ref":"#/$defs/unit"},"note":{"type":"integer","minimum":0,"maximum":127},"vel":{"$ref":"#/$defs/unit"},"param":{"type":"string","description":"registry path, e.g. glass.judder or fx.reverb.size"},"value":{"type":["number","boolean","string"]}}},"paramLane":{"type":"object","required":["param","points"],"properties":{"param":{"type":"string"},"interp":{"enum":["step","linear","exp"],"default":"linear"},"points":{"type":"array","items":{"type":"array","prefixItems":[{"type":"integer","minimum":0},{"type":"number"}],"minItems":2,"maxItems":2}}}},"layer":{"type":"object","required":["id","source","events"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"stack":{"type":"array","maxItems":2,"items":{"$ref":"#/$defs/sourceId"}},"createdCycle":{"type":"integer","minimum":0},"gainDb":{"type":"number","minimum":-60,"maximum":6,"default":0},"pan":{"type":"number","minimum":-1,"maximum":1,"default":0},"mute":{"type":"boolean","default":false},"solo":{"type":"boolean","default":false},"sends":{"type":"object","properties":{"spring":{"$ref":"#/$defs/unit"},"reverb":{"$ref":"#/$defs/unit"},"aura":{"$ref":"#/$defs/unit"}}},"inserts":{"type":"object","properties":{"distortion":{"type":"object"},"pitchShift":{"type":"object"}}},"variation":{"type":"object","properties":{"timingMs":{"type":"number","minimum":0,"maximum":40},"value":{"type":"number","minimum":0,"maximum":0.1},"drop":{"type":"number","minimum":0,"maximum":0.3},"pitchCents":{"type":"number","minimum":0,"maximum":30}}},"sourceParams":{"type":"object","description":"per-layer overrides of source parameters (registry paths without the source prefix)"},"paramLanes":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/paramLane"}},"events":{"type":"array","items":{"$ref":"#/$defs/event"}}}},"ghost":{"type":"object","required":["id","fromLayer","seed","startFrame"],"properties":{"id":{"type":"string"},"fromLayer":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"seed":{"$ref":"#/$defs/uint32"},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"fadeOutFrames":{"type":"integer","minimum":0},"freedom":{"$ref":"#/$defs/unit"},"intensity":{"$ref":"#/$defs/unit"},"human":{"$ref":"#/$defs/unit"},"listen":{"$ref":"#/$defs/unit"},"gainDb":{"type":"number","minimum":-60,"maximum":6},"pan":{"type":"number","minimum":-1,"maximum":1},"paramAutomation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}}}},"moment":{"type":"object","required":["type","startFrame","seed"],"properties":{"type":{"enum":["riser","stinger","droneBed","heartbeat","inTheWalls"]},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"seed":{"$ref":"#/$defs/uint32"},"params":{"type":"object"}}},"inlinePreset":{"type":"object","required":["format"],"properties":{"format":{"const":"horror-engine.preset"}},"description":"An inline preset. Validate it fully against PRESET_SCHEMA as well."}}},"preset":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/preset/1","title":"Horror Engine preset (v1)","type":"object","required":["format","version","name","macros","sources"],"properties":{"format":{"const":"horror-engine.preset"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"name":{"type":"string","minLength":1},"author":{"type":"string"},"seed":{"type":"integer","minimum":0,"maximum":4294967295},"tags":{"type":"array","items":{"type":"string"}},"macros":{"type":"object","properties":{"dread":{"type":"number","minimum":0,"maximum":1},"distance":{"type":"number","minimum":0,"maximum":1},"material":{"type":"number","minimum":0,"maximum":1},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"sources":{"type":"object","propertyNames":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"}},"description":"Source parameter values keyed by registry name (validated against src/core/params.ts at load time)"}},"fx":{"type":"object","description":"fx.* registry values: distortion, pitchShift, spring, reverb, reverse, master"},"mixer":{"type":"object"}}}};
+
+  // custom moments (v1.2): a captured phrase. Times are seconds from the first touch or knob move.
+  // ev: [t, voice 0-8, "d"|"m"|"u", x, y, pressure, hz]; lanes: knob/macro moves, relative (normalised knob travel) or absolute.
+  var CM = {"type":"object","required":["id","name","len","ev"],"properties":{"id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"voice":{"type":"integer","minimum":-1,"maximum":8,"description":"-1 = as played; 0-8 plays every gesture on that voice"},"len":{"type":"number","minimum":0,"maximum":600},"created":{"type":"string"},
+    "ev":{"type":"array","items":{"type":"array","minItems":3,"maxItems":7,"prefixItems":[{"type":"number","minimum":0},{"type":"integer","minimum":0,"maximum":8},{"enum":["d","m","u"]},{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number"}]}},
+    "lanes":{"type":"array","items":{"type":"object","required":["k","min","max","pts"],"properties":{"k":{"type":"string"},"min":{"type":"number"},"max":{"type":"number"},"exp":{"type":"boolean"},"int":{"type":"boolean"},"abs":{"type":"boolean","description":"true: values are absolute; false: offsets in normalised knob travel (-1..1) added to the live knob"},"pts":{"type":"array","items":{"type":"array","minItems":2,"maxItems":2,"prefixItems":[{"type":"number","minimum":0},{"type":"number"}]}}}}}}};
+  SCHEMAS.performance.properties.customMoments = { type: 'array', items: CM };
+  SCHEMAS.preset.properties.customMoments = { type: 'array', items: CM };
+  // v1.4: "Save what I just played" windows and audio-input takes are described in meta (older files stay valid)
+  var MP = SCHEMAS.performance.properties.meta.properties;
+  MP.usedInput = { type: 'boolean', description: 'the take ran your own sound (mic, line or a file) through the machine; Render cannot replay that audio' };
+  MP.retro = { type: 'object', required: ['startFrame', 'endFrame'], description: 'Save what I just played: the window, in the native frames of the session',
+    properties: { startFrame: { type: 'integer', minimum: 0 }, endFrame: { type: 'integer', minimum: 0 }, offsetFrames: { type: 'integer', minimum: 0, description: 'session frame of this file\'s frame 0' },
+      exact: { type: 'boolean', description: 'true: replays the whole session, so the stems sum to the saved mix; false: starts from a checkpoint with pre-roll (the stems are a fresh performance of the same moves, not sample-identical)' },
+      prerollSec: { type: 'number', minimum: 0 } } };
+  MP.nativeSampleRate = { type: 'number', minimum: 8000 };
+  SCHEMAS.moment = { "$id": "horror-engine/moment/1", "title": "Horror Engine custom moment file (.horror-moment.json)", "type": "object", "required": ["format", "version"], "properties": { "format": { "const": "horror-engine.moment" }, "version": { "type": "string", "pattern": "^1\\.\\d+\\.\\d+$" }, "moment": CM, "moments": { "type": "array", "items": CM } } };
 
   /* ---------- small JSON Schema validator (only the keywords the design doc uses) ---------- */
   function typeOf(v) { return v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v === 'number' ? (Math.floor(v) === v && isFinite(v) ? 'integer' : 'number') : typeof v; }
@@ -52,16 +69,18 @@ function HEIOFactory() {
   function codeHash() { return 'fnv1a:' + fnv1a(HECoreFactory.toString()); }
 
   /* ---------- presets ---------- */
-  function toPreset(P, name) {
+  function toPreset(P, name, cms) {
     var src = {}, fx = { reverb: {}, master: {} };
     HE_PARAMS.forEach(function (p) {
       var dot = p.id.indexOf('.'), g = p.id.slice(0, dot), k = p.id.slice(dot + 1), si = HE_SOURCES.indexOf(g);
       if (si >= 0) { var o = src[SRC_IDS[si]] || (src[SRC_IDS[si]] = { enabled: true }); o[k] = P[p.id]; if (k === 'mute') o.enabled = P[p.id] < .5; }
       else if (g === 'rev') fx.reverb[k] = P[p.id]; else if (g === 'master') fx.master[k] = P[p.id];
     });
-    return { format: 'horror-engine.preset', version: VERSION, name: name || 'Untitled', author: AUTHOR, seed: 1337,
+    var out = { format: 'horror-engine.preset', version: VERSION, name: name || 'Untitled', author: AUTHOR, seed: 1337,
       macros: { dread: P['macro.dread'], distance: P['macro.distance'], material: P['macro.material'], pitchStretch: P['macro.pitch'] },
-      sources: src, fx: fx, params: P, credit: CREDIT };
+      sources: src, fx: fx, params: P, customMoments: cms && cms.length ? cms : undefined, credit: CREDIT };
+    if (!out.customMoments) delete out.customMoments;   // absent, not undefined, so the in-memory object validates like the saved file
+    return out;
   }
   // flat registry values from a preset (ours carries "params"; a spec-style preset is mapped by key name)
   function fromPreset(j) {
@@ -78,45 +97,116 @@ function HEIOFactory() {
   // log: [{fn: native frame, m: message}] exactly as the audio host applied them (from frame 0, starting with init)
   function toPerformance(o) {
     var sr = o.sr, k = 48000 / sr, init = o.log[0] && o.log[0].m.t === 'init' ? o.log[0].m : { params: o.params, seed: 1337 };
-    var ev = [], rs = null, re = null, end = o.endFrame;
+    var ev = [], rs = null, re = null, end = o.endFrame, usedIn = false;
     o.log.forEach(function (x, i) {
       var m = x.m, e = { f: Math.round(x.fn * k), fn: x.fn };
       if (m.t === 'init') return;
       if (m.t === 'g') { e.type = m.k === 'd' ? 'down' : m.k === 'm' ? 'move' : 'up'; e.c = m.s; e.src = SRC_IDS[m.s]; if (m.k !== 'u') { e.x = m.x; e.y = m.y; e.p = m.p; if (m.hz) e.hz = m.hz; } }
       else if (m.t === 'p') { e.type = 'param'; e.param = m.k; e.value = m.v; }
+      else if (m.t === 'cmdef') { e.type = 'trigger'; e.value = 'moment.define'; e.id = String(m.id); e.def = m.def || null; }
       else if (m.t === 'moment') { e.type = 'trigger'; e.value = 'moment.' + m.id; e.on = !!m.on; if (m.arg !== undefined) e.arg = m.arg; }
       else if (m.t === 'loop') { e.type = 'trigger'; e.value = 'loop.' + m.a; if (m.id !== undefined) e.id = m.id; if (m.v !== undefined) e.v = m.v; if (m.free) e.free = true; if (m.snap) e.snap = m.snap; }
       else if (m.t === 'panic') { e.type = 'trigger'; e.value = 'panic'; }
       else if (m.t === 'rec') { e.type = 'trigger'; e.value = m.on ? 'record.start' : 'record.stop'; if (m.stems) e.stems = true; if (m.on) rs = x.fn; else re = x.fn; }
+      else if (m.t === 'input') { e.type = 'trigger'; e.value = m.on ? 'input.on' : 'input.off'; if (m.on) usedIn = true; }
       else return;
       ev.push(e);
     });
     if (end === undefined) end = re !== null ? re : (o.log.length ? o.log[o.log.length - 1].fn : 0);
     var markers = []; if (rs !== null) markers.push({ frame: Math.round(rs * k), label: 'record start' }); if (re !== null) markers.push({ frame: Math.round(re * k), label: 'record stop' });
     var P = init.params;
-    return {
+    var out = {
       format: 'horror-engine.performance', version: VERSION,
       meta: { title: o.title || 'Untitled', author: AUTHOR, created: new Date().toISOString(), notes: 'Re-render with Horror Engine (the Render button). Frames in "f" are at 48 kHz; "fn" are native frames at meta.nativeSampleRate and are used for bit-exact re-renders at that rate. Design and credit: ' + AUTHOR + ' (' + CREDIT + ').', nativeSampleRate: sr, nativeEndFrame: end, recordStartFrame: rs, recordStopFrame: re, looper: o.looper || null },
       engine: { version: VERSION, codeHash: codeHash() },
       seed: init.seed >>> 0 || 1337, sampleRate: 48000, durationFrames: Math.round(end * k), tempo: null,
       preset: toPreset(P, (o.title || 'Untitled') + ' (start state)'),
       macros: { dread: P['macro.dread'], distance: P['macro.distance'], material: P['macro.material'], pitchStretch: P['macro.pitch'] },
-      lanes: [], liveEvents: ev, markers: markers
+      lanes: [], liveEvents: ev, markers: markers, customMoments: o.customMoments && o.customMoments.length ? o.customMoments : undefined
     };
+    if (!out.customMoments) delete out.customMoments;
+    if (usedIn) { out.meta.usedInput = true; out.meta.notes += ' Your own sound (input) was playing in this take; Render cannot replay it, so a re-render has the machine only.'; }
+    if (o.retro) out.meta.retro = o.retro;
+    return out;
+  }
+  /* ---------- "Save what I just played" ----------
+     log: [{fn, m}] whose first entry is the init at the start of what it covers (the session start, or a checkpoint
+     state written as an init plus the messages that rebuild it); start/end: the window in the same native frames.
+     The file's frame 0 is log[0].fn; the record window is inserted, and any record start/stop in the log is dropped.
+     Render it (with Stems on) to get the window's stems. */
+  function windowPerf(log, start, end, sr, title, opt) {
+    opt = opt || {}; var o0 = log[0].fn, L = [];
+    log.forEach(function (x) { if (x.m.t !== 'rec' && x.fn <= end) L.push({ fn: x.fn - o0, m: x.m }); });
+    var s0 = Math.max(0, start - o0), k = 1; while (k < L.length && L[k].fn <= s0) k++;
+    L.splice(k, 0, { fn: s0, m: { t: 'rec', on: true } }); L.push({ fn: end - o0, m: { t: 'rec', on: false } });
+    return toPerformance({ log: L, sr: sr, title: title, endFrame: end - o0, customMoments: opt.customMoments,
+      retro: { startFrame: start, endFrame: end, offsetFrames: o0, exact: !!opt.exact, prerollSec: Math.round((s0 / sr) * 100) / 100 } });
+  }
+  /* the state a log has built up to entry n (exclusive), from its init: every knob, the custom moment definitions, the
+     moments that run until switched off, gestures still held, and whether a loop layer is being recorded. checkpoint()
+     turns it back into messages; the looper's layers come from the audio thread's own snapshot. */
+  function foldState(log, n) {
+    var st = { P: {}, cms: {}, cmOrder: [], moms: {}, held: {}, loopRec: false, seed: 1337 };
+    for (var i = 0; i < n && i < log.length; i++) {
+      var m = log[i].m;
+      if (m.t === 'init') { st.P = {}; for (var k in m.params) st.P[k] = m.params[k]; st.seed = m.seed || 1337; }
+      else if (m.t === 'p') st.P[m.k] = m.v;
+      else if (m.t === 'cmdef') { var id = String(m.id); if (m.def) { if (!(id in st.cms)) st.cmOrder.push(id); st.cms[id] = m.def; } else { delete st.cms[id]; st.cmOrder = st.cmOrder.filter(function (x) { return x !== id; }); } }
+      else if (m.t === 'moment') { if (m.id === 'drone' || m.id === 'heart' || m.id === 'walls') { if (m.on) st.moms[m.id] = 1; else delete st.moms[m.id]; } }
+      else if (m.t === 'g') { if (m.k === 'u') delete st.held[m.s]; else if (m.k === 'd' || st.held[m.s]) st.held[m.s] = { x: m.x, y: m.y, p: m.p, hz: m.hz || 0 }; }
+      else if (m.t === 'panic') { st.moms = {}; st.held = {}; }
+      else if (m.t === 'loop') { if (m.a === 'rec') st.loopRec = !st.loopRec; else if (m.a === 'stop') st.loopRec = false; }
+    }
+    return st;
+  }
+  function checkpoint(st, fn, snap) {
+    var out = [{ fn: fn, m: { t: 'init', params: JSON.parse(JSON.stringify(st.P)), seed: st.seed } }];
+    st.cmOrder.forEach(function (id) { out.push({ fn: fn, m: { t: 'cmdef', id: id, def: st.cms[id] } }); });
+    if (snap && (snap.lane || (snap.L && snap.L.length))) out.push({ fn: fn, m: { t: 'loop', a: 'load', snap: snap } });
+    Object.keys(st.moms).forEach(function (id) { out.push({ fn: fn, m: { t: 'moment', id: id, on: true } }); });
+    if (st.loopRec) out.push({ fn: fn, m: { t: 'loop', a: 'rec' } });
+    Object.keys(st.held).forEach(function (s) { var h = st.held[s]; out.push({ fn: fn, m: { t: 'g', s: +s, k: 'd', x: h.x, y: h.y, p: h.p, hz: h.hz } }); });
+    return out;
+  }
+
+  /* ---------- share by link: the settings that differ from the defaults, in the address ----------
+     #s=<base64url of {"v":1,"p":{id:value},"n":preset name,"sel":voice}>. Values keep 6 significant digits; the
+     session-only input settings are left out. Decoding clamps every value to its range and ignores unknown ids. */
+  function utf8(t) { if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(t); var b = unescape(encodeURIComponent(t)), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  function unutf8(u) { if (typeof TextDecoder !== 'undefined') return new TextDecoder().decode(u); var t = ''; for (var i = 0; i < u.length; i++) t += String.fromCharCode(u[i]); return decodeURIComponent(escape(t)); }
+  function b64u(bytes) { var t = ''; for (var i = 0; i < bytes.length; i++) t += String.fromCharCode(bytes[i]); return (typeof btoa !== 'undefined' ? btoa(t) : Buffer.from(t, 'binary').toString('base64')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function unb64u(s) { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var t = typeof atob !== 'undefined' ? atob(s) : Buffer.from(s, 'base64').toString('binary'), u = new Uint8Array(t.length); for (var i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u; }
+  var SHARE_SKIP = /^input\./;
+  function encodeShare(P, extra) {
+    var d = {}; HE_PARAMS.forEach(function (p) { var v = P[p.id]; if (SHARE_SKIP.test(p.id) || typeof v !== 'number' || !isFinite(v)) return; var q = p.int || p.en || p.sw ? Math.round(v) : +v.toPrecision(6); if (q !== p.def) d[p.id] = q; });
+    var o = { v: 1, p: d }; if (extra) for (var k in extra) if (extra[k] !== undefined && extra[k] !== '') o[k] = extra[k];
+    return b64u(utf8(JSON.stringify(o)));
+  }
+  function decodeShare(s) {
+    try {
+      var u = unb64u(s), t = unutf8(u), o = JSON.parse(t);
+      if (!o || o.v !== 1 || !o.p || typeof o.p !== 'object') return null;
+      var P = {}; HE_PARAMS.forEach(function (p) { if (SHARE_SKIP.test(p.id)) return; var v = o.p[p.id]; P[p.id] = typeof v === 'number' && isFinite(v) ? Math.min(p.max, Math.max(p.min, p.int || p.en || p.sw ? Math.round(v) : v)) : p.def; });
+      return { params: P, n: typeof o.n === 'string' ? o.n.slice(0, 60) : '', sel: typeof o.sel === 'number' && o.sel >= 0 && o.sel < 9 ? o.sel | 0 : -1 };
+    } catch (e) { return null; }
   }
   // back to host messages; native frames when rendering at the take's own rate, otherwise scaled from 48 kHz
   function toLog(perf, sr) {
     var nat = perf.meta && perf.meta.nativeSampleRate, useN = nat === sr, k = sr / 48000, log = [{ fn: 0, m: { t: 'init', params: fromPreset(perf.preset), seed: perf.seed } }];
+    // custom moments the take knew about; any definitions logged during the take replace these at their own frames
+    (perf.customMoments || []).forEach(function (c) { if (c && c.id) log.push({ fn: 0, m: { t: 'cmdef', id: String(c.id), def: c } }); });
     (perf.liveEvents || []).forEach(function (e) {
       var f = useN && typeof e.fn === 'number' ? e.fn : Math.round(e.f * k), m = null, v = String(e.value);
       if (e.type === 'down' || e.type === 'move' || e.type === 'up') { var s = typeof e.c === 'number' ? e.c : SRC_IDS.indexOf(e.src); m = { t: 'g', s: s, k: e.type[0], x: e.x, y: e.y, p: e.p, hz: e.hz || 0 }; if (e.type === 'up') m = { t: 'g', s: s, k: 'u' }; }
       else if (e.type === 'param') m = { t: 'p', k: e.param, v: e.value };
       else if (e.type === 'trigger') {
-        if (v.indexOf('moment.') === 0) m = { t: 'moment', id: v.slice(7), on: e.on !== false, arg: e.arg };
+        if (v === 'moment.define') m = { t: 'cmdef', id: String(e.id), def: e.def || null };
+        else if (v.indexOf('moment.') === 0) m = { t: 'moment', id: v.slice(7), on: e.on !== false, arg: e.arg };
         else if (v.indexOf('loop.') === 0) { m = { t: 'loop', a: v.slice(5) }; if (e.id !== undefined) m.id = e.id; if (e.v !== undefined) m.v = e.v; if (e.free) m.free = true; if (e.snap) m.snap = e.snap; }
         else if (v === 'panic') m = { t: 'panic' };
         else if (v === 'record.start') m = { t: 'rec', on: true, stems: !!e.stems };
         else if (v === 'record.stop') m = { t: 'rec', on: false };
+        // input.on / input.off: the input audio itself is not in the file, so a render leaves the input off
       }
       if (m) log.push({ fn: f, m: m });
     });
@@ -127,7 +217,8 @@ function HEIOFactory() {
     if (!j || typeof j !== 'object') return ['not a JSON object'];
     if (j.format === 'horror-engine.performance') { var e = validate(SCHEMAS.performance, j); if (j.preset && j.preset.format) e = e.concat(validate(SCHEMAS.preset, j.preset).map(function (x) { return x.replace('$', '$.preset'); })); return e; }
     if (j.format === 'horror-engine.preset') return validate(SCHEMAS.preset, j);
-    return ['format must be horror-engine.performance or horror-engine.preset'];
+    if (j.format === 'horror-engine.moment') return validate(SCHEMAS.moment, j);
+    return ['format must be horror-engine.performance, horror-engine.preset or horror-engine.moment'];
   }
 
   /* ---------- offline render: the same Host, fed the same messages at the same frames ---------- */
@@ -212,7 +303,7 @@ function HEIOFactory() {
     return parts.concat(cd, [e.buffer]);
   }
   // a whole take as zip files: mix, stems, performance JSON
-  var STEM_NAMES = ['ebow', 'hurdy', 'bowed', 'glass', 'struck', 'spring', 'junk', 'aura', 'superball', 'hall_return', 'reverse_swell', 'harmonizer_return', 'body'];
+  var STEM_NAMES = ['ebow', 'hurdy', 'bowed', 'glass', 'struck', 'spring', 'junk', 'aura', 'superball', 'hall_return', 'reverse_swell', 'harmonizer_return', 'body', 'input'];
   function takeFiles(res, title, bits, perf) {
     var files = [], clips = 0;
     files.push({ name: title + '_mix.wav', data: wav(res.mix, res.sr, bits, title + ' mix', 'seed=' + (perf ? perf.seed : 1337) + ', master mix (limited)') });
@@ -225,9 +316,37 @@ function HEIOFactory() {
     files.clips = clips; return files;
   }
 
-  return { VERSION: VERSION, AUTHOR: AUTHOR, CREDIT: CREDIT, SRC_IDS: SRC_IDS, SCHEMAS: SCHEMAS, STEM_NAMES: STEM_NAMES, validate: validate, check: check, fnv1a: fnv1a, codeHash: codeHash,
+  // the host's capture (frames from arm) to a custom moment: trim the silence before the first touch or knob move, drop
+  // strokes that began before arming, and turn knob moves into lanes (continuous knobs relative to where they were when
+  // recording began, in normalised knob travel; switches and choices absolute). Returns null when nothing was played.
+  function momentFromCapture(m, id, name) {
+    var DEF = {}; HE_PARAMS.forEach(function (p) { DEF[p.id] = p; });
+    var nrm = function (d, v) { return d.exp ? Math.log(v / d.min) / Math.log(d.max / d.min) : (v - d.min) / (d.max - d.min); };
+    var sr = m.sr, open = {}, ev = [];
+    m.ev.forEach(function (e) { if (e.k === 'd') open[e.s] = 1; else if (!open[e.s]) return; else if (e.k === 'u') delete open[e.s]; ev.push(e); });
+    var pv = m.pv.filter(function (x) { return DEF[x.k] && typeof x.v === 'number' && typeof m.p0[x.k] === 'number'; });
+    if (!ev.length && !pv.length) return null;
+    var off = Infinity; if (ev.length) off = ev[0].t; if (pv.length) off = Math.min(off, pv[0].t);
+    var r4 = function (x) { return Math.round(x * 1e4) / 1e4; }, sec = function (f) { return r4(Math.max(0, f - off) / sr); };
+    var out = ev.map(function (e) { return e.k === 'u' ? [sec(e.t), e.s, 'u'] : [sec(e.t), e.s, e.k, r4(e.x), r4(e.y), r4(e.p), r4(e.hz || 0)]; });
+    var by = {}, keys = []; pv.forEach(function (x) { if (!by[x.k]) { by[x.k] = []; keys.push(x.k); } by[x.k].push(x); });
+    var lanes = [];
+    keys.forEach(function (k) {
+      var d = DEF[k], abs = !!(d.sw || d.en || d.int), v0 = m.p0[k], pts = [], last = null;
+      by[k].forEach(function (x) { var v = abs ? x.v : r4(nrm(d, x.v) - nrm(d, v0)); if (v === last) return; last = v; pts.push([sec(x.t), v]); });
+      if (!abs && pts.every(function (q) { return Math.abs(q[1]) < 1e-4; })) return;
+      lanes.push({ k: k, min: d.min, max: d.max, exp: !!d.exp, int: !!d.int, abs: abs, pts: pts });
+    });
+    return { id: id, name: name || 'Moment', voice: -1, len: sec(m.dur), created: new Date().toISOString(), ev: out, lanes: lanes };
+  }
+  // a custom-moment file: one moment, or several
+  function toMomentFile(cms) { var o = { format: 'horror-engine.moment', version: VERSION, author: AUTHOR, credit: CREDIT }; if (cms.length === 1) o.moment = cms[0]; else o.moments = cms; return o; }
+  function fromMomentFile(j) { return j.moments ? j.moments.slice() : j.moment ? [j.moment] : []; }
+
+  return { VERSION: VERSION, toMomentFile: toMomentFile, momentFromCapture: momentFromCapture, fromMomentFile: fromMomentFile, AUTHOR: AUTHOR, CREDIT: CREDIT, SRC_IDS: SRC_IDS, SCHEMAS: SCHEMAS, STEM_NAMES: STEM_NAMES, validate: validate, check: check, fnv1a: fnv1a, codeHash: codeHash,
     toPreset: toPreset, fromPreset: fromPreset, toPerformance: toPerformance, toLog: toLog, renderJob: renderJob, renderSync: renderSync, collect: collect,
-    wav: wav, crc32: crc32, zipParts: zipParts, takeFiles: takeFiles };
+    wav: wav, crc32: crc32, zipParts: zipParts, takeFiles: takeFiles,
+    windowPerf: windowPerf, foldState: foldState, checkpoint: checkpoint, encodeShare: encodeShare, decodeShare: decodeShare };
 }
 var HE_IO = HEIOFactory();
 if (typeof module !== 'undefined') module.exports = HE_IO;

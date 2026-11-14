@@ -1049,8 +1049,8 @@ window.HEAltar = (function () {
       if (gOn) { if (wAct) { var na = Math.atan2(-(A.q.y - .5), A.q.x - .5), dA = na - st.fang; dA -= TAU * Math.round(dA / TAU); st.fdir = dA !== 0 ? (dA > 0 ? 1 : -1) : st.fdir; st.fang += dA; } else st.fang += st.fdir * dt * TAU * (4 + 4 * Math.min(1, lv[3] * 1.2)) / 6 * mo; }
       var gI = gOn ? Math.min(1, .35 + lv[3] * 2.5 + (wAct ? .3 : 0)) : 0; st.gI += (gI - st.gI) * Math.min(1, dt * 10); glint.visible = st.gI > .02;
       if (glint.visible) { glint.position.set(bowl.position.x + Math.cos(st.fang) * RIMX, RIMY, bowl.position.z + Math.sin(st.fang) * RIMZ); glint.material.opacity = st.gI; var gsz = .02 + .022 * st.gI; glint.scale.set(gsz, gsz, 1); }
-      // (11) the hide flexes under the eye
-      head.position.y = .056 - ((Pp['moan.surface'] | 0) === 1 ? lv[8] * .002 * Math.sin(t * 60) : 0) * mo;
+      // (11) the hide flexes under the eye, and gives under a knock (the heartbeat, a thump)
+      head.position.y = .056 - (((Pp['moan.surface'] | 0) === 1 ? lv[8] * .002 * Math.sin(t * 60) : 0) + ((Pp['struck.object'] | 0) === 4 ? Math.min(1, lv[4]) * .0035 : 0)) * mo;
       // (12) the drawer slides out; what is in it rides along
       drawer.position.z = V.open * .2; junkZ.userData.off = V.open < .2; junkZ.scale.y = Math.max(.1, V.open); junkZ.position.copy(P(1.01, -V.open * .1, .8));
       var J = L.junk, n = J ? Math.min(60, (J.length - 3) / 3) : Math.min(60, Pp['junk.count'] | 0), src = J || rest;

@@ -7,21 +7,48 @@
   window.__heMachine = 'v2';
   var H = window.__he, $ = function (id) { return document.getElementById(id); };
   var host = $('machine'), padEl = $('pad'), V = null, tab = 'surface', TAU = Math.PI * 2;
+  // while the Machine warms behind the Surface, its heavier steps wait for a gap in the playing (a hand held on the
+  // Surface, or moved there in the last 0.4 s), so shader compiles do not freeze a gesture mid-stroke
+  var handDown = false, handT = -1e9;
+  function handBusy() { return tab !== 'machine' && (handDown || performance.now() - handT < 400); }
   var PR0 = 1;   // the renderer's base pixel ratio (before the cap and the dynamic scale)
   // the loading screen (#mload in body.html): stays over the view until the scene is built, every shader warmed, the
   // textures in at full size and the frames running smoothly again, then fades. Progress and status come from the real
   // load phases. All motion is CSS transform/opacity, so it keeps moving while the main thread is busy.
   var LMSG = /[?&]skin=altar/.test(location.search) || (!/[?&]skin=/.test(location.search) && (function () { try { return localStorage.getItem('horror-engine.skin') === 'altar'; } catch (e) { return false; } })())
     ? ['Laying out the altar', 'Carving the sigils', 'Letting the blood dry', 'Stringing the gut', 'Lighting the candles'] : ['Assembling the machine', 'Warming the valves', 'Staining the wood', 'Tuning the strings', 'Letting the lamp settle'];
+  // surface first: the page opens on the playable Surface and the Machine builds behind it ("warming up" beside the tabs);
+  // once it is ready the tab says so, and a visitor who has not touched the Surface (and did not pick it last time) is
+  // switched over quietly. The sound is not touched: the view change only swaps what is on screen.
+  var WU = (function () {
+    var tb = $('tabMachine'), el = document.createElement('span'), t0 = performance.now(), last = -1;
+    el.id = 'mwarm'; el.className = 'mwarm'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<i><b></b></i><span>Machine warming up</span>'; el.hidden = true;
+    var tn = $('tabNote'); if (tn && tn.parentNode) tn.parentNode.insertBefore(el, tn);
+    var bar = el.querySelector('b'), txt = el.querySelector('span');
+    el.addEventListener('click', function () { if (el.classList.contains('ready')) tb.click(); });
+    return { el: el, t0: t0,
+      start: function () { el.hidden = false; el.classList.remove('ready', 'err'); el.title = 'The 3D Machine is loading in the background. Keep playing; open The Machine whenever you like.'; },
+      prog: function (p) { var q = Math.round(p * 100); if (q === last) return; last = q; bar.style.transform = 'scaleX(' + p.toFixed(3) + ')'; if (!el.classList.contains('ready') && !el.classList.contains('err')) txt.textContent = 'Machine warming up ' + q + '%'; },
+      done: function (err) { if (err) return; el.classList.add('ready'); txt.textContent = 'Machine ready'; el.title = 'The 3D Machine is ready: click here or The Machine'; tb.classList.add('ready');
+        setTimeout(function () { tb.classList.remove('ready'); }, 4000); },
+      fail: function () { el.classList.add('err'); txt.textContent = 'Machine unavailable'; el.title = 'The 3D Machine could not load in this browser. The Surface plays everything.'; },
+      hide: function () { el.hidden = true; } };
+  })();
   var LD = (function () {
     var el = $('mload'), on = !!el, t0 = performance.now(), loaded = 0, smooth = 0, last = 0, avg = 0, tm = null, shown = -1;
-    if (!el) return { on: false, tick: function () { }, fail: function () { }, hide: function () { } };
+    if (!el) return { on: false, gone: true, tick: function () { }, fail: function () { }, hide: function () { } };
     ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'wheel', 'touchstart', 'contextmenu', 'click'].forEach(function (ev) { el.addEventListener(ev, function (e) { if (LD.on) { e.stopPropagation(); if (ev === 'wheel' || ev === 'contextmenu') e.preventDefault(); } }, { passive: false }); });
     var bar = $('mlP'), st = $('mlS'), nn = $('mlN');
-    function set(p, msg, n) { p = Math.max(shown, Math.min(1, p)); if (p !== shown) { shown = p; bar.style.transform = 'scaleX(' + p.toFixed(3) + ')'; } if (st.textContent !== msg) st.textContent = msg; if (nn.textContent !== (n || '')) nn.textContent = n || ''; }
-    function hide() { if (!LD.on) return; LD.on = false; clearInterval(tm); set(1, st.textContent, nn.textContent); el.classList.add('out'); el.setAttribute('aria-busy', 'false');
-      setTimeout(function () { el.hidden = true; }, 1000); }
-    function fail(msg) { if (!LD.on) return; el.classList.add('err'); set(shown, msg, ''); setTimeout(hide, 6000); }
+    function set(p, msg, n) { p = Math.max(shown, Math.min(1, p)); if (p !== shown) { shown = p; bar.style.transform = 'scaleX(' + p.toFixed(3) + ')'; WU.prog(p); } if (st.textContent !== msg) st.textContent = msg; if (nn.textContent !== (n || '')) nn.textContent = n || ''; }
+    // the curtain fades only while you are watching the Machine; when it finished loading behind the Surface it goes at
+    // once, so switching over (by hand or automatically) never shows it half-faded over a ready machine
+    function hide() { if (!LD.on) return; LD.on = false; clearInterval(tm); set(1, st.textContent, nn.textContent); el.setAttribute('aria-busy', 'false');
+      var seen = tab === 'machine' && !host.classList.contains('bg') && !host.hidden;
+      if (seen) { el.classList.add('out'); setTimeout(function () { el.hidden = true; LD.gone = true; }, 1000); }
+      else { el.classList.add('out'); el.hidden = true; LD.gone = true; }
+      WU.done(LD.err); }
+    function fail(msg) { if (!LD.on) return; LD.err = msg; el.classList.add('err'); set(shown, msg, ''); WU.fail(); setTimeout(hide, 6000); }
     // smoothness after the load: count frames that are on time against this machine's own frame rate, so a long task right
     // after the textures (the post-load stall) is still behind the curtain when it lifts
     function frameTick(now) { if (!LD.on) return; if (last) { var d = now - last; avg = avg ? avg * .9 + Math.min(d, 250) * .1 : d; smooth = d < Math.max(50, avg * 2.2) ? smooth + 1 : 0; } last = now; requestAnimationFrame(frameTick); }
@@ -39,7 +66,7 @@
       set(.95 + .05 * Math.min(1, smooth / 20), LMSG[4], hiT ? 'textures ' + hiT + '/' + hiT : '');
       if ((smooth >= 20 && now - loaded > 300) || now - loaded > 8000) hide();
     }
-    var LD = { on: on, tick: tick, fail: fail, hide: hide };
+    var LD = { on: on, gone: !on, tick: tick, fail: fail, hide: hide };
     tm = setInterval(tick, 100); requestAnimationFrame(frameTick); el.setAttribute('aria-busy', 'true');
     window.addEventListener('error', function (e) { if (LD.on) fail('The machine hit an error while loading: ' + (e.message || 'unknown') + '. Showing what is there.'); });
     window.addEventListener('unhandledrejection', function (e) { if (LD.on) fail('The machine hit an error while loading. Showing what is there.'); });
@@ -699,6 +726,7 @@
       var gs = [], gv = []; sc.traverse(function (o) { if (!o.isMesh && !o.isLine && !o.isPoints && !o.isLight && !o.isCamera && o !== sc) { gs.push(o); gv.push(o.visible); } });
       var openG = function (on) { gs.forEach(function (o, j) { o.visible = on ? true : gv[j]; }); };
       var step = function () {
+        if (handBusy()) return setTimeout(step, 120);
         if (i >= ms.length) { ms.forEach(function (o, j) { o.visible = vis[j]; }); openG(false); V.compileMs = Math.round(performance.now() - bw0); return post && post.compileAsync ? post.compileAsync().then(waitHalf) : waitHalf(); }
         // then draw a dozen at a time (buffer and texture uploads, shadow programs, driver finalising), each in its own task
         openG(true); ms.forEach(function (o, j) { o.visible = j >= i && j < i + B; });
@@ -711,6 +739,7 @@
       // them all in parallel off the main thread; without it each batch below compiles its own, as before
       var PAR = !!(r.compileAsync && (r.getContext().getExtension('KHR_parallel_shader_compile') || /[?&]warmall=1/.test(location.search)));
       var all0 = function () {
+        if (handBusy()) return setTimeout(all0, 120);
         if (!PAR) return step();
         openG(true); ms.forEach(function (o) { o.visible = true; });
         var cp = null; try { tgt(); cp = r.compileAsync ? r.compileAsync(sc, cam) : null; } catch (e) { cp = null; } r.setRenderTarget(null);
@@ -725,7 +754,7 @@
         }
         V.halfWaitMs = Math.round(performance.now() - waitT0);
         V.halfQ.splice(0).forEach(function (d) { if (d) swapTex(d.key, texSet(T, d.key, d)); });
-        setTimeout(function () { var s0 = performance.now(); try { if (post) post.render(sc, cam, 0); else r.render(sc, cam); } catch (e) { }
+        setTimeout(function fin() { if (handBusy()) return setTimeout(fin, 120); var s0 = performance.now(); try { if (post) post.render(sc, cam, 0); else r.render(sc, cam); } catch (e) { }
           fc.forEach(function (o) { o.frustumCulled = true; }); r.setRenderTarget(null); V.warmSteps.push(Math.round(performance.now() - s0));
           V.warmMs = Math.round(performance.now() - bw0); V.readyMs = Math.round(performance.now() - bt0); V.ready = true; if (r.shadowMap.enabled && !/[?&]shcache=0/.test(location.search)) V.shc = shadowCache(); }, 0);
       };
@@ -761,7 +790,7 @@
 
   function tools() {
     var bar = document.createElement('div'); bar.className = 'mtools'; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Machine view');
-    [['left', 'Left', 'F6'], ['centre', 'Middle', 'F7'], ['right', 'Right', 'F8'], ['panel', 'Panel', 'F9'], ['player', 'Whole', 'Home']].forEach(function (q) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = q[1]; b.title = 'Camera: ' + q[1] + ' (' + q[2] + ')'; b.addEventListener('click', function () { station(q[0]); }); bar.appendChild(b); });
+    [['left', 'Left', 'Shift+F6'], ['centre', 'Middle', 'Shift+F7'], ['right', 'Right', 'Shift+F8'], ['panel', 'Panel', 'Shift+F9'], ['player', 'Whole', 'Home']].forEach(function (q) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = q[1]; b.title = 'Camera: ' + q[1] + ' (' + q[2] + ')'; b.addEventListener('click', function () { station(q[0]); }); bar.appendChild(b); });
     var fo = document.createElement('button'); fo.className = 'btn sm'; fo.setAttribute('aria-pressed', V.follow ? 'true' : 'false'); fo.textContent = 'Follow'; fo.title = 'After you let go of a part, the camera eases to it (K)'; fo.addEventListener('click', function () { V.follow = !V.follow; fo.setAttribute('aria-pressed', V.follow ? 'true' : 'false'); LS('follow', V.follow ? '1' : '0'); if (!V.follow) station('player'); }); bar.appendChild(fo); V.foBtn = fo;
     var qb = document.createElement('button'); qb.className = 'btn sm qual'; qb.textContent = QUAL === 'low' ? 'Low detail' : 'High detail'; qb.title = 'Low detail: no shadows, lighter textures, lower resolution (reloads the view)'; qb.addEventListener('click', function () { LS('quality', QUAL === 'low' ? 'high' : 'low'); location.reload(); }); bar.appendChild(qb);
     if (window.HEAltar) { var sb = document.createElement('button'); sb.className = 'btn sm skin'; sb.textContent = SK ? 'Skin: Altar' : 'Skin: Workshop'; sb.title = 'Switch between the walnut workshop machine and the altar: the same instruments in other clothes (reloads the view)'; sb.addEventListener('click', function () { LS('skin', SK ? 'workshop' : 'altar'); var u = new URL(location.href); u.searchParams.delete('skin'); location.href = u.toString(); }); bar.appendChild(sb); }
@@ -950,7 +979,8 @@
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     document.addEventListener('keydown', function (e) {
       if (tab !== 'machine' || e.ctrlKey || e.metaKey || /^(INPUT|SELECT|TEXTAREA)$/.test((e.target && e.target.tagName) || '')) return;
-      var m = { F6: 'left', F7: 'centre', F8: 'right', F9: 'panel', Home: 'player' }[e.key];
+      // camera stations on Shift+F6-F9 (plain F6-F12 fire your own Moments)
+      var m = e.key === 'Home' ? 'player' : e.shiftKey ? { F6: 'left', F7: 'centre', F8: 'right', F9: 'panel' }[e.key] : null;
       if (m) { e.preventDefault(); station(m); return; }
       var k = e.key.toLowerCase();
       if (k === 'k' && V.foBtn) V.foBtn.click();
@@ -1119,11 +1149,7 @@
     // the full-resolution textures arrive from the workers: one map goes to the GPU per frame, and a set is swapped in once
     // all three of its maps are there (same shader, so nothing recompiles)
     // paced: at most one map every third frame, and only after a frame that was on time, so the GPU never queues them up
-    V.upGap = (V.upGap || 0) + 1;
-    if (!V.hiCur && V.hiQ.length) { var hd = V.hiQ.shift(); V.hiCur = { key: hd.key, set: texSet(T, hd.key, hd), step: 0 }; }
-    if (V.hiCur && (LD.on || (V.upGap >= 3 && (dt < .02 || V.upGap >= 20)))) { V.upGap = 0; var u0 = performance.now(), hc = V.hiCur; R.initTexture(hc.set[TEXP[hc.step]]); hc.step++;
-      if (hc.step === 3) { swapTex(hc.key, hc.set); V.hiCur = null; V.hiDone++; if (V.hiDone === V.hiTotal) V.hiMs = Math.round(performance.now() - V.t0); }
-      var um = +(performance.now() - u0).toFixed(2); V.upMs.push(um); V.upLog.push([hc.key, TEXP[hc.step - 1], hc.set.w + 'x' + hc.set.h, um]); }
+    texPump(dt);
     var busy = A || V.orbit || cmv > 1e-4 || V.live || V.drips.length || Math.abs(V.tiltV) > .001 || lvMax(lv) > .005 || V.bodyLv > .005 || V.flick < .995 || V.bench || V.hiCur || V.hiQ.length;
     V.quiet = busy ? 0 : V.quiet + dt;
     // idle (nothing touched for 4 s, everything quiet, camera settled): draw at most ~50 times a second; only candles and
@@ -1147,6 +1173,21 @@
     if (V.bench) V.bench.tick(now);
   }
 
+  function texPump(dt) {
+    var R = V.r, T = V.T;
+    V.upGap = (V.upGap || 0) + 1;
+    if (!V.hiCur && V.hiQ.length) { var hd = V.hiQ.shift(); V.hiCur = { key: hd.key, set: texSet(T, hd.key, hd), step: 0 }; }
+    if (V.hiCur && (LD.on || (V.upGap >= 3 && (dt < .02 || V.upGap >= 20)))) { V.upGap = 0; var u0 = performance.now(), hc = V.hiCur; R.initTexture(hc.set[TEXP[hc.step]]); hc.step++;
+      if (hc.step === 3) { swapTex(hc.key, hc.set); V.hiCur = null; V.hiDone++; if (V.hiDone === V.hiTotal) V.hiMs = Math.round(performance.now() - V.t0); }
+      var um = +(performance.now() - u0).toFixed(2); V.upMs.push(um); V.upLog.push([hc.key, TEXP[hc.step - 1], hc.set.w + 'x' + hc.set.h, um]); }
+  }
+  // behind the Surface: no drawing, only the full-resolution textures going up to the GPU (the loader then lifts as usual)
+  function bgTick(now) {
+    if (!V || tab === 'machine' || !bgOn()) return; requestAnimationFrame(bgTick);
+    var dt = Math.min(.05, (now - (V.bgLast || now)) / 1000 || .016); V.bgLast = now;
+    if (V.ready && !handBusy()) texPump(dt);
+  }
+  function bgOn() { return !!V && (LD.on || V.hiCur || V.hiQ.length); }
   var RM = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   var TEXP = ['map', 'roughnessMap', 'normalMap'];
   /* ---------- the shadow maps, redrawn only when something in them changed ----------
@@ -1235,22 +1276,47 @@
   function show(which, quiet) {
     if (which === 'machine' && !V && SK && !(window.HE_CRYPT && window.HE_CRYPT.models)) { whenCryptReady(function () { show(which, quiet); }); return; }
     if (which === 'machine' && !V && !build()) { $('tabNote').textContent = window.THREE ? 'This browser could not start WebGL.' : 'The 3D view needs vendor/three.min.js next to index.html.'; which = 'surface'; LD.hide(); }
-    if (which !== 'machine' && !V) LD.hide();
+    if (which !== 'machine' && !V) { LD.hide(); WU.hide(); }
     tab = which; var m = which === 'machine';
-    host.hidden = !m; padEl.hidden = m; ['hn', 'hp', 'hx', 'hy'].forEach(function (id) { $(id).hidden = m; });
+    if (m && WU.el.classList.contains('ready')) WU.hide();
+    var bg = !m && bgOn(); host.classList.toggle('bg', bg); if (bg) host.setAttribute('aria-hidden', 'true'); else host.removeAttribute('aria-hidden');
+    host.hidden = !m && !bg; padEl.hidden = m; ['hn', 'hp', 'hx', 'hy'].forEach(function (id) { $(id).hidden = m; });
     $('tabMachine').setAttribute('aria-selected', m ? 'true' : 'false'); $('tabSurface').setAttribute('aria-selected', m ? 'false' : 'true');
     document.body.classList.toggle('machine-on', m);
     H.machine(m); window.dispatchEvent(new Event('resize'));
     if (!quiet) LS('tab', which);
-    if (m) { size(); V.last = performance.now(); requestAnimationFrame(frame); }
+    if (m) { size(); V.last = performance.now(); requestAnimationFrame(frame); host.classList.remove('fadein'); void host.offsetWidth; host.classList.add('fadein'); }
+    else if (bg) { V.bgLast = 0; requestAnimationFrame(bgTick); }
   }
+  // build the Machine behind the Surface: laid out but invisible, so the renderer, shaders and textures warm at a real size
+  var touched = false;
+  function warmBehind() {
+    if (V || tab === 'machine') return;
+    host.classList.add('bg'); host.setAttribute('aria-hidden', 'true'); host.hidden = false; WU.start();
+    var ok = false; try { ok = build(); } catch (e) { host.classList.remove('bg'); host.hidden = true; LD.fail('The machine could not be built: ' + e.message); return; }
+    if (!ok) { host.classList.remove('bg'); host.hidden = true; $('tabNote').textContent = 'This browser could not start WebGL.'; WU.fail(); LD.hide(); return; }
+    if (tab !== 'machine') { V.bgLast = 0; requestAnimationFrame(bgTick); }
+  }
+  // ready: hide the background host, and switch over only if nobody has started playing the Surface and it was not their pick
+  WU.ready = function () {
+    if (tab === 'machine' || !V) return;
+    host.classList.remove('bg'); host.removeAttribute('aria-hidden'); host.hidden = true;
+    if (!touched && LS('tab') !== 'surface' && !document.hidden) show('machine', true);
+  };
+  var wuDone = WU.done; WU.done = function (err) { wuDone(err); if (!err) setTimeout(WU.ready, 0); else if (tab !== 'machine' && V) { host.classList.remove('bg'); host.hidden = true; } };
+  // any hand on the Surface (or a note key) means they are playing it: no automatic switch then
+  ['pointerdown'].forEach(function (ev) { padEl.addEventListener(ev, function () { touched = true; }); });
+  padEl.addEventListener('pointerdown', function () { handDown = true; handT = performance.now(); });
+  padEl.addEventListener('pointermove', function () { if (handDown) handT = performance.now(); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (ev) { padEl.addEventListener(ev, function () { handDown = false; handT = performance.now(); }); });
+  window.addEventListener('keydown', function (e) { if (!e.ctrlKey && !e.metaKey && e.key && e.key.length === 1) touched = true; });
   $('tabMachine').addEventListener('click', function () { show('machine'); });
   $('tabSurface').addEventListener('click', function () { show('surface'); });
-  var want = LS('tab') || 'machine';
-  // build after the loading screen has painted (one frame), so it is up while the scene is assembled
+  var want = (Q.get('view') || '').toLowerCase();
   if (want === 'machine' && window.THREE) requestAnimationFrame(function () { setTimeout(function () { if (tab !== 'machine') try { show('machine', true); } catch (e) { LD.fail('The machine could not be built: ' + e.message); } }, 0); });
-  else if (want === 'machine') { LD.fail('The 3D view needs vendor/three.min.js next to index.html.'); show('surface', true); }
-  else LD.hide();
+  // the Surface paints and plays first; the Machine is built a moment later, behind it
+  else if (window.THREE) requestAnimationFrame(function () { setTimeout(warmBehind, 120); });
+  else { LD.hide(); WU.hide(); $('tabNote').textContent = 'The 3D view needs vendor/three.min.js next to index.html.'; }
   // for the browser tests: each zone's projected centre and whether the pointer there picks that zone
   window.__he.view = function () {
     var z = []; if (V) { var b = host.getBoundingClientRect(); V.zones.forEach(function (m, i) {
@@ -1271,7 +1337,7 @@
   window.__he.wtest = function (wi, i, u, v) { var q = window.__he.zpt(i, u, v); cast({ clientX: q[0], clientY: q[1] }); var g = hits(true); return g ? [g.object.userData.part, wandSurf(V.wands[wi], g.object, g.point), g.point.distanceTo(V.wands[wi].base).toFixed(2)] : null; };
   window.__he.v2 = function () { return V; };
   // drawing, with the full-resolution textures in (or given up on): what screenshot harnesses wait for
-  window.__he.ready = function () { return !!(V && V.ready && !V.hiCur && (V.hiDone >= V.hiTotal || V.hiFail)) && !LD.on; };
+  window.__he.ready = function () { return !!(V && V.ready && !V.hiCur && (V.hiDone >= V.hiTotal || V.hiFail)) && !LD.on && !!LD.gone; };
   window.__he.loader = function () { return LD.on; };
   // film mode for the offline intro video: f = { dt, L: {tm, pk, junk}, P: {param: value}, cam: {tx..d}, flick, draw }
   window.__he.filmFrame = function (f) {
