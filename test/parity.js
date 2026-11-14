@@ -1,9 +1,9 @@
 // C++ port vs the seance-ui JavaScript engine: render the same message logs through both and compare.
-// node test/parity.js <seance/src> <he_render>
+// node test/parity.js <seance/src> <he_render>          (SR=44100 / 48000 / 96000 to pick the rate; run all three)
 'use strict';
 var path = require('path'), fs = require('fs'), cp = require('child_process'), os = require('os');
 var src = process.argv[2], bin = process.argv[3];
-var M = require(path.join(src, 'engine.js')), core = M.HECoreFactory(), SR = 48000, BL = 128;
+var M = require(path.join(src, 'engine.js')), core = M.HECoreFactory(), SR = +(process.env.SR || 48000), BL = 128;
 var ui = fs.readFileSync(path.join(src, 'ui.js'), 'utf8'), PRESETS = eval('(' + /var PRESETS = (\{[\s\S]*?\n  \});/.exec(ui)[1] + ')');
 var IDX = {}; M.HE_PARAMS.forEach(function (p, i) { IDX[p.id] = i; });
 var MOM = { riser: 0, stinger: 1, drone: 2, heart: 3, walls: 4 };

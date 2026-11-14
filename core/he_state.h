@@ -53,6 +53,8 @@ struct Contact { bool on = false; double x = .5, y = .5, p = .6, spd = 0, hz = 0
 
 // what every voice may read from the engine
 struct EState {
+  // the sample rate must be set before Engine's members (voices, hall) are built: they read it in their constructors
+  EState() = default; explicit EState(double s) : sr(s) {}
   double sr = 48000; Rng rng{1337}; double P[NPARAM] = {};
   double dread = .2, distance = .15, material = .5, pitchSt = 0, pitchMul = 1, mPitch = 0, mDread = 0, mAura = 0;
   double instab = 1, detune = 2, rough = 0, subAmt = 0, driveOff = 0, matT = 1, matSlope = 1, matStretch = 0, matBright = .7;

@@ -67,7 +67,7 @@ class Engine : public EState {
   double spInPk = 0;
 
   explicit Engine(double sampleRate, uint32_t seed)
-      : ebow0(this), hurdy(this), bowed0(this), glass0(this), struck(this), spring(this), junk(this), aura(this), moan(this), rev(this), body(this), harm(this) {
+      : EState(sampleRate), ebow0(this), hurdy(this), bowed0(this), glass0(this), struck(this), spring(this), junk(this), aura(this), moan(this), rev(this), body(this), harm(this) {
     sr = sampleRate; rng = Rng(seed ? seed : 1337);
     src0 = &ebow0;
     Voice_* first[NS] = {&ebow0, &hurdy, &bowed0, &glass0, &struck, nullptr, &junk, &aura, &moan};
