@@ -29,6 +29,8 @@
   };
   var MOMENTS = [['riser', 'Riser', '8 s climb, hard cut'], ['stinger', 'Stinger', 'Swell into a hit'], ['drone', 'Drone bed', 'Wheel, string, freeze'], ['heart', 'Heartbeat', 'Follows Dread'], ['walls', 'In the walls', 'Skitters, scrapes and drips']];
 
+  // HK: optional hooks for an alternative layout (the Séance plugin view sets them; the main page leaves them empty)
+  var HK = {};
   var sel = 0, ctx = null, node = null, host = null, analyser = null, scope = new Float32Array(1024), started = false, ctl = {}, octave = 0, basePr = .6;
   var core = null;
 
@@ -59,6 +61,7 @@
     if (ctl[id]) ctl[id](v);
     if (!quiet) { clearTimeout(saveT); saveT = setTimeout(function () { try { localStorage.setItem('horror-engine.params', JSON.stringify(P)); } catch (e) { } }, 500); }
     if (id.slice(-5) === '.mute' || id.slice(-5) === '.hold' || isOffId(id)) { rackState(); offBtn(); }
+    if (HK.param) HK.param(id, v);
   }
 
   /* ---------- undo / redo: one timeline for knob, switch and preset changes and the looper ----------
@@ -101,15 +104,19 @@
      A learned CC (0-119, per channel) moves that control and wins over the fixed CC 20-23 macros and the CC 24-43
      moments on that channel. Channel 16 notes stay the moment keys: learning takes CCs only. One CC drives one control. */
   var MMAP = {}, learnId = null, learnT = 0, ctlEls = {};
+  // a parameter can have more than one control on screen (a knob in two panels): ctl[id] calls every one of them
+  var ctlL = {};
+  function addCtl(id, fn, el) { (ctlL[id] || (ctlL[id] = [])).push({ f: fn, el: el }); ctl[id] = function (v) { var L = ctlL[id]; for (var i = 0; i < L.length; i++) L[i].f(v); }; }
+  function pruneCtl() { for (var id in ctlL) { ctlL[id] = ctlL[id].filter(function (x) { return x.el.isConnected; }); if (!ctlL[id].length) { delete ctlL[id]; delete ctl[id]; } } }
   function mmLoad() { try { var o = JSON.parse(localStorage.getItem('horror-engine.midimap') || '{}'); for (var k in o) { var a = /^cc:(\d+):(\d+)$/.exec(k); if (a && +a[1] < 16 && +a[2] <= 119 && DEF[o[k]]) MMAP[k] = o[k]; } } catch (e) { MMAP = {}; } }
   function mmSave() { try { localStorage.setItem('horror-engine.midimap', JSON.stringify(MMAP)); } catch (e) { } }
   function mmKeyOf(id) { for (var k in MMAP) if (MMAP[k] === id) return k; return null; }
   function mmDesc(k) { var a = k.split(':'); return 'CC ' + a[2] + ', channel ' + (+a[1] + 1); }
   function mmMark() {
     for (var id in ctlEls) {
-      var el = ctlEls[id]; if (!el.isConnected) { delete ctlEls[id]; continue; }
-      var k = mmKeyOf(id); el.classList.toggle('mmapped', !!k); el.classList.toggle('mlearn', learnId === id);
-      if (k) el.setAttribute('data-midi', mmDesc(k)); else el.removeAttribute('data-midi');
+      ctlEls[id] = ctlEls[id].filter(function (el) { return el.isConnected; }); if (!ctlEls[id].length) { delete ctlEls[id]; continue; }
+      var k = mmKeyOf(id);
+      ctlEls[id].forEach(function (el) { el.classList.toggle('mmapped', !!k); el.classList.toggle('mlearn', learnId === id); if (k) el.setAttribute('data-midi', mmDesc(k)); else el.removeAttribute('data-midi'); });
     }
   }
   function mmValue(id, v7) { var d = DEF[id], n = v7 / 127; if (d.en) return Math.round(n * (d.en.length - 1)); if (d.sw) return n >= .5 ? 1 : 0; return denorm(d, n); }
@@ -147,7 +154,7 @@
   document.addEventListener('pointerdown', function (e) { if (cmenu && !cmenu.contains(e.target)) menuClose(); }, true);
   window.addEventListener('blur', menuClose); window.addEventListener('resize', menuClose); document.addEventListener('scroll', menuClose, true);
   function learnable(el, id) {
-    ctlEls[id] = el;
+    (ctlEls[id] || (ctlEls[id] = [])).push(el);
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); menuOpen(id, e.clientX, e.clientY); });
     var lp = 0, lx = 0, ly = 0;
     el.addEventListener('pointerdown', function (e) { if (e.pointerType !== 'touch') return; lx = e.clientX; ly = e.clientY; clearTimeout(lp); lp = setTimeout(function () { try { el.releasePointerCapture(e.pointerId); } catch (x) { } if (hGrp) hEnd(); menuOpen(id, lx, ly); }, 650); });
@@ -185,7 +192,7 @@
     var dial = el.firstChild, out = el.children[2];
     function show(v) { var n = norm(d, v); dial.style.setProperty('--v', n.toFixed(4)); out.textContent = fmt(d, v); el.setAttribute('aria-valuenow', v.toFixed(3)); el.setAttribute('aria-valuetext', fmt(d, v)); }
     el.setAttribute('aria-valuemin', d.min); el.setAttribute('aria-valuemax', d.max);
-    ctl[id] = show; show(P[id]);
+    addCtl(id, show, el); show(P[id]);
     var sy = 0, sn = 0;
     el.addEventListener('pointerdown', function (e) { if (e.button > 0) return; el.setPointerCapture(e.pointerId); sy = e.clientY; sn = norm(d, P[id]); el.focus(); e.preventDefault(); hBegin(d.label); });
     el.addEventListener('pointermove', function (e) { if (!el.hasPointerCapture(e.pointerId)) return; var n = sn + (sy - e.clientY) / (e.shiftKey ? 900 : 170); setParam(id, denorm(d, n)); });
@@ -203,7 +210,7 @@
   }
   function toggle(id, label, cls) {
     var b = document.createElement('button'); b.className = 'btn sm ' + (cls || ''); b.textContent = label || DEF[id].label;
-    ctl[id] = function (v) { b.setAttribute('aria-pressed', v > .5 ? 'true' : 'false'); }; ctl[id](P[id]);
+    var sh = function (v) { b.setAttribute('aria-pressed', v > .5 ? 'true' : 'false'); }; addCtl(id, sh, b); sh(P[id]);
     b.addEventListener('click', function () { setParam(id, P[id] > .5 ? 0 : 1); });
     learnable(b, id);
     return b;
@@ -212,7 +219,7 @@
     var d = DEF[id], f = document.createElement('div'); f.className = 'seg'; f.setAttribute('role', 'group'); f.setAttribute('aria-label', d.label);
     var l = document.createElement('span'); l.className = 'seglab'; l.textContent = d.label; f.appendChild(l);
     var bs = d.en.map(function (name, i) { var b = document.createElement('button'); b.className = 'btn sm'; b.textContent = name; b.addEventListener('click', function () { setParam(id, i); }); f.appendChild(b); return b; });
-    ctl[id] = function (v) { bs.forEach(function (b, i) { b.setAttribute('aria-pressed', i === (v | 0) ? 'true' : 'false'); }); }; ctl[id](P[id]);
+    var sh = function (v) { bs.forEach(function (b, i) { b.setAttribute('aria-pressed', i === (v | 0) ? 'true' : 'false'); }); }; addCtl(id, sh, f); sh(P[id]);
     learnable(f, id);
     return f;
   }
@@ -274,13 +281,13 @@
       var dot = b.querySelector('.odot'); if (dot) dot.title = dirty ? 'This instrument has a tune, material or distance offset' : '';
     });
     offBtn();
+    if (HK.rack) HK.rack();
   }
   function select(i) {
     if (i !== sel) releaseAll();
     sel = i; var k = HE_SOURCES[i], s = SRC[i], v = $('voice');
     rackEls.forEach(function (b, j) { b.setAttribute('aria-current', j === i ? 'true' : 'false'); });
-    HE_PARAMS.forEach(function (p) { if (HE_SOURCES.indexOf(p.id.split('.')[0]) >= 0) delete ctl[p.id]; });
-    v.textContent = '';
+    v.textContent = ''; pruneCtl();
     var h2 = document.createElement('h2'); h2.innerHTML = '<span></span>'; h2.firstChild.textContent = 'Voice ' + ROMAN[i]; v.appendChild(h2);
     var head = document.createElement('div'); head.className = 'voicehead';
     var h3 = document.createElement('h3'); h3.textContent = s.n; var p = document.createElement('p'); p.textContent = s.d;
@@ -315,6 +322,7 @@
     $('hn').textContent = s.h; $('hx').textContent = s.x ? '↔ ' + s.x : ''; $('hy').textContent = s.y ? '↕ ' + s.y : '';
     junkFlag();
     rackState();
+    if (HK.select) HK.select(i);
   }
 
   /* ---------- audio ---------- */
@@ -378,6 +386,7 @@
     if (recShown !== !!m.rec) { recShown = !!m.rec; $('loopRec').setAttribute('aria-pressed', m.rec ? 'true' : 'false'); $('loopRec').innerHTML = m.rec ? '&#9632; Close the loop' : '&#9679; Loop a gesture'; }
     MOMENTS.forEach(function (mo) { var b = $('mo_' + mo[0]), v = m.mom[mo[0]], on = mo[0] === 'riser' ? v >= 0 : !!v; att(b, 'aria-pressed', on ? 'true' : 'false'); if (mo[0] === 'riser') sty(b.lastChild, 'width', (v >= 0 ? (v * 100).toFixed(1) : 0) + '%'); });
     cmTele(m.mom);
+    if (HK.tele) HK.tele(m);
   }
   var recShown = null;
   function sty(el, k, v) { var c = el.__hs || (el.__hs = {}); if (c[k] !== v) { c[k] = v; el.style[k] = v; } }
@@ -427,6 +436,7 @@
   function draw() {
     requestAnimationFrame(draw);
     if (!pw || machineOn) return;   // the pad is hidden while the Machine shows
+    if (HK.art) { HK.art(g2, { W: pad.width, H: pad.height, dpr: dpr, cur: cur, down: down, trail: trail, tm: tm, junk: junk, sel: sel, still: still, analyser: analyser, scope: scope, basePr: basePr }); return; }
     var W = pad.width, H = pad.height, c = g2, cx = W / 2, cy = H * 1.02, i;
     c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#0d1312'; c.fillRect(0, 0, W, H);
     // sunburst
@@ -457,6 +467,7 @@
   /* ---------- keyboard & MIDI ---------- */
   // R is Record, so the upper row is q w e t y u i o p (chromatic, one note shorter than the lower row)
   var ROW1 = 'zxcvbnm,./', ROW2 = 'qwetyuiop', held = [];
+  function setOct(n) { octave = Math.min(4, Math.max(-2, n)); if (HK.oct) HK.oct(octave); return octave; }
   function noteHz(semi) { return 55 * Math.pow(2, octave + semi / 12); }
   function noteOn(tag, hz, vel) {
     var go = function () { held = held.filter(function (h) { return h.tag !== tag; }); held.push({ tag: tag, hz: hz }); send({ t: 'g', s: sel, k: 'd', x: .5, y: .5, p: vel, hz: hz }); };
@@ -491,8 +502,8 @@
     if (k >= '1' && k <= '9') return select(+k - 1);
     var i = ROW1.indexOf(k), j = ROW2.indexOf(k);
     if (i >= 0 || j >= 0) { e.preventDefault(); return noteOn('k' + k, noteHz(i >= 0 ? i : 12 + j), e.shiftKey ? 1 : e.altKey ? .35 : .75); }
-    if (k === '[') { octave = Math.max(-2, octave - 1); toast('Octave ' + octave); }
-    else if (k === ']') { octave = Math.min(4, octave + 1); toast('Octave +' + octave); }
+    if (k === '[') { setOct(octave - 1); toast('Octave ' + octave); }
+    else if (k === ']') { setOct(octave + 1); toast('Octave +' + octave); }
     else if (k === 'h') setParam(HE_SOURCES[sel] + '.hold', P[HE_SOURCES[sel] + '.hold'] > .5 ? 0 : 1);
     else if (k === 'f') setParam('aura.freeze', P['aura.freeze'] > .5 ? 0 : 1);
     else if (k === 'r') recToggle();
@@ -746,6 +757,7 @@
     });
     if (n && !hMute) histPush({ k: 'p', ch: ch, label: label || 'Load settings', t: Date.now() });
     offUndo = null; clearTimeout(offUndoT); rackState(); try { localStorage.setItem('horror-engine.params', JSON.stringify(P)); } catch (e) { }
+    if (HK.param) HK.param(null);
   }
 
   /* ---------- custom moments ---------- */
@@ -924,7 +936,10 @@
       machine: function (on) { machineOn = on; junkFlag(); setTimeout(resize, 0); },
       moments: function () { return CMS; }, momentN: momentN, cmRec: cmRecToggle,
       undo: undo, redo: redo, hist: function () { return { n: hist.length, pos: hpos }; }, retroSave: retroSave, retroPerf: retroPerf, log: function () { return perfLog; }, cps: function () { return cps; },
-      midiMap: function () { return MMAP; }, learn: learnStart, onMidi: onMidi, applyAll: applyAll, shareOpen: shareOpen };
+      midiMap: function () { return MMAP; }, learn: learnStart, onMidi: onMidi, applyAll: applyAll, shareOpen: shareOpen,
+      hooks: HK, knob: knob, toggle: toggle, segment: segment, fmt: fmt, DEF: DEF, PRESETS: PRESETS, MOMENTS: MOMENTS, panic: panic, momentToggle: momentToggle,
+      loopToggle: loopToggle, shareLink: shareLink, oct: function (n) { return n === undefined ? octave : setOct(n); }, ctlEls: function () { return ctlEls; },
+      learning: function () { return learnId; }, analyser: function () { return analyser; }, ctx: function () { return ctx; }, sel: function () { return sel; } };
   }
   boot();
 })();
