@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '1.2.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
+  var VERSION = '1.2.1', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
   var $ = function (id) { return document.getElementById(id); };
   var DEF = {}; HE_PARAMS.forEach(function (p) { DEF[p.id] = p; });
   var P = {}; HE_PARAMS.forEach(function (p) { P[p.id] = p.def; });
@@ -425,11 +425,11 @@
   pad.addEventListener('pointermove', function (e) {
     if (!down || e.pointerId !== pid) return; pt(e);
     var now = performance.now(); trail.push({ x: cur.x, y: cur.y, t: now }); if (trail.length > 90) trail.shift();
-    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
+    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
   });
   function padUp(e) { if (!down || e.pointerId !== pid) return; down = false; send({ t: 'g', s: sel, k: 'u' }); showPr(); }
   pad.addEventListener('pointerup', padUp); pad.addEventListener('pointercancel', padUp); pad.addEventListener('lostpointercapture', padUp);
-  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
+  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
   pad.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -542,7 +542,7 @@
   }
 
   /* ---------- transport ---------- */
-  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5 && s !== 'aura') setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
+  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5) setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
   function loopToggle() { if (!started) return start().then(loopToggle); send({ t: 'loop', a: tm && tm.rec ? 'stop' : 'rec', free: $('free').checked }); }
 
   /* ---------- recording: WAV + zip, all in the browser ---------- */

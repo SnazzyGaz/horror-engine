@@ -1334,7 +1334,7 @@ function HECoreFactory() {
       for (k = 0; k < 12; k++) { var y = a1[k] * y1[k] - a2[k] * y2[k] + bb[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y * g[k]; }
       // the ball and handle themselves radiate a little of the raw squeal
       dl += .15 * (x - dl);
-      L[i] = (o * 6 + (x - dl) * .5) * out;
+      L[i] = (o * 6 + (x - dl) * .5) * out; R[i] = L[i];
     }
     this.ph = ph; this.pu = pu; this.pl = pl; this.pa = pa; this.amp = amp; this.x1 = x1; this.x2 = x2; this.nz = nz; this.dl = dl + 1e-18; this.jit = jit;
   };
@@ -1400,7 +1400,7 @@ function HECoreFactory() {
   };
 
   /* ---------- the engine ---------- */
-  function Slot(src) { this.src = src === undefined ? -1 : src; this.on = false; this.tx = .5; this.ty = .5; this.x = .5; this.y = .5; this.p = .6; this.spd = 0; this.hz = 0; this.auto = -1; }
+  function Slot(src) { this.src = src === undefined ? -1 : src; this.on = false; this.tx = .5; this.ty = .5; this.x = .5; this.y = .5; this.p = .6; this.spd = 0; this.hz = 0; this.auto = -1; this.lm = 0; this.gi = 0; this.ra = 0; this.rk = 0; this.rsx = .5; this.rsy = .5; this.rsp = .6; this.rx = .5; this.ry = .5; this.rp = .6; }
   function Engine(sr, seed) {
     this.sr = sr; this.rng = new Rng(seed || 1337); this.P = {};
     this.src = [new Ebow(this), new Hurdy(this), new Bowed(this), new Glass(this), new Struck(this), new Spring(this), new Junk(this), new Aura(this), new Moan(this)];
@@ -1503,7 +1503,19 @@ function HECoreFactory() {
       if (s === 0 && (this.P['ebow.excite'] | 0) > 0) S.kick = .3 + .7 * p;
       if (s === 5 && (this.P['spring.mode'] | 0) === 0) this.src[5].hit(p);
       this.strip[s].quiet = 0;
-    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; }
+      S.lm = this.frame; S.ra = S.rk = 0; S.gi = 0;
+    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; S.ra = S.rk = 0; }
+    // 'n': a move that glides. The hand travelled here since the last move; the engine sees moves only at block
+    // boundaries and in clumps (one browser frame, one audio callback or one host buffer at a time), so a plain move
+    // jumps and then stops, and the speed the bow and glass voices hear pulses. A glide walks the target there in
+    // straight steps over 1.5 times the usual gap between moves (a running average, one block to 120 ms), so a move
+    // that comes a little late finds the hand still travelling and the pull stays steady.
+    else if (k === 'n') {
+      var nb = Math.round((this.frame - S.lm) / BL), mx = Math.max(1, Math.round(.12 * this.sr / BL));
+      S.lm = this.frame;
+      if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }   // another move in the same block: same glide, new end
+      else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = Math.min(mx, Math.max(1, Math.round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }
+    }
     else S.on = false;
   };
   Engine.prototype.user = function (s, k, x, y, p, hz) {
@@ -1515,6 +1527,7 @@ function HECoreFactory() {
   // Each active contact keeps the instance it got (sticky); a new contact takes a free instance or steals the lowest-priority one.
   Engine.prototype.smooth = function (S, dt) {
     if (!S.on) { S.spd *= .8; return; }
+    if (S.rk > 0) { S.rk--; var gf = 1 - S.rk / S.ra; S.tx = S.rsx + (S.rx - S.rsx) * gf; S.ty = S.rsy + (S.ry - S.rsy) * gf; S.p = S.rsp + (S.rp - S.rsp) * gf; }
     var nx = S.x + (S.tx - S.x) * .35, ny = S.y + (S.ty - S.y) * .35, d = Math.sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
     S.x = nx; S.y = ny; S.spd += (Math.min(1, d / dt / 2.5) - S.spd) * .1;
   };
@@ -1959,6 +1972,7 @@ function HECoreFactory() {
       for (k = 0; k < cv.length; k++) if (cv[k].on) wake = true;
       if (wake) st.quiet = 0;
       if (st.quiet > 400) { this.stemL[s].fill(0); this.stemR[s].fill(0); continue; }
+      tL.fill(0); tR.fill(0);
       var stereo = s >= 5;
       if (s === 5) this.src[5].render(tL, tR, BL, C[5], P, this.spIn);
       else if (cv.length === 1) this.src[s].render(tL, tR, BL, C[s], P);
@@ -2023,6 +2037,7 @@ function HECoreFactory() {
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
     this.lg = lg; if (mgr < this.gr) this.gr = mgr; if (pL > this.pkL) this.pkL = pL; if (pR > this.pkR) this.pkR = pR;
+    if (this.byeN || this.gate) this.byeRun(oL, oR);
     this.frame += BL;
   };
   // your own sound through the machine: dry (its own stem), plus sends into the spring tank, the wooden body, the hall,
@@ -2052,17 +2067,69 @@ function HECoreFactory() {
     on = !!on; if (on === this.inOn) return;
     this.inOn = on; if (on) { this.inAct = true; this.inTail = 0; }
   };
+  // GOODBYE (and Esc): a hard stop. The master output (and every stem) fades out over 25 ms (a raised cosine, so no
+  // click), then everything is cleared: voices, Hold on every voice (Aura too), Freeze, moments, custom moments, the
+  // looper's playback, your sound in, the hall, spring, body and harmonizer tails. From then the output is true zero
+  // until something is played again (a gesture, note, moment, looper or input command, or Hold/Freeze switched on),
+  // so nothing can restart by itself. The looper keeps its layers: they are muted (their Mute buttons light) and play
+  // again only when unmuted; a take being recorded is dropped. Messages that arrive during the 25 ms fade wait for it
+  // (Host.msg) and are applied, in order, as soon as it is over.
   Engine.prototype.panic = function () {
-    for (var s = 0; s < NS; s++) { this.slots[s][0].on = this.slots[s][1].on = false; for (var j = 0; j < this.inst[s].length; j++) { this.inst[s][j].reset(); this.Cv[s][j].own = null; } }
-    for (j = 0; j < this.layers.length; j++) { this.layers[j].sl.on = false; if (this.layers[j].gs) this.layers[j].gs.cur = null; }
+    if (!this.byeN) { this.byeN = Math.max(1, Math.round(.025 * this.sr)); this.byeK = 0; }
+  };
+  Engine.prototype.byeRun = function (oL, oR) {
+    var i = 0, s, NST = this.NST, sL = this.stemL, sR = this.stemR;
+    if (this.byeN) {
+      var N = this.byeN, k = this.byeK;
+      for (; i < BL && k < N; i++) {
+        k++; var g = .5 + .5 * Math.cos(Math.PI * k / N);
+        oL[i] *= g; oR[i] *= g; for (s = 0; s < NST; s++) { sL[s][i] *= g; sR[s][i] *= g; }
+      }
+      this.byeK = k;
+      if (k < N) return;
+      this.byeN = 0; this.byeEnd();
+    }
+    for (; i < BL; i++) { oL[i] = 0; oR[i] = 0; for (s = 0; s < NST; s++) { sL[s][i] = 0; sR[s][i] = 0; } }
+  };
+  var BYE_NEW = null;   // the voice constructors, in voice order (set below, once they are all defined)
+  Engine.prototype.byeEnd = function () {
+    var s, j, k, c, P = this.P;
+    // every voice instance starts over exactly as built (each voice's own reset() is also its choke and NaN path, so
+    // it stays as it is); contacts, slots and channel strips go back to rest
+    for (s = 0; s < NS; s++) {
+      for (j = 0; j < this.inst[s].length; j++) {
+        var v = new BYE_NEW[s](this); this.inst[s][j] = v; if (!j) this.src[s] = v;
+        var C = this.Cv[s][j]; C.on = false; C.x = .5; C.y = .5; C.p = .6; C.spd = 0; C.hz = 0; C.auto = false; C.own = null; C.kick = 0; this.iq[s][j] = 999;
+      }
+      for (j = 0; j < 2; j++) { var S = this.slots[s][j]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.auto = -1; S.kick = 0; }
+      var st = this.strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
+      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
+    }
+    // the looper keeps its layers, muted; a take in progress is dropped
+    for (j = 0; j < this.layers.length; j++) { var L = this.layers[j]; L.sl.on = false; L.mute = true; if (L.gs) L.gs.cur = null; }
+    if (this.layers.length) this.lver++;
+    this.recL = null;
     while (this.cms.length) this.cmStop(this.cms[0]);
-    this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null }; this.mPitch = 0; this.mDread = 0; this.mAura = 0; this.duckE = 0; this.dr2 = 0; this.swN = 0; this.autoFreeze = false;
-    for (var k = 0; k < 8; k++) this.rev.b[k].fill(0);
+    this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null }; this.mPitch = 0; this.mDread = 0; this.mAura = 0; this.duckE = 0; this.dr2 = 0; this.swN = 0; this.swEnd = -1; this.autoFreeze = false; this.revBoost = 0;
+    for (s = 0; s < NS; s++) P[HE_S[s] + '.hold'] = 0;
+    P['aura.freeze'] = 0;
+    // your sound in: off at once, its chain cleared (as after its own off tail)
+    this.inOn = false; this.inAct = false; this.inE = 0; this.inG = -1; this.inTail = 0; this.inPk = 0; this.inL.fill(0); this.inR.fill(0);
+    // tails: hall (lines, pre-delay, diffusers), harmonizer, body, heartbeat thump, swell ring, master chains and limiter
+    var R = this.rev; for (k = 0; k < 8; k++) { R.b[k].fill(0); R.lp[k] = 0; R.x[k] = 0; } R.pre.fill(0); R.hp = 0; for (k = 0; k < 3; k++) R.ap[k].b.fill(0);
     this.body.reset(); this.harm.reset();
+    if (this.hb) { this.hb[0].t = this.hb[1].t = -1; this.hbL1 = this.hbL2 = 0; } this.hbAct = 0;
+    this.ring[0].fill(0); this.ring[1].fill(0);
+    for (s = 0; s < this.NST; s++) { var M = this.ms[s]; for (c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; M.lk[c].fill(0); } }
+    this.lh = 1; this.hw.fill(1); this.lg = 1;
+    this.eg.z.fill(0); this.eg.env = 0; this.eg.gr = 1;
+    this.kd.lp = this.kd.fe = this.kd.se = this.kd.cd = 0; this.symB.fill(0); this.symIn.fill(0); this.symPk = 0; this.spInPk = 0; this.sl = 0;
+    this.gate = true;
   };
 
   /* host: message handling, telemetry and record taps; shared by the AudioWorklet and the fallback node */
   // opt.retro: seconds of rolling master-mix history kept for "Save what I just played" (absent: none, as offline)
+  BYE_NEW = [Ebow, Hurdy, Bowed, Glass, Struck, Spring, Junk, Aura, Moan];
   function Host(sr, post, opt) {
     this.e = new Engine(sr); this.post = post; this.tc = 0; this.rec = null; this.CH = 4096;
     var rs = opt && opt.retro > 0 ? Math.ceil(opt.retro * sr / BL) * BL : 0;
@@ -2072,8 +2139,12 @@ function HECoreFactory() {
     this.ap = new Float64Array(1024); this.apn = 0; this.pool = []; this.tsp = new Float32Array(NS); this.tly = []; this.tjp = new Float32Array(81 * 3 + 3);
     this.oL = new Float32Array(BL); this.oR = new Float32Array(BL);
   }
+  // engine messages wait while GOODBYE fades out; these (and Hold or Freeze switched on) end its silence
+  var BYEQ = { p: 1, cmdef: 1, cmrec: 1, g: 1, moment: 1, loop: 1, panic: 1, input: 1 }, WAKE = { g: 1, moment: 1, loop: 1, input: 1, cmrec: 1 };
   Host.prototype.msg = function (m) {
     var e = this.e;
+    if (e.byeN && BYEQ[m.t]) { (this.byeQ || (this.byeQ = [])).push(m); return; }
+    if (e.gate && (WAKE[m.t] || m.t === 'p' && m.v > .5 && (m.k === 'aura.freeze' || /\.hold$/.test(m.k)))) e.gate = false;
     if (m.q !== undefined) { this.ap[this.apn++] = m.q; this.ap[this.apn++] = e.frame; if (this.apn >= 1022) { this.post({ t: 'ap', ap: this.ap.slice(0, this.apn) }); this.apn = 0; } }
     switch (m.t) {
       case 'init': for (var k in m.params) e.P[k] = m.params[k]; if (m.seed) e.rng = new Rng(m.seed); this.ready = true; break;
@@ -2136,6 +2207,7 @@ function HECoreFactory() {
     if (e.inOn && IL) { var iR = IR || IL; for (i = 0; i < BL; i++) { e.inL[i] = IL[off + i]; e.inR[i] = iR[off + i]; } }
     e.process(oL, oR);
     for (i = 0; i < BL; i++) { L[off + i] = oL[i]; R[off + i] = oR[i]; }
+    if (this.byeQ && this.byeQ.length && !e.byeN) { var Q = this.byeQ; this.byeQ = []; for (i = 0; i < Q.length; i++) this.msg(Q[i]); }
     var T = this.rt;
     if (T) { var w = T.w, N = T.N; for (i = 0; i < BL; i++) { T.L[w] = oL[i]; T.R[w] = oR[i]; if (++w === N) w = 0; } T.w = w; if (T.fill < N) T.fill = Math.min(N, T.fill + BL); if (T.job) this.retroStep(); }
     var r = this.rec;
@@ -2175,12 +2247,12 @@ function HEIOFactory() {
   if (typeof HECoreFactory === 'undefined' && typeof require === 'function') { var M_ = require('./engine.js'); globalThis.HECoreFactory = M_.HECoreFactory; globalThis.HE_PARAMS = M_.HE_PARAMS; globalThis.HE_SOURCES = M_.HE_SOURCES; }
   var VERSION = '1.4.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
   var SRC_IDS = ['ebow', 'hurdy', 'bowedMetal', 'glass', 'struckMetal', 'springTank', 'junkTray', 'aura', 'superball'];
-  var SCHEMAS = {"performance":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/performance/1","title":"Horror Engine performance file (v1)","type":"object","required":["format","version","engine","seed","sampleRate","durationFrames","preset","lanes"],"additionalProperties":false,"properties":{"format":{"const":"horror-engine.performance"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"meta":{"type":"object","properties":{"title":{"type":"string"},"author":{"type":"string","default":"Garyck Arntzen"},"created":{"type":"string","format":"date-time"},"notes":{"type":"string"}}},"engine":{"type":"object","required":["version","codeHash"],"properties":{"version":{"type":"string"},"codeHash":{"type":"string","description":"FNV-1a hash of the shared DSP code text, e.g. fnv1a:1a2b3c4d"}}},"seed":{"$ref":"#/$defs/uint32"},"sampleRate":{"const":48000,"description":"Canonical frame rate. All frame values are at this rate."},"durationFrames":{"type":"integer","minimum":0},"tempo":{"type":["number","null"],"minimum":40,"maximum":200},"preset":{"oneOf":[{"$ref":"#/$defs/presetRef"},{"$ref":"#/$defs/inlinePreset"}]},"macros":{"$ref":"#/$defs/macroState"},"automation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}},"lanes":{"type":"array","maxItems":3,"items":{"type":"object","required":["id","lengthFrames","layers"],"properties":{"id":{"enum":["A","B","C"]},"lengthFrames":{"type":"integer","minimum":4800},"startFrame":{"type":"integer","minimum":0,"default":0},"gainDb":{"type":"number","minimum":-60,"maximum":6},"printed":{"type":"boolean","default":false},"reversed":{"type":"boolean","default":false},"layers":{"type":"array","items":{"$ref":"#/$defs/layer"}}}}},"ghosts":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/ghost"}},"moments":{"type":"array","items":{"$ref":"#/$defs/moment"}},"liveEvents":{"type":"array","items":{"$ref":"#/$defs/event"}},"markers":{"type":"array","items":{"type":"object","required":["frame","label"],"properties":{"frame":{"type":"integer","minimum":0},"label":{"type":"string"}}}}},"$defs":{"uint32":{"type":"integer","minimum":0,"maximum":4294967295},"unit":{"type":"number","minimum":0,"maximum":1},"sourceId":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"presetRef":{"type":"object","required":["ref"],"properties":{"ref":{"type":"string"},"hash":{"type":"string"}}},"macroState":{"type":"object","properties":{"dread":{"$ref":"#/$defs/unit"},"distance":{"$ref":"#/$defs/unit"},"material":{"$ref":"#/$defs/unit"},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"event":{"type":"object","required":["f","type"],"properties":{"f":{"type":"integer","minimum":0,"description":"Frame. Absolute for liveEvents; lane-relative for layer events."},"type":{"enum":["down","move","up","note","noteOff","param","trigger"]},"c":{"type":"integer","minimum":0,"maximum":15,"description":"contact / voice id"},"src":{"$ref":"#/$defs/sourceId"},"x":{"$ref":"#/$defs/unit"},"y":{"$ref":"#/$defs/unit"},"p":{"$ref":"#/$defs/unit"},"note":{"type":"integer","minimum":0,"maximum":127},"vel":{"$ref":"#/$defs/unit"},"param":{"type":"string","description":"registry path, e.g. glass.judder or fx.reverb.size"},"value":{"type":["number","boolean","string"]}}},"paramLane":{"type":"object","required":["param","points"],"properties":{"param":{"type":"string"},"interp":{"enum":["step","linear","exp"],"default":"linear"},"points":{"type":"array","items":{"type":"array","prefixItems":[{"type":"integer","minimum":0},{"type":"number"}],"minItems":2,"maxItems":2}}}},"layer":{"type":"object","required":["id","source","events"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"stack":{"type":"array","maxItems":2,"items":{"$ref":"#/$defs/sourceId"}},"createdCycle":{"type":"integer","minimum":0},"gainDb":{"type":"number","minimum":-60,"maximum":6,"default":0},"pan":{"type":"number","minimum":-1,"maximum":1,"default":0},"mute":{"type":"boolean","default":false},"solo":{"type":"boolean","default":false},"sends":{"type":"object","properties":{"spring":{"$ref":"#/$defs/unit"},"reverb":{"$ref":"#/$defs/unit"},"aura":{"$ref":"#/$defs/unit"}}},"inserts":{"type":"object","properties":{"distortion":{"type":"object"},"pitchShift":{"type":"object"}}},"variation":{"type":"object","properties":{"timingMs":{"type":"number","minimum":0,"maximum":40},"value":{"type":"number","minimum":0,"maximum":0.1},"drop":{"type":"number","minimum":0,"maximum":0.3},"pitchCents":{"type":"number","minimum":0,"maximum":30}}},"sourceParams":{"type":"object","description":"per-layer overrides of source parameters (registry paths without the source prefix)"},"paramLanes":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/paramLane"}},"events":{"type":"array","items":{"$ref":"#/$defs/event"}}}},"ghost":{"type":"object","required":["id","fromLayer","seed","startFrame"],"properties":{"id":{"type":"string"},"fromLayer":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"seed":{"$ref":"#/$defs/uint32"},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"fadeOutFrames":{"type":"integer","minimum":0},"freedom":{"$ref":"#/$defs/unit"},"intensity":{"$ref":"#/$defs/unit"},"human":{"$ref":"#/$defs/unit"},"listen":{"$ref":"#/$defs/unit"},"gainDb":{"type":"number","minimum":-60,"maximum":6},"pan":{"type":"number","minimum":-1,"maximum":1},"paramAutomation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}}}},"moment":{"type":"object","required":["type","startFrame","seed"],"properties":{"type":{"enum":["riser","stinger","droneBed","heartbeat","inTheWalls"]},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"seed":{"$ref":"#/$defs/uint32"},"params":{"type":"object"}}},"inlinePreset":{"type":"object","required":["format"],"properties":{"format":{"const":"horror-engine.preset"}},"description":"An inline preset. Validate it fully against PRESET_SCHEMA as well."}}},"preset":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/preset/1","title":"Horror Engine preset (v1)","type":"object","required":["format","version","name","macros","sources"],"properties":{"format":{"const":"horror-engine.preset"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"name":{"type":"string","minLength":1},"author":{"type":"string"},"seed":{"type":"integer","minimum":0,"maximum":4294967295},"tags":{"type":"array","items":{"type":"string"}},"macros":{"type":"object","properties":{"dread":{"type":"number","minimum":0,"maximum":1},"distance":{"type":"number","minimum":0,"maximum":1},"material":{"type":"number","minimum":0,"maximum":1},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"sources":{"type":"object","propertyNames":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"}},"description":"Source parameter values keyed by registry name (validated against src/core/params.ts at load time)"}},"fx":{"type":"object","description":"fx.* registry values: distortion, pitchShift, spring, reverb, reverse, master"},"mixer":{"type":"object"}}}};
+  var SCHEMAS = {"performance":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/performance/1","title":"Horror Engine performance file (v1)","type":"object","required":["format","version","engine","seed","sampleRate","durationFrames","preset","lanes"],"additionalProperties":false,"properties":{"format":{"const":"horror-engine.performance"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"meta":{"type":"object","properties":{"title":{"type":"string"},"author":{"type":"string","default":"Garyck Arntzen"},"created":{"type":"string","format":"date-time"},"notes":{"type":"string"}}},"engine":{"type":"object","required":["version","codeHash"],"properties":{"version":{"type":"string"},"codeHash":{"type":"string","description":"FNV-1a hash of the shared DSP code text, e.g. fnv1a:1a2b3c4d"}}},"seed":{"$ref":"#/$defs/uint32"},"sampleRate":{"const":48000,"description":"Canonical frame rate. All frame values are at this rate."},"durationFrames":{"type":"integer","minimum":0},"tempo":{"type":["number","null"],"minimum":40,"maximum":200},"preset":{"oneOf":[{"$ref":"#/$defs/presetRef"},{"$ref":"#/$defs/inlinePreset"}]},"macros":{"$ref":"#/$defs/macroState"},"automation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}},"lanes":{"type":"array","maxItems":3,"items":{"type":"object","required":["id","lengthFrames","layers"],"properties":{"id":{"enum":["A","B","C"]},"lengthFrames":{"type":"integer","minimum":4800},"startFrame":{"type":"integer","minimum":0,"default":0},"gainDb":{"type":"number","minimum":-60,"maximum":6},"printed":{"type":"boolean","default":false},"reversed":{"type":"boolean","default":false},"layers":{"type":"array","items":{"$ref":"#/$defs/layer"}}}}},"ghosts":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/ghost"}},"moments":{"type":"array","items":{"$ref":"#/$defs/moment"}},"liveEvents":{"type":"array","items":{"$ref":"#/$defs/event"}},"markers":{"type":"array","items":{"type":"object","required":["frame","label"],"properties":{"frame":{"type":"integer","minimum":0},"label":{"type":"string"}}}}},"$defs":{"uint32":{"type":"integer","minimum":0,"maximum":4294967295},"unit":{"type":"number","minimum":0,"maximum":1},"sourceId":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"presetRef":{"type":"object","required":["ref"],"properties":{"ref":{"type":"string"},"hash":{"type":"string"}}},"macroState":{"type":"object","properties":{"dread":{"$ref":"#/$defs/unit"},"distance":{"$ref":"#/$defs/unit"},"material":{"$ref":"#/$defs/unit"},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"event":{"type":"object","required":["f","type"],"properties":{"f":{"type":"integer","minimum":0,"description":"Frame. Absolute for liveEvents; lane-relative for layer events."},"type":{"enum":["down","move","up","note","noteOff","param","trigger"]},"c":{"type":"integer","minimum":0,"maximum":15,"description":"contact / voice id"},"src":{"$ref":"#/$defs/sourceId"},"x":{"$ref":"#/$defs/unit"},"y":{"$ref":"#/$defs/unit"},"p":{"$ref":"#/$defs/unit"},"note":{"type":"integer","minimum":0,"maximum":127},"vel":{"$ref":"#/$defs/unit"},"param":{"type":"string","description":"registry path, e.g. glass.judder or fx.reverb.size"},"value":{"type":["number","boolean","string"]},"glide":{"type":"boolean","description":"a move that glides from the previous one (engine message k \"n\")"}}},"paramLane":{"type":"object","required":["param","points"],"properties":{"param":{"type":"string"},"interp":{"enum":["step","linear","exp"],"default":"linear"},"points":{"type":"array","items":{"type":"array","prefixItems":[{"type":"integer","minimum":0},{"type":"number"}],"minItems":2,"maxItems":2}}}},"layer":{"type":"object","required":["id","source","events"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"stack":{"type":"array","maxItems":2,"items":{"$ref":"#/$defs/sourceId"}},"createdCycle":{"type":"integer","minimum":0},"gainDb":{"type":"number","minimum":-60,"maximum":6,"default":0},"pan":{"type":"number","minimum":-1,"maximum":1,"default":0},"mute":{"type":"boolean","default":false},"solo":{"type":"boolean","default":false},"sends":{"type":"object","properties":{"spring":{"$ref":"#/$defs/unit"},"reverb":{"$ref":"#/$defs/unit"},"aura":{"$ref":"#/$defs/unit"}}},"inserts":{"type":"object","properties":{"distortion":{"type":"object"},"pitchShift":{"type":"object"}}},"variation":{"type":"object","properties":{"timingMs":{"type":"number","minimum":0,"maximum":40},"value":{"type":"number","minimum":0,"maximum":0.1},"drop":{"type":"number","minimum":0,"maximum":0.3},"pitchCents":{"type":"number","minimum":0,"maximum":30}}},"sourceParams":{"type":"object","description":"per-layer overrides of source parameters (registry paths without the source prefix)"},"paramLanes":{"type":"array","maxItems":4,"items":{"$ref":"#/$defs/paramLane"}},"events":{"type":"array","items":{"$ref":"#/$defs/event"}}}},"ghost":{"type":"object","required":["id","fromLayer","seed","startFrame"],"properties":{"id":{"type":"string"},"fromLayer":{"type":"string"},"source":{"$ref":"#/$defs/sourceId"},"seed":{"$ref":"#/$defs/uint32"},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"fadeOutFrames":{"type":"integer","minimum":0},"freedom":{"$ref":"#/$defs/unit"},"intensity":{"$ref":"#/$defs/unit"},"human":{"$ref":"#/$defs/unit"},"listen":{"$ref":"#/$defs/unit"},"gainDb":{"type":"number","minimum":-60,"maximum":6},"pan":{"type":"number","minimum":-1,"maximum":1},"paramAutomation":{"type":"array","items":{"$ref":"#/$defs/paramLane"}}}},"moment":{"type":"object","required":["type","startFrame","seed"],"properties":{"type":{"enum":["riser","stinger","droneBed","heartbeat","inTheWalls"]},"startFrame":{"type":"integer","minimum":0},"endFrame":{"type":["integer","null"]},"seed":{"$ref":"#/$defs/uint32"},"params":{"type":"object"}}},"inlinePreset":{"type":"object","required":["format"],"properties":{"format":{"const":"horror-engine.preset"}},"description":"An inline preset. Validate it fully against PRESET_SCHEMA as well."}}},"preset":{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"horror-engine/preset/1","title":"Horror Engine preset (v1)","type":"object","required":["format","version","name","macros","sources"],"properties":{"format":{"const":"horror-engine.preset"},"version":{"type":"string","pattern":"^1\\.\\d+\\.\\d+$"},"name":{"type":"string","minLength":1},"author":{"type":"string"},"seed":{"type":"integer","minimum":0,"maximum":4294967295},"tags":{"type":"array","items":{"type":"string"}},"macros":{"type":"object","properties":{"dread":{"type":"number","minimum":0,"maximum":1},"distance":{"type":"number","minimum":0,"maximum":1},"material":{"type":"number","minimum":0,"maximum":1},"pitchStretch":{"type":"number","minimum":-36,"maximum":24}}},"sources":{"type":"object","propertyNames":{"enum":["ebow","hurdy","bowedMetal","glass","struckMetal","springTank","junkTray","aura","superball"]},"additionalProperties":{"type":"object","properties":{"enabled":{"type":"boolean"}},"description":"Source parameter values keyed by registry name (validated against src/core/params.ts at load time)"}},"fx":{"type":"object","description":"fx.* registry values: distortion, pitchShift, spring, reverb, reverse, master"},"mixer":{"type":"object"}}}};
 
   // custom moments (v1.2): a captured phrase. Times are seconds from the first touch or knob move.
-  // ev: [t, voice 0-8, "d"|"m"|"u", x, y, pressure, hz]; lanes: knob/macro moves, relative (normalised knob travel) or absolute.
+  // ev: [t, voice 0-8, "d"|"m"|"n"|"u", x, y, pressure, hz] ("n": a move that glides); lanes: knob/macro moves, relative (normalised knob travel) or absolute.
   var CM = {"type":"object","required":["id","name","len","ev"],"properties":{"id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"voice":{"type":"integer","minimum":-1,"maximum":8,"description":"-1 = as played; 0-8 plays every gesture on that voice"},"len":{"type":"number","minimum":0,"maximum":600},"created":{"type":"string"},
-    "ev":{"type":"array","items":{"type":"array","minItems":3,"maxItems":7,"prefixItems":[{"type":"number","minimum":0},{"type":"integer","minimum":0,"maximum":8},{"enum":["d","m","u"]},{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number"}]}},
+    "ev":{"type":"array","items":{"type":"array","minItems":3,"maxItems":7,"prefixItems":[{"type":"number","minimum":0},{"type":"integer","minimum":0,"maximum":8},{"enum":["d","m","n","u"]},{"type":"number"},{"type":"number"},{"type":"number"},{"type":"number"}]}},
     "lanes":{"type":"array","items":{"type":"object","required":["k","min","max","pts"],"properties":{"k":{"type":"string"},"min":{"type":"number"},"max":{"type":"number"},"exp":{"type":"boolean"},"int":{"type":"boolean"},"abs":{"type":"boolean","description":"true: values are absolute; false: offsets in normalised knob travel (-1..1) added to the live knob"},"pts":{"type":"array","items":{"type":"array","minItems":2,"maxItems":2,"prefixItems":[{"type":"number","minimum":0},{"type":"number"}]}}}}}}};
   SCHEMAS.performance.properties.customMoments = { type: 'array', items: CM };
   SCHEMAS.preset.properties.customMoments = { type: 'array', items: CM };
@@ -2270,7 +2342,7 @@ function HEIOFactory() {
     o.log.forEach(function (x, i) {
       var m = x.m, e = { f: Math.round(x.fn * k), fn: x.fn };
       if (m.t === 'init') return;
-      if (m.t === 'g') { e.type = m.k === 'd' ? 'down' : m.k === 'm' ? 'move' : 'up'; e.c = m.s; e.src = SRC_IDS[m.s]; if (m.k !== 'u') { e.x = m.x; e.y = m.y; e.p = m.p; if (m.hz) e.hz = m.hz; } }
+      if (m.t === 'g') { e.type = m.k === 'd' ? 'down' : m.k === 'm' || m.k === 'n' ? 'move' : 'up'; e.c = m.s; e.src = SRC_IDS[m.s]; if (m.k !== 'u') { e.x = m.x; e.y = m.y; e.p = m.p; if (m.hz) e.hz = m.hz; if (m.k === 'n') e.glide = true; } }
       else if (m.t === 'p') { e.type = 'param'; e.param = m.k; e.value = m.v; }
       else if (m.t === 'cmdef') { e.type = 'trigger'; e.value = 'moment.define'; e.id = String(m.id); e.def = m.def || null; }
       else if (m.t === 'moment') { e.type = 'trigger'; e.value = 'moment.' + m.id; e.on = !!m.on; if (m.arg !== undefined) e.arg = m.arg; }
@@ -2366,7 +2438,7 @@ function HEIOFactory() {
     (perf.customMoments || []).forEach(function (c) { if (c && c.id) log.push({ fn: 0, m: { t: 'cmdef', id: String(c.id), def: c } }); });
     (perf.liveEvents || []).forEach(function (e) {
       var f = useN && typeof e.fn === 'number' ? e.fn : Math.round(e.f * k), m = null, v = String(e.value);
-      if (e.type === 'down' || e.type === 'move' || e.type === 'up') { var s = typeof e.c === 'number' ? e.c : SRC_IDS.indexOf(e.src); m = { t: 'g', s: s, k: e.type[0], x: e.x, y: e.y, p: e.p, hz: e.hz || 0 }; if (e.type === 'up') m = { t: 'g', s: s, k: 'u' }; }
+      if (e.type === 'down' || e.type === 'move' || e.type === 'up') { var s = typeof e.c === 'number' ? e.c : SRC_IDS.indexOf(e.src); m = { t: 'g', s: s, k: e.type === 'move' && e.glide ? 'n' : e.type[0], x: e.x, y: e.y, p: e.p, hz: e.hz || 0 }; if (e.type === 'up') m = { t: 'g', s: s, k: 'u' }; }
       else if (e.type === 'param') m = { t: 'p', k: e.param, v: e.value };
       else if (e.type === 'trigger') {
         if (v === 'moment.define') m = { t: 'cmdef', id: String(e.id), def: e.def || null };
@@ -2524,7 +2596,7 @@ var HE_IO = HEIOFactory();
 <script>
 (function () {
   'use strict';
-  var VERSION = '1.2.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
+  var VERSION = '1.2.1', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
   var $ = function (id) { return document.getElementById(id); };
   var DEF = {}; HE_PARAMS.forEach(function (p) { DEF[p.id] = p; });
   var P = {}; HE_PARAMS.forEach(function (p) { P[p.id] = p.def; });
@@ -2949,11 +3021,11 @@ var HE_IO = HEIOFactory();
   pad.addEventListener('pointermove', function (e) {
     if (!down || e.pointerId !== pid) return; pt(e);
     var now = performance.now(); trail.push({ x: cur.x, y: cur.y, t: now }); if (trail.length > 90) trail.shift();
-    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
+    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
   });
   function padUp(e) { if (!down || e.pointerId !== pid) return; down = false; send({ t: 'g', s: sel, k: 'u' }); showPr(); }
   pad.addEventListener('pointerup', padUp); pad.addEventListener('pointercancel', padUp); pad.addEventListener('lostpointercapture', padUp);
-  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
+  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
   pad.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -3066,7 +3138,7 @@ var HE_IO = HEIOFactory();
   }
 
   /* ---------- transport ---------- */
-  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5 && s !== 'aura') setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
+  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5) setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
   function loopToggle() { if (!started) return start().then(loopToggle); send({ t: 'loop', a: tm && tm.rec ? 'stop' : 'rec', free: $('free').checked }); }
 
   /* ---------- recording: WAV + zip, all in the browser ---------- */

@@ -121,4 +121,4 @@ With **Your sound in** on, a take with stems also gets an `input` stem. Render c
   - PipeWire or JACK on Linux.
 - **MIDI in:** notes play the selected voice, and CC 20–23 move Dread, Distance, Material and Pitch, in browsers that support Web MIDI, once audio is started. A DAW can drive the macros this way, through a virtual MIDI port (IAC on macOS, loopMIDI on Windows).
 
-There is no plugin version or tempo sync. A MIDI or VST version may come later.
+The browser app has no in-page plugin and no tempo sync. The Séance VST3 and CLAP plugin on this branch can sync its looper to the host's tempo and bars; see [plugin/README.md](../plugin/README.md).
