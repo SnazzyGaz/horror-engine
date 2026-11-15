@@ -225,7 +225,8 @@ void LoopDrawer::paintBody(Graphics& g) {
   if (t.synced) status = String(t.bpm, 1) + " BPM" + (t.laneBars > 0 ? String::fromUTF8(" \xc2\xb7 ") + String(t.laneBars) + (t.laneBars == 1 ? " bar" : " bars") : String()) + (t.recWaiting ? String::fromUTF8(" \xc2\xb7 starts on the next bar") : String());
   else if (ctl.syncToHost()) status = ctl.hostTempo() > 0 ? "Host stopped: running free" : "No host tempo: running free";
   else status = "Running free";
-  para(g, status + String::fromUTF8(" \xc2\xb7 Space starts and stops a layer \xc2\xb7 G ghosts the newest \xc2\xb7 Backspace removes it"), Rectangle<float>((float)clear.getRight() + 10, 6, (float)width - clear.getRight() - 10, 40), font(SERIF_ITAL, 14), dim, 18);
+  if (ctl.keysOn) status << String::fromUTF8(" \xc2\xb7 Space starts and stops a layer \xc2\xb7 G ghosts the newest \xc2\xb7 Backspace removes it");
+  para(g, status, Rectangle<float>((float)clear.getRight() + 10, 6, (float)width - clear.getRight() - 10, 40), font(SERIF_ITAL, 14), dim, 18);
   if (rows.isEmpty()) { auto r = Rectangle<float>(0, 38, (float)width, 34); box(g, r, 8, rgba(14, 11, 10, .5f), line, 1, true); text(g, "No layers yet. Press Space, play a phrase on the surface, press Space again.", r.reduced(12, 0), font(SERIF_ITAL, 15), dim); return; }
   for (int i = 0; i < rows.size(); i++) {
     auto* r = rows[i]; box(g, r->r, 8, rgba(14, 11, 10, .5f), line);
