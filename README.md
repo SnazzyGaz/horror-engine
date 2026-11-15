@@ -149,6 +149,12 @@ Each voice has a **Tune & place** row under its panel: **Tune** (semitones), **F
 
 The details are in [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md#saving-undo-and-sharing).
 
+## What's new in 1.2.2
+
+- On the live site, the Altar Machine no longer builds its skulls before the model pack has loaded, so you get Bohnen's beam-mounted Goat Skull and the scanned human skulls rather than the old procedural stand-ins.
+
+See [CHANGELOG.md](CHANGELOG.md) for 1.2.1 (hard GOODBYE, Superball, gliding drags, the Séance plugin) and earlier.
+
 ## What's new in 1.2.1
 
 - **GOODBYE** (and Esc) is a hard stop: a 25 ms fade, then true silence. It stops every voice (Aura Hold and Freeze too), Moments, the looper's playback (layers are kept and muted; a take in progress is dropped), your sound in, and the hall, spring, body and harmonizer tails. Notes and gestures that arrive during the fade wait and play after it.

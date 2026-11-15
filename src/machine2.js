@@ -1292,6 +1292,9 @@
   var touched = false;
   function warmBehind() {
     if (V || tab === 'machine') return;
+    // the hosted build loads the scanned skulls on demand; do not build the altar until they are in,
+    // or the beam goat and the wheel/niche human skulls fall back to the old procedural meshes
+    if (SK && !(window.HE_CRYPT && window.HE_CRYPT.models)) { whenCryptReady(warmBehind); return; }
     host.classList.add('bg'); host.setAttribute('aria-hidden', 'true'); host.hidden = false; WU.start();
     var ok = false; try { ok = build(); } catch (e) { host.classList.remove('bg'); host.hidden = true; LD.fail('The machine could not be built: ' + e.message); return; }
     if (!ok) { host.classList.remove('bg'); host.hidden = true; $('tabNote').textContent = 'This browser could not start WebGL.'; WU.fail(); LD.hide(); return; }
@@ -1313,6 +1316,7 @@
   $('tabMachine').addEventListener('click', function () { show('machine'); });
   $('tabSurface').addEventListener('click', function () { show('surface'); });
   var want = (Q.get('view') || '').toLowerCase();
+  if (SK && window.THREE) whenCryptReady(function () {});   // start the Altar model fetch at once, before the warmup timer
   if (want === 'machine' && window.THREE) requestAnimationFrame(function () { setTimeout(function () { if (tab !== 'machine') try { show('machine', true); } catch (e) { LD.fail('The machine could not be built: ' + e.message); } }, 0); });
   // the Surface paints and plays first; the Machine is built a moment later, behind it
   else if (window.THREE) requestAnimationFrame(function () { setTimeout(warmBehind, 120); });

@@ -148,6 +148,7 @@ window.HEAltar = (function () {
         if (sk.r) maps.roughnessMap = img(sk.r);
         skullM = mat(Object.assign({ color: 0x8c806e, roughness: 1, clearcoat: .15, clearcoatRoughness: .5, sheen: .12, sheenColor: new T.Color(0xfff0d8) }, maps), { blood: .18, bscale: 11, grime: .35, bump: .0003, bfreq: 190, seed: 1.7 });
       } else { skullG = S.skull(T, { seed: 5 }); skullM = M.boneWet.clone(); }
+      window.__heCryptPack = Object.assign(window.__heCryptPack || {}, { skull: !!sk });
     })();
 
     /* ---------- the crypt: stone walls and flags, no window; niches and pillars come after the candles exist ---------- */
@@ -826,6 +827,7 @@ window.HEAltar = (function () {
         gHorns.traverse(function (o) { if (o.isMesh) o.userData.noPick = 1; });
         gMesh = gHead;
       }
+      window.__heCryptPack = Object.assign(window.__heCryptPack || {}, { goatSkull: !!gs });
       goat.traverse(function (o) { o.userData.noPick = 1; });
     })();
     [-.016, .016].forEach(function (nx) {
