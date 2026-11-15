@@ -40,7 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PLUGIN_DIR }}/build/_deps
-          key: deps-${{ runner.os }}-${{ hashFiles(format('{0}/CMakeLists.txt', env.PLUGIN_DIR)) }}
+          key: deps-${{ runner.os }}-${{ hashFiles(format('{0}/CMakeLists.txt', env.PLUGIN_DIR), format('{0}/patches/*.patch', env.PLUGIN_DIR)) }}
 
       - name: Configure (MSVC, x64, newest Visual Studio)
         working-directory: ${{ env.PLUGIN_DIR }}

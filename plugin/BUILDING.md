@@ -1,6 +1,6 @@
 # Building Horror Engine · Séance
 
-You need CMake 3.22+, Ninja (or Visual Studio), [JUCE](https://github.com/juce-framework/JUCE) 8.0.15 (pinned: CMake stops on another version unless you pass `-DHE_ALLOW_OTHER_JUCE=ON`) and [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (with its submodules; pinned to commit 6bde108, CLAP 1.2.7). Leave out `-DJUCE_DIR` and `-DCJE_DIR` and CMake fetches both pinned versions itself (with the MinGW patch applied when cross-compiling).
+You need CMake 3.22+, Ninja (or Visual Studio), [JUCE](https://github.com/juce-framework/JUCE) 8.0.15 (pinned: CMake stops on another version unless you pass `-DHE_ALLOW_OTHER_JUCE=ON`) and [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (with its submodules; pinned to commit 6bde108, CLAP 1.2.7). Leave out `-DJUCE_DIR` and `-DCJE_DIR` and CMake fetches both pinned versions itself. On Windows (MSVC and MinGW) CMake applies `patches/juce-8.0.15-taskdialog.patch` to JUCE, so the DLL looks up `TaskDialogIndirect` at run time instead of importing it; on MinGW it also applies `patches/juce-8.0.15-mingw.patch` (compiler compatibility). If using a local `JUCE_DIR`, apply those patches there yourself before configuring.
 
 ```
 git clone --depth 1 -b 8.0.15 https://github.com/juce-framework/JUCE.git
@@ -8,21 +8,24 @@ git clone https://github.com/free-audio/clap-juce-extensions.git
 cd clap-juce-extensions && git checkout 6bde108329ff9fc24404b79b8b397261a75cf6a8 && git submodule update --init --recursive
 ```
 
-## Windows with Visual Studio 2022
+## Windows with Visual Studio 2022 or later
 
 ```
-cmake -B build -G "Visual Studio 17 2022" -DJUCE_DIR=path/to/JUCE -DCJE_DIR=path/to/clap-juce-extensions
+cmake -B build -A x64
+# CMake picks the installed Visual Studio; JUCE and clap-juce-extensions are fetched and patched automatically.
 cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLAP
 ```
 
 ## Windows binaries cross-compiled on Linux (how this release was made)
 
 JUCE 8 refuses MinGW, so patch it first; the patch only marks MinGW as a 64-bit Windows compiler and works around four
-spots where JUCE relies on MSVC (`__uuidof` on a variable, two SDK constants, `__cpuid`, jpeglib's `boolean`), and makes
-the native message box look up `TaskDialogIndirect` at run time instead of importing it:
+spots where JUCE relies on MSVC (`__uuidof` on a variable, two SDK constants, `__cpuid`, jpeglib's `boolean`).
+The separate TaskDialog patch is shared by MSVC and MinGW:
 
 ```
-cd JUCE && git apply ../patches/juce-8.0.15-mingw.patch
+cd JUCE
+git apply path/to/plugin/patches/juce-8.0.15-taskdialog.patch
+git apply path/to/plugin/patches/juce-8.0.15-mingw.patch
 ```
 
 MinGW-w64 needs headers new enough for JUCE 8 (`d2d1_3.h` with `ID2D1SpriteBatch`, `dcomp.h`,
@@ -53,8 +56,10 @@ statically, so they depend only on Windows system DLLs.
 
 MinGW does not see JUCE's MSVC `/MANIFESTDEPENDENCY` pragma, so `src/win/manifest.rc` embeds the Common Controls v6
 manifest (`src/win/HorrorEngine.manifest`, RT_MANIFEST id 2) in the VST3 and CLAP. Wine accepts DLLs without it;
-Windows does not. To check a build, `x86_64-w64-mingw32-objdump -p "Horror Engine.vst3"` should list no `COMCTL32.dll`
-and no `TaskDialogIndirect`.
+Windows may not. MSVC gets the v6 manifest from JUCE. Both Windows builds link the C/C++ runtime statically,
+so no Visual C++ redistributable is needed. To check a build, `x86_64-w64-mingw32-objdump -p "Horror Engine.vst3"` should list no `COMCTL32.dll`
+and no `TaskDialogIndirect` (including the ordinal import #345). Check both DLLs have a Common Controls v6
+manifest at RT_MANIFEST id 2. Neither DLL should import MSVCP140, VCRUNTIME140, libstdc++, libgcc or winpthread.
 
 ## Linux
 

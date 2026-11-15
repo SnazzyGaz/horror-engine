@@ -1,0 +1,43 @@
+diff --git a/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp b/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
+index 9be087d..95f08e7 100644
+--- a/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
++++ b/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
+@@ -168,9 +168,36 @@ std::unique_ptr<ScopedMessageBoxInterface> ScopedMessageBoxInterface::create (co
+                 config.cButtons = (UINT) buttonLabels.size();
+ 
+                 int buttonIndex = 0;
+-                TaskDialogIndirect (&config, &buttonIndex, nullptr, nullptr);
+ 
+-                return buttonIndex;
++                // TaskDialogIndirect only exists in comctl32 v6. A static import makes the whole DLL fail to load
++                // when the loader binds comctl32 v5 (plugin DLLs without a v6 manifest, or a host process without
++                // one), so look it up at run time and fall back to a plain MessageBox.
++                using TaskDialogIndirectFn = HRESULT (WINAPI*) (const TASKDIALOGCONFIG*, int*, int*, BOOL*);
++                static const auto taskDialogIndirect = []() -> TaskDialogIndirectFn
++                {
++                    if (auto* comctl = LoadLibraryW (L"comctl32.dll"))
++                        return reinterpret_cast<TaskDialogIndirectFn> (reinterpret_cast<void*> (GetProcAddress (comctl, "TaskDialogIndirect")));
++
++                    return nullptr;
++                }();
++
++                if (taskDialogIndirect != nullptr && SUCCEEDED (taskDialogIndirect (&config, &buttonIndex, nullptr, nullptr)))
++                    return buttonIndex;
++
++                const auto numButtons = (int) buttonLabels.size();
++                const UINT type = (numButtons >= 3 ? MB_YESNOCANCEL : numButtons == 2 ? MB_OKCANCEL : MB_OK)
++                                | (options.getIconType() == MessageBoxIconType::WarningIcon  ? MB_ICONWARNING
++                                 : options.getIconType() == MessageBoxIconType::InfoIcon     ? MB_ICONINFORMATION
++                                 : options.getIconType() == MessageBoxIconType::QuestionIcon ? MB_ICONQUESTION : 0u);
++
++                switch (MessageBoxW (parent, config.pszContent, config.pszWindowTitle, type))
++                {
++                    case IDOK:
++                    case IDYES:     return 0;
++                    case IDNO:      return 1;
++                    case IDCANCEL:  return numButtons >= 3 ? 2 : (numButtons == 2 ? 1 : 0);
++                    default:        return 0;
++                }
+             };
+         }
+ 

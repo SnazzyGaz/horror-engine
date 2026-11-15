@@ -20,10 +20,19 @@ include(FetchContent)
 if (POLICY CMP0169)
   cmake_policy(SET CMP0169 OLD)   # FetchContent_Populate(): CJE is added EXCLUDE_FROM_ALL, which MakeAvailable cannot do before CMake 3.28
 endif()
+# Windows: link the C/C++ runtime statically (/MT), so the plugin DLLs need no Visual C++ redistributable
+# (MinGW builds already link libstdc++, libgcc and winpthread statically).
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if (NOT JUCE_DIR)
   set(HE_JUCE_PATCH "")
-  if (MINGW)   # JUCE 8 refuses MinGW without patches/juce-8.0.15-mingw.patch (see BUILDING.md)
-    set(HE_JUCE_PATCH PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH=${CMAKE_CURRENT_SOURCE_DIR}/patches/juce-8.0.15-mingw.patch -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply-patch.cmake)
+  if (WIN32)
+    # patches/juce-8.0.15-taskdialog.patch (MSVC and MinGW): look TaskDialogIndirect up at run time instead of
+    # importing it, so the DLL loads even where the loader binds comctl32 v5.
+    # patches/juce-8.0.15-mingw.patch (MinGW only): JUCE 8 refuses MinGW without it (see BUILDING.md).
+    set(HE_JUCE_PATCH PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH=${CMAKE_CURRENT_SOURCE_DIR}/patches/juce-8.0.15-taskdialog.patch -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply-patch.cmake)
+    if (MINGW)
+      list(APPEND HE_JUCE_PATCH COMMAND ${CMAKE_COMMAND} -DPATCH=${CMAKE_CURRENT_SOURCE_DIR}/patches/juce-8.0.15-mingw.patch -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply-patch.cmake)
+    endif()
   endif()
   FetchContent_Declare(juce GIT_REPOSITORY https://github.com/juce-framework/JUCE.git GIT_TAG ${HE_JUCE_COMMIT} ${HE_JUCE_PATCH})
   FetchContent_GetProperties(juce)
@@ -114,10 +123,10 @@ if (MINGW)
   foreach(he_target HorrorEngine_VST3 HorrorEngine_CLAP)
     target_sources(${he_target} PRIVATE src/win/manifest.rc)
   endforeach()
-  # JUCE only links its version resource into the VST3; give the CLAP the same file-version info.
-  if (TARGET HorrorEngine_rc_lib)
-    target_link_libraries(HorrorEngine_CLAP PRIVATE HorrorEngine_rc_lib)
-  endif()
+endif()
+# JUCE only links its version resource into the VST3; give the CLAP the same file-version info (MSVC and MinGW).
+if (WIN32 AND TARGET HorrorEngine_rc_lib)
+  target_link_libraries(HorrorEngine_CLAP PRIVATE HorrorEngine_rc_lib)
 endif()
 
 if (HE_SNAP)

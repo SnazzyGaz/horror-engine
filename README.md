@@ -168,11 +168,11 @@ It is a single HTML page that uses three.js for the machine and Web Audio for th
 
 **Windows only for now** (64-bit VST3 and CLAP). Copy `Horror Engine.vst3` to `C:\Program Files\Common Files\VST3\` or `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\`, then rescan plugins in your DAW.
 
-**Building.** With Visual Studio 2022 and CMake 3.22+:
+**Building.** With Visual Studio 2022 or later and CMake 3.22+:
 
 ```
 cd plugin
-cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake -B build -A x64
 cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLAP
 ```
 
