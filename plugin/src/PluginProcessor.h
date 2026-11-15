@@ -72,6 +72,8 @@ class HorrorProcessor : public juce::AudioProcessor {
   std::atomic<float> hostTempo{0};                  // the host's tempo, 0 if it gives none (for the looper drawer)                // looper Sync to host (used while the host plays at a known tempo)
   // the scope (mono, last 2048 samples) and the last minute of output
   float scope[2048] = {}; std::atomic<int> scopeW{0};
+  // smoothed output peak, written on the audio thread, read on the message thread (Dread letter glow)
+  float outputLevel() const { return outputLevel_.load(std::memory_order_relaxed); }
   bool copyLastSeconds(double seconds, juce::AudioBuffer<float>& out, double& sampleRate);
   // your sound in: the track's input or a file
   enum InputSource { IN_NONE = 0, IN_TRACK, IN_FILE };
@@ -112,6 +114,7 @@ class HorrorProcessor : public juce::AudioProcessor {
   juce::AudioBuffer<float> inBuf_, outTmp_;
   // last minute
   juce::AudioBuffer<float> ring_; std::atomic<int> ringW_{0}, ringFill_{0};
+  std::atomic<float> outputLevel_{0};
   // input file
   juce::SpinLock fileLock_; std::unique_ptr<juce::AudioBuffer<float>> file_; int filePos_ = 0;
   bool inputOn_ = false;

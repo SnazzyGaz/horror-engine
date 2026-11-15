@@ -45,6 +45,7 @@ struct SnapApp : public JUCEApplication {
   void initialise(const String& cmd) override {
     auto a = StringArray::fromTokens(cmd, true); for (auto& x : a) x = x.unquoted();
     if (a[0] == "--vst3") { hostTest(a); return; }
+    if (a[0] == "--dread") { dreadShots(a); return; }
     out = File(cmd.unquoted().isNotEmpty() ? cmd.unquoted() : "/tmp/snaps"); out.createDirectory();
     p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
     ed.reset(p->createEditor());
@@ -83,6 +84,45 @@ struct SnapApp : public JUCEApplication {
       case 16: shot("15_small"); e->testGuide(); later(300); return;
       case 17: shot("16_guide"); quit(); return;
     }
+  }
+  void dreadShots(const StringArray& a) {
+    out = File(a[1].isNotEmpty() ? a[1].unquoted() : "/workspace/vst-review/renders/ui-1.0.6"); out.createDirectory();
+    p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
+    ed.reset(p->createEditor());
+    win = std::make_unique<DocumentWindow>("snap-dread", Colours::black, 0); win->setUsingNativeTitleBar(false); win->setTitleBarHeight(0);
+    win->setContentNonOwned(ed.get(), true); win->setTopLeftPosition(-4000, -4000); win->setVisible(true);
+    Timer::callAfterDelay(400, [this] { dreadGo(); });
+  }
+  void dreadShot(const String& name) {
+    auto* e = dynamic_cast<HorrorEditor*>(ed.get());
+    if (!e) return;
+    e->repaint(); e->testBoard().repaint();
+    auto full = ed->createComponentSnapshot(ed->getLocalBounds(), true, 1.0f);
+    File f = out.getChildFile(name + ".png"); f.deleteFile(); FileOutputStream os(f); PNGImageFormat().writeImageToStream(full, os);
+    auto& b = e->testBoard();
+    auto board = b.createComponentSnapshot(b.getLocalBounds(), true, 1.0f);
+    File fb = out.getChildFile(name + "-board.png"); fb.deleteFile(); FileOutputStream osb(fb); PNGImageFormat().writeImageToStream(board, osb);
+    std::printf("wrote %s and %s-board\n", name.toRawUTF8(), name.toRawUTF8());
+  }
+  void dreadHold(float dread, double sec) {
+    auto& c = p->controller();
+    c.setParam(he::P_MACRO_DREAD, dread);
+    c.select(he::EBOW);
+    c.setParam(he::P_EBOW_HOLD, 1);
+    // a short bow so the held string has something to sustain
+    c.gesture('d', .55f, .55f, .7f);
+    run(.15); c.gesture('u', 0, 0, 0);
+    run(sec);
+    for (int i = 0; i < 8; i++) { c.poll(); MessageManager::getInstance()->runDispatchLoopUntil(16); }
+  }
+  void dreadGo() {
+    auto& c = p->controller();
+    c.setParam(he::P_MACRO_DREAD, 0); c.select(he::EBOW); run(.3); c.poll();
+    MessageManager::getInstance()->runDispatchLoopUntil(50);
+    dreadShot("dread-0");
+    dreadHold(.5f, 1.2); dreadShot("dread-0.5");
+    dreadHold(1.f, 1.2); dreadShot("dread-1");
+    quit();
   }
   void shutdown() override { if (win) win->clearContentComponent(); ed.reset(); win.reset(); hosted.reset(); p.reset(); }
 };

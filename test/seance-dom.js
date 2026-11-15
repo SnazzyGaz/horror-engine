@@ -49,10 +49,10 @@ const toks = () => [...w.document.querySelectorAll('#rack .src')];
   /* Yes, No, Goodbye */
   $('mo_stinger').click(); pump(.1); ok($('mo_stinger').getAttribute('aria-pressed') === 'true', 'Yes fires the Stinger');
   $('mo_riser').click(); pump(.1); ok($('mo_riser').getAttribute('aria-pressed') === 'true', 'No fires the Riser');
-  H.setParam('ebow.hold', 1); H.setParam('aura.freeze', 1); await frame();
+  H.setParam('ebow.hold', 1); H.setParam('aura.hold', 1); H.setParam('aura.freeze', 1); await frame();
   ok(/frozen/.test(toks()[7].textContent) && /holding/.test(toks()[0].textContent) && toks()[0].classList.contains('held'), 'tokens show frozen and holding');
   $('panic').click(); pump(.2);
-  ok(P['ebow.hold'] === 0 && P['aura.freeze'] === 0 && $('mo_riser').getAttribute('aria-pressed') === 'false', 'Goodbye silences: holds, freeze and the Riser stop');
+  ok(P['ebow.hold'] === 0 && P['aura.hold'] === 0 && P['aura.freeze'] === 0 && $('mo_riser').getAttribute('aria-pressed') === 'false', 'Goodbye silences: every Hold (Aura too), Freeze and the Riser stop');
   /* rail: Hold, Freeze, octave */
   $('holdBtn').click(); await frame(); ok(P['ebow.hold'] === 1 && $('holdBtn').getAttribute('aria-pressed') === 'true', 'Hold holds the selected voice');
   key('h'); await frame(); ok(P['ebow.hold'] === 0 && $('holdBtn').getAttribute('aria-pressed') === 'false', 'H key releases it and the button follows');
@@ -94,7 +94,19 @@ const toks = () => [...w.document.querySelectorAll('#rack .src')];
   /* moments: F keys, MIDI channel 16 notes */
   key('F3'); pump(.1); ok($('mo_drone').getAttribute('aria-pressed') === 'true', 'F3 plays Drone bed');
   H.onMidi({ data: [159, 37, 100] }); pump(.1); ok($('mo_stinger').getAttribute('aria-pressed') === 'true', 'channel 16 note 37 fires the Stinger (Yes)');
-  key('Escape'); pump(.2); ok($('mo_drone').getAttribute('aria-pressed') === 'false', 'Esc is still Silence');
+  key('Escape'); pump(.3); ok($('mo_drone').getAttribute('aria-pressed') === 'false', 'Esc is still Silence');
+  const muteB = [...w.document.querySelectorAll('#layers li .acts button')].filter(b => /Mute/.test(b.textContent));
+  ok(/1 layer/.test($('sumLoop').textContent) && muteB.length === 1 && muteB[0].getAttribute('aria-pressed') === 'true', 'Goodbye keeps the looper layer and mutes it (its Mute button lights)');
+  /* Dread look on the board is visual only: the helper never writes engine state */
+  const L = w.__seance.dreadLook, d0 = P['macro.dread'];
+  const z = L(0, 1, false, 0);
+  ok(z.vis === 0 && z.dark === 0 && z.glow === 0 && z.flick === 1, 'Dread 0 is a no-op (no darkening, no glow, no flicker)');
+  ok(L(1, 0, true, 0).dark > L(.5, 0, true, 0).dark && L(.5, 0, true, 0).dark > 0, 'the board darkens as Dread rises');
+  ok(L(1, 0, true, 0).hole < L(.5, 0, true, 0).hole, 'the vignette closes in as Dread rises');
+  ok(L(1, 1, true, 0).glow > L(1, 0, true, 0).glow && L(1, 0, true, 0).glow > 0, 'letter glow follows the sound and starves when quiet');
+  ok(L(1, .5, true, 0).flick === 1 && L(1, .5, true, 1.7).flick === 1, 'prefers-reduced-motion (still): no flicker');
+  ok(L(1, .5, false, 0).flick !== L(1, .5, false, 80).flick, 'otherwise a slight flicker over time');
+  L(1, 1, false, 12); ok(P['macro.dread'] === d0, 'dreadLook does not write macro.dread');
   console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'all seance checks passed');
   setTimeout(() => process.exit(), 50);
 })();

@@ -20,6 +20,7 @@ class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
   void testPop(int w) { pop(w); }
   void testGuide() { guide.setVisible(true); guide.setBounds(getLocalBounds()); guide.toFront(true); }
   void testDrag(float x, float y, bool down) { board.testDrag(x, y, down); }
+  juce::Component& testBoard() { return board; }
  private:
   void timerCallback() override;
   void drawer(int i, int force = -1);   // force: -1 toggle, 0 close, 1 open

@@ -233,6 +233,15 @@ void HorrorProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midi)
     if (RN) { ring_.setSample(0, rw, L[i]); ring_.setSample(1, rw, R[i]); if (++rw >= RN) rw = 0; }
   }
   scopeW = w; ringW_ = rw; ringFill_ = jmin(RN, ringFill_.load() + n);
+  // smoothed output level for the board's Dread glow (atomic; the message thread only reads it)
+  {
+    float pk = 0;
+    for (int i = 0; i < n; i++) pk = jmax(pk, std::abs(L[i]), std::abs(R[i]));
+    float s = outputLevel_.load(std::memory_order_relaxed);
+    float tau = (float)sr_ * (pk > s ? 0.02f : 0.12f);
+    float coeff = tau > 0 ? 1.f - std::exp(-(float)n / tau) : 1.f;
+    outputLevel_.store(s + (pk - s) * coeff, std::memory_order_relaxed);
+  }
   // telemetry every 8 engine blocks, as the web app's host posts it
   blocks_ += n;
   if (blocks_ >= 8 * he::BL) {

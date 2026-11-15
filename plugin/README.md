@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.5](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.5) release and unzip it. Use **`HorrorEngine-Seance-1.0.5-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.6](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.6) release and unzip it. Use **`HorrorEngine-Seance-1.0.6-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -45,7 +45,12 @@ The layout, controls and engine are the same. A few things that belong to the br
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
 
+## Changes in 1.0.6
+
+- **High Dread now darkens the board**, the way it already does on the 3D machine. As Dread rises, a vignette closes in and the letters, numbers, Yes, No and Goodbye glow ember-red, with a slight flicker that follows the output level (starved when quiet). At full Dread mostly only the letters and the planchette's glass stay lit. Dread 0 is unchanged. Visual only: the engine and the sound are untouched.
+
 ## Changes in 1.0.5
+
 
 - **Superball no longer leaves a hanging background tone.** Superball (Moan) is mixed as a stereo voice but only wrote the left work buffer, so a leftover 128-sample right buffer was replayed every block as a constant tone at the block rate (sample rate / 128, and its harmonics) — 344.5 Hz at 44.1 kHz, 375 Hz at 48 kHz — until GOODBYE or another stereo voice overwrote it. Superball now writes both sides equally, and both work buffers are cleared before each voice is rendered, so a stale block cannot leak through.
 - New engine test `mono_voice_clear_test` (in CI): after Superball lifts off, no block-rate energy remains at 44.1, 48 and 96 kHz.

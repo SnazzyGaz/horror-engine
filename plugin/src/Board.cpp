@@ -6,6 +6,19 @@ using namespace juce;
 using namespace look;
 
 static const float PI_F = MathConstants<float>::pi;
+
+// Matches seance.js dreadLook: vis is 0 at Dread 0 (every draw path below is then the old one).
+struct DreadLook { float vis, dark, hole, glow, flick; };
+static DreadLook dreadLook(float D, float lvl, bool still, double tMs) {
+  D = jlimit(0.f, 1.f, D);
+  if (!(D > 0)) return {0, 0, .62f, 0, 1};
+  float tone = jmin(1.f, jmax(0.f, lvl) * 4.f);
+  float glow = D * (.22f + .78f * tone);
+  float flick = 1.f;
+  if (!still) flick = .88f + .12f * std::sin((float)(tMs * .069)) * (.35f + .65f * tone);
+  return {D, .15f * D + .55f * D * D, .62f - .44f * D, glow, flick};
+}
+static bool motionReduced() { return false; }
 static String nn(int n) { static const char* N[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}; return String(N[n % 12]) + String(n / 12 - 1); }
 
 /* ---------- plaques ---------- */
@@ -16,12 +29,31 @@ Rectangle<int> Plaque::preferredSize() const {
 }
 void Plaque::paint(Graphics& g) {
   auto r = getLocalBounds().toFloat(); bool over = isMouseOver(true);
+  float D = jlimit(0.f, 1.f, dread), G = jlimit(0.f, 1.f, dreadGlow);
+  if (!(D > 0)) {
+    if (pressed) { g.setColour(rgba(201, 168, 101, .14f)); g.fillRoundedRectangle(r, 8); }
+    box(g, r.reduced(pressed ? 3.f : 0.f), 8, pressed ? rgba(201, 168, 101, .18f) : rgba(14, 11, 10, .6f), pressed ? gilt : over ? gilt : giltLo);
+    if (bye && isMouseButtonDown()) { g.setColour(rgba(224, 118, 74, .18f)); g.fillRoundedRectangle(r.reduced(1), 8); }
+    float top = bye ? 5.f : 6.f, wh = bye ? 26.f : 30.f;
+    text(g, word, Rectangle<float>(0, top, r.getWidth(), wh + 2), font(FELL, wh, bye ? .12f : 0.f), pressed ? live : bone, Justification::centred);
+    text(g, sub, Rectangle<float>(0, top + wh + 3, r.getWidth(), 16), font(MONO, 12), giltTxt, Justification::centred);
+    if (progress > 0) { g.setColour(live); g.fillRect(Rectangle<float>(0, r.getBottom() - 3, r.getWidth() * jmin(1.f, progress), 3)); }
+    return;
+  }
+  Colour border = giltLo.interpolatedWith(Colour(0xffa83a18), D);
+  Colour borderOver = gilt.interpolatedWith(Colour(0xffe0764a), D);
+  Colour fill = rgba(14, 11, 10, .6f + D * .25f);
+  Colour wordCol = bone.interpolatedWith(Colour(0xffff6a3a), D * .9f);
   if (pressed) { g.setColour(rgba(201, 168, 101, .14f)); g.fillRoundedRectangle(r, 8); }
-  box(g, r.reduced(pressed ? 3.f : 0.f), 8, pressed ? rgba(201, 168, 101, .18f) : rgba(14, 11, 10, .6f), pressed ? gilt : over ? gilt : giltLo);
+  box(g, r.reduced(pressed ? 3.f : 0.f), 8, pressed ? rgba(201, 168, 101, .18f) : fill, pressed ? gilt : over ? borderOver : border);
   if (bye && isMouseButtonDown()) { g.setColour(rgba(224, 118, 74, .18f)); g.fillRoundedRectangle(r.reduced(1), 8); }
   float top = bye ? 5.f : 6.f, wh = bye ? 26.f : 30.f;
-  text(g, word, Rectangle<float>(0, top, r.getWidth(), wh + 2), font(FELL, wh, bye ? .12f : 0.f), pressed ? live : bone, Justification::centred);
-  text(g, sub, Rectangle<float>(0, top + wh + 3, r.getWidth(), 16), font(MONO, 12), giltTxt, Justification::centred);
+  auto wr = Rectangle<float>(0, top, r.getWidth(), wh + 2);
+  GlyphArrangement ga; ga.addFittedText(font(FELL, wh, bye ? .12f : 0.f), word, wr.getX(), wr.getY(), wr.getWidth(), wr.getHeight(), Justification::centred, 1);
+  Path wp; ga.createPath(wp);
+  DropShadow(rgba(255, 72, 24, D * .18f + G * .72f), (int)std::round(2 + 22 * G), {}).drawForPath(g, wp);
+  g.setColour(pressed ? live : wordCol); g.fillPath(wp);
+  text(g, sub, Rectangle<float>(0, top + wh + 3, r.getWidth(), 16), font(MONO, 12), giltTxt.withMultipliedAlpha(1.f - D * .5f), Justification::centred);
   if (progress > 0) { g.setColour(live); g.fillRect(Rectangle<float>(0, r.getBottom() - 3, r.getWidth() * jmin(1.f, progress), 3)); }
 }
 
@@ -44,6 +76,16 @@ void Board::refresh() {
   bool y = ctl.momentOn(1), n = ctl.momentOn(0); float pr = ctl.riserProgress();
   if (y != yes.pressed) { yes.pressed = y; yes.repaint(); }
   if (n != no.pressed || pr != no.progress) { no.pressed = n; no.progress = pr; no.repaint(); }
+}
+void Board::timerCallback() {
+  auto look = dreadLook(proc.value(he::P_MACRO_DREAD), proc.outputLevel(), motionReduced(), Time::getMillisecondCounterHiRes());
+  float g = look.glow * look.flick;
+  if (yes.dread != look.vis || yes.dreadGlow != g) {
+    yes.dread = no.dread = bye.dread = look.vis;
+    yes.dreadGlow = no.dreadGlow = bye.dreadGlow = g;
+    yes.repaint(); no.repaint(); bye.repaint();
+  }
+  repaint();
 }
 
 static double rng(int& seed) { seed = (int)(((int64)seed * 16807) % 2147483647); return (seed - 1) / 2147483646.0; }
@@ -117,22 +159,41 @@ void Board::paint(Graphics& g) {
   g.drawImage(bg, Rectangle<float>(0, 0, w, h));
   if (L.empty() || lw != w || lh != h) layoutLetters(w, h);
   const auto& tm = ctl.tm; float lvl = jmax(ctl.pkL, ctl.pkR);
+  auto look = dreadLook(proc.value(he::P_MACRO_DREAD), proc.outputLevel(), motionReduced(), Time::getMillisecondCounterHiRes());
+  float fade = look.vis ? 1.f - look.vis * .82f : 1.f, gL = look.vis ? look.glow * look.flick : 0;
   float px, py; bool live = down;
   if (down) { px = curX; py = curY; } else if (hover) { px = hoverX; py = hoverY; } else { px = restX; py = restY; }
   if (down || hover) { restX = px; restY = py; }
   float X = px * w, Y = (1 - py) * h;
-  // candlelight pooling under the planchette, brighter as it sounds
+  // Dread: the wood darkens and a vignette closes in (skipped entirely at Dread 0)
+  if (look.vis) {
+    g.setColour(rgba(4, 1, 1, look.dark)); g.fillRect(0.f, 0.f, w, h);
+    float vr = jmax(w, h);
+    ColourGradient vg(Colours::transparentBlack, w * .5f, h * .48f, rgba(6, 1, 0, .35f + .6f * look.vis), w * .5f + vr * (.72f - .1f * look.vis), h * .48f, true);
+    vg.clearColours(); vg.addColour(0, Colours::transparentBlack);
+    float inner = (look.hole * vr) / (vr * (.72f - .1f * look.vis));
+    vg.addColour(jlimit(0.f, .999f, inner), Colours::transparentBlack);
+    vg.addColour(1, rgba(6, 1, 0, .35f + .6f * look.vis));
+    g.setGradientFill(vg); g.fillRect(0.f, 0.f, w, h);
+  }
+  // candlelight pooling under the planchette, brighter as it sounds (ember, and smaller, as Dread rises)
   float ca = live ? .08f + jmin(.22f, lvl * .6f) : .035f;
-  ColourGradient cg(rgba(255, 196, 120, ca), X, Y, rgba(255, 196, 120, 0), X + jmax(w, h) * .32f, Y, true); g.setGradientFill(cg); g.fillRect(0.f, 0.f, w, h);
+  if (look.vis) ca *= 1.f - look.vis * .35f;
+  float crad = jmax(w, h) * (.32f - (look.vis ? .1f * look.vis : 0));
+  if (look.vis) {
+    ColourGradient cg(rgba(255, 110, 50, ca * (.8f + .7f * look.glow)), X, Y, rgba(255, 80, 30, 0), X + crad, Y, true); g.setGradientFill(cg); g.fillRect(0.f, 0.f, w, h);
+  } else {
+    ColourGradient cg(rgba(255, 196, 120, ca), X, Y, rgba(255, 196, 120, 0), X + crad, Y, true); g.setGradientFill(cg); g.fillRect(0.f, 0.f, w, h);
+  }
   // the machine's own voice as a faint smoke line
   {
     int wpos = proc.scopeW.load(); Path p;
     for (int i = 0; i < 1024; i += 4) { float s = proc.scope[(wpos - 1024 + i) & 2047]; float sx = i / 1020.f * w, sy = h * .53f - s * h * .2f; if (i) p.lineTo(sx, sy); else p.startNewSubPath(sx, sy); }
-    g.setColour(rgba(201, 168, 101, jmin(.32f, .08f + lvl * .6f))); g.strokePath(p, PathStrokeType(1.2f));
+    g.setColour(rgba(201, 168, 101, jmin(.32f, .08f + lvl * .6f) * fade)); g.strokePath(p, PathStrokeType(1.2f));
   }
   // the brass rule
   BoardRuler R; bool hasR = ruler(R);
-  { Path p; for (int j = 0; j <= 60; j++) { float rx = j / 60.f * w, ry = rulerY(j / 60.f, h); if (j) p.lineTo(rx, ry); else p.startNewSubPath(rx, ry); } g.setColour(rgba(201, 168, 101, .30f)); g.strokePath(p, PathStrokeType(1.f)); }
+  { Path p; for (int j = 0; j <= 60; j++) { float rx = j / 60.f * w, ry = rulerY(j / 60.f, h); if (j) p.lineTo(rx, ry); else p.startNewSubPath(rx, ry); } g.setColour(rgba(201, 168, 101, .30f * fade)); g.strokePath(p, PathStrokeType(1.f)); }
   double stNow = hasR ? rSt(R, px) : 0;
   if (hasR) {
     int span = R.hi - R.lo, every = w / span < 6 ? 2 : 1; auto mf = font(MONO, 12);
@@ -140,15 +201,22 @@ void Board::paint(Graphics& g) {
       bool oc = s % 12 == 0; if (!oc && s % every) continue;
       double tx = rX(R, s); if (tx < -.001 || tx > 1.001) continue;
       float Xs = (float)tx * w, Ys = rulerY((float)tx, h); bool nearNow = live && std::abs((R.q ? stNow : std::floor(stNow + .5)) - s) < .5;
-      g.setColour(nearNow ? rgba(246, 231, 191, .95f) : oc ? rgba(201, 168, 101, .7f) : rgba(201, 168, 101, .48f));
+      if (look.vis && (nearNow || oc)) {
+        g.setColour(nearNow ? rgba(255, 150, 90, .7f + .3f * gL) : rgba(255, 120, 60, .35f + .45f * gL));
+      } else g.setColour(nearNow ? rgba(246, 231, 191, .95f) : oc ? rgba(201, 168, 101, .7f) : rgba(201, 168, 101, .48f));
+      if (look.vis && (nearNow || oc)) {
+        DropShadow(rgba(255, 70, 20, .25f + .55f * gL), (int)(8 + 10 * gL), {}).drawForRectangle(g, Rectangle<int>((int)Xs, (int)Ys, 1, (int)(oc ? 14 : 8)));
+      }
       g.drawLine(Xs, Ys, Xs, Ys + (oc ? 14.f : 8.f), nearNow ? 2.f : 1.f);
       if (oc) {
         String t = s == 0 ? "0" : (s > 0 ? "+" : String::fromUTF8("\xe2\x88\x92")) + String(std::abs(s));
         float tw = textWidth(mf, t), tx2 = Xs < 24 ? Xs + 22 : Xs > w - 24 ? Xs - 22 - tw : Xs - tw / 2;
-        if (Xs < 24) tx2 = Xs + 22; g.setColour(rgba(203, 189, 159, .8f)); g.setFont(mf); g.drawSingleLineText(t, (int)std::round(tx2), (int)std::round(Ys - 3 - mf.getDescent()));
+        if (Xs < 24) tx2 = Xs + 22;
+        g.setColour(look.vis ? rgba(255, 160, 110, .45f + .5f * gL) : rgba(203, 189, 159, .8f));
+        g.setFont(mf); g.drawSingleLineText(t, (int)std::round(tx2), (int)std::round(Ys - 3 - mf.getDescent()));
       }
     }
-  } else { Path d; d.addRectangle(-3.f, -3.f, 6.f, 6.f); d.applyTransform(AffineTransform::rotation(PI_F / 4).translated(w / 2, rulerY(.5f, h))); g.setColour(rgba(201, 168, 101, .45f)); g.fillPath(d); }
+  } else { Path d; d.addRectangle(-3.f, -3.f, 6.f, 6.f); d.applyTransform(AffineTransform::rotation(PI_F / 4).translated(w / 2, rulerY(.5f, h))); g.setColour(rgba(201, 168, 101, .45f * fade)); g.fillPath(d); }
   // dotted trail of the last strokes
   double now = Time::getMillisecondCounterHiRes();
   if (trail.size() > 1) {
@@ -157,7 +225,7 @@ void Board::paint(Graphics& g) {
       double age = (now - trail[i].t) / 1600; if (age > 1) break;
       float ax = trail[i].x * w, ay = (1 - trail[i].y) * h, bx = trail[i - 1].x * w, by = (1 - trail[i - 1].y) * h; acc += std::hypot(bx - ax, by - ay);
       if (acc < 8) continue; acc = 0;
-      g.setColour(rgba(233, 211, 154, (float)(.55 * (1 - age)))); g.fillEllipse(ax - 1.4f, ay - 1.4f, 2.8f, 2.8f);
+      g.setColour(rgba(233, 211, 154, (float)(.55 * (1 - age) * fade))); g.fillEllipse(ax - 1.4f, ay - 1.4f, 2.8f, 2.8f);
     }
   }
   // the letters: faint, lit by the planchette
@@ -169,14 +237,20 @@ void Board::paint(Graphics& g) {
     if (dq < reach) a = a0 + (live ? .42f : .14f) * (1 - dq / reach);
     GlyphArrangement ga; ga.addFittedText(lf, String::charToString(q.ch), -fs, -fs, 2 * fs, 2 * fs, Justification::centred, 1);
     Path gp; ga.createPath(gp); gp.applyTransform(AffineTransform::rotation(q.r).translated(q.x, q.y));
-    if ((int)i == lit && live) { DropShadow(rgba(233, 211, 154, .9f), 14, {}).drawForPath(g, gp); g.setColour(Colour(0xfff6e7bf)); }
+    if (look.vis) {
+      float nearL = dq < reach ? 1 - dq / reach : 0, aL = jmin(1.f, a + look.vis * (.28f + .5f * gL) + nearL * .2f);
+      int er = (int)std::round(236 + (255 - 236) * look.vis), eg2 = (int)std::round(225 + (96 - 225) * look.vis), eb = (int)std::round(200 + (40 - 200) * look.vis);
+      DropShadow(rgba(255, 70, 18, .15f * look.vis + .7f * gL + .2f * nearL), (int)(6 * look.vis + 18 * gL + ((int)i == lit && live ? 10 : 0)), {}).drawForPath(g, gp);
+      if ((int)i == lit && live) g.setColour(Colour((juce::uint8)er, (juce::uint8)jmin(255, eg2 + 40), (juce::uint8)jmin(255, eb + 40)));
+      else g.setColour(rgba(er, eg2, eb, aL));
+    } else if ((int)i == lit && live) { DropShadow(rgba(233, 211, 154, .9f), 14, {}).drawForPath(g, gp); g.setColour(Colour(0xfff6e7bf)); }
     else g.setColour(rgba(236, 225, 200, a));
     g.fillPath(gp);
   }
   // Junk Tray: the pieces chasing the magnet
   if (ctl.sel() == he::JUNK && tm.junkN > 0) {
     for (int i = 0; i < tm.junkN; i++) {
-      g.setColour(i % 3 ? rgba(236, 225, 200, .6f) : rgba(201, 168, 101, .85f));
+      g.setColour(i % 3 ? rgba(236, 225, 200, .6f * fade) : rgba(201, 168, 101, .85f * fade));
       float r = jmax(2.5f, tm.junk[i * 3 + 2] * jmin(w, h) * .8f); g.drawEllipse(tm.junk[i * 3] * w - r, (1 - tm.junk[i * 3 + 1]) * h - r, 2 * r, 2 * r, 1.4f);
     }
   }
@@ -193,12 +267,33 @@ void Board::paint(Graphics& g) {
     Path inner = planchettePath(); inner.applyTransform(AffineTransform::scale(.88f * s).translated(X, Y)); g.setColour(rgba(233, 211, 154, .22f)); g.strokePath(inner, PathStrokeType(.8f * .88f * s));
     g.setColour(rgba(10, 7, 5, .55f)); for (auto f : {Point<float>(0, -36), Point<float>(-27, 30), Point<float>(27, 30)}) { auto c = f.transformedBy(T); g.fillEllipse(c.x - 2.6f * s, c.y - 2.6f * s, 5.2f * s, 5.2f * s); }
     float gl = live ? .55f + .45f * pr + jmin(.4f, lvl) : .25f;
+    bool ember = look.vis > 0; float ev = ember ? look.vis : 0, eg = ember ? look.glow * look.flick : 0;
+    if (ember) gl = jmax(gl, .35f + .65f * eg);
     Path ring; ring.addEllipse(X - 15 * s, Y - 15 * s, 30 * s, 30 * s);
     Path ringS; PathStrokeType(1.6f * s).createStrokedPath(ringS, ring);
-    DropShadow(rgba(233, 211, 154, jmin(1.f, gl)), (int)((live ? 10 + 18 * pr : 4) * s), {}).drawForPath(g, ringS);
-    g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .6f)); g.fillPath(ringS);
-    ColourGradient lg(rgba(255, 246, 220, live ? .22f : .1f), X - 4 * s, Y - 5 * s, rgba(255, 246, 220, .02f), X - 4 * s + 15 * s, Y - 5 * s, true); g.setGradientFill(lg); g.fillPath(ring);
-    Path hl; hl.addCentredArc(X, Y, 11 * s, 11 * s, 0, PI_F * 1.1f + PI_F * .5f, PI_F * 1.45f + PI_F * .5f, true); g.setColour(rgba(255, 250, 235, .45f)); g.strokePath(hl, PathStrokeType(1.2f * s));
+    float blur = (live ? 10 + 18 * pr : 4) + (ember ? 8 + 16 * eg : 0);
+    Colour halo = ember ? rgba(255, 80, 28, jmin(1.f, .4f + .7f * gl)) : rgba(233, 211, 154, jmin(1.f, gl));
+    DropShadow(halo, (int)(blur * s), {}).drawForPath(g, ringS);
+    if (ember) g.setColour(live ? Colour(0xffffb08a) : rgba(255, 140, 80, .45f + .4f * ev));
+    else g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .6f));
+    g.fillPath(ringS);
+    if (ember) {
+      ColourGradient lg(rgba(255, 170, 110, (live ? .22f : .1f) + .28f * ev + .2f * eg), X - 4 * s, Y - 5 * s, rgba(255, 90, 30, .04f), X - 4 * s + 15 * s, Y - 5 * s, true); g.setGradientFill(lg); g.fillPath(ring);
+    } else {
+      ColourGradient lg(rgba(255, 246, 220, live ? .22f : .1f), X - 4 * s, Y - 5 * s, rgba(255, 246, 220, .02f), X - 4 * s + 15 * s, Y - 5 * s, true); g.setGradientFill(lg); g.fillPath(ring);
+    }
+    Path hl; hl.addCentredArc(X, Y, 11 * s, 11 * s, 0, PI_F * 1.1f + PI_F * .5f, PI_F * 1.45f + PI_F * .5f, true);
+    g.setColour(ember ? rgba(255, 200, 160, .55f) : rgba(255, 250, 235, .45f)); g.strokePath(hl, PathStrokeType(1.2f * s));
+  }
+  // CSS-style inset shadow (under the plaques; skipped at Dread 0)
+  if (look.vis) {
+    float rad = 30.f + look.vis * 240.f;
+    auto rr = getLocalBounds().toFloat();
+    for (int i = 0; i < 18; i++) {
+      float t = (i + 1) / 18.f;
+      g.setColour(rgba(8, 2, 1, look.vis * .82f * (1.f - t) * .18f));
+      g.drawRoundedRectangle(rr.reduced(t * rad * .35f), jmax(1.f, 14 - t * 10), 6.f);
+    }
   }
   // the reading in the corner
   String hlt;
@@ -212,6 +307,9 @@ void Board::paint(Graphics& g) {
 
 void Board::paintOverChildren(Graphics& g) {
   float w = (float)getWidth(), h = (float)getHeight(); auto r = getLocalBounds().toFloat();
+  auto look = dreadLook(proc.value(he::P_MACRO_DREAD), proc.outputLevel(), motionReduced(), Time::getMillisecondCounterHiRes());
+  { Graphics::ScopedSaveState fadeWho(g);
+  if (look.vis) g.setOpacity(1.f - look.vis * .88f);
   // who plays, and what the axes do
   int s = ctl.sel(); String who = String(ROMAN[s]) + String::fromUTF8(" \xc2\xb7 ") + SRC[s].n;
   float ww = jmin(480.f, w * .46f); auto wr = Rectangle<float>((w - ww) / 2, 26, ww, 22);
@@ -231,6 +329,7 @@ void Board::paintOverChildren(Graphics& g) {
   float pw = textWidth(mf, pr), rw = reading.isNotEmpty() ? textWidth(mf, reading) : 0;
   text(g, pr, Rectangle<float>(w - 28 - pw - 2, h - 24 - 18, pw + 2, 18), mf, live, Justification::centredRight);
   if (reading.isNotEmpty()) text(g, reading, Rectangle<float>(w - 28 - pw - 14 - rw - 2, h - 24 - 18, rw + 2, 18), mf, live, Justification::centredRight);
+  }
   // the frame: gilt hairline, dark band, gilt line, inner shadow
   Path clip; clip.addRoundedRectangle(r, 14); g.reduceClipRegion(clip);
   for (int i = 0; i < 18; i++) { g.setColour(Colours::black.withAlpha(.55f * (1 - i / 18.f) * .12f)); g.drawRoundedRectangle(r.reduced(i * 2.f + 7), 14 - jmin(13.f, i * 2.f), 2.5f); }

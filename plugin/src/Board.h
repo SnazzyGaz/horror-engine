@@ -10,6 +10,7 @@ class Plaque : public juce::Component, public juce::SettableTooltipClient {
  public:
   Plaque(const juce::String& word, const juce::String& sub, bool bye) : word(word), sub(sub), bye(bye) { setRepaintsOnMouseActivity(true); }
   juce::String word, sub; bool bye; bool pressed = false; float progress = -1;
+  float dread = 0, dreadGlow = 0;   // vis and glow*flick; 0 leaves the plaque unchanged
   std::function<void()> onClick;
   void paint(juce::Graphics&) override;
   void mouseUp(const juce::MouseEvent& e) override { if (getLocalBounds().contains(e.getPosition()) && !e.mods.isPopupMenu() && onClick) onClick(); }
@@ -34,7 +35,7 @@ class Board : public juce::Component, private juce::Timer {
   void testDrag(float x, float y, bool d) { curX = x; curY = y; curP = .6f; down = d; for (int i = 0; i < 40; i++) trail.push_back({x - .3f + i * .0075f, y + .05f * std::sin(i * .3f), juce::Time::getMillisecondCounterHiRes() - (40 - i) * 20}); }
   Plaque yes, no, bye;
  private:
-  void timerCallback() override { repaint(); }
+  void timerCallback() override;
   void paintBg(int W, int H, float scale);
   void layoutLetters(float w, float h);
   float pressure(const juce::MouseEvent& e) const;
