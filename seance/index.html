@@ -3825,10 +3825,11 @@ var HE_IO = HEIOFactory();
     if (ds !== lastDs) { lastDs = ds; b.style.setProperty('--dread', ds); }
     if (gs !== lastGs) { lastGs = gs; b.style.setProperty('--dread-glow', gs); }
   }
-  // Celestial planchette: a uniform scale of Gaz's drawn SVG. The window is centred
-  // on the hand so the tip still points at the letter (hit-testing is unchanged).
-  // Raster is 2x the SVG viewBox (860x1228 -> 1720x2456). Window in SVG is (500, 940) r=96.
-  // At s=1 the body is 133 CSS px tall (70% of the first preview, which was 190).
+  // Celestial planchette: a uniform scale of Gaz's drawn SVG, rotated 180°
+  // once at load so the tip points up (a rotation, not a mirror). The window,
+  // now near the top, is centred on the hand so it still sits on the letter
+  // (hit-testing is unchanged). Raster is 2x the SVG viewBox (860x1228 ->
+  // 1720x2456). At s=1 the body is 133 CSS px tall (70% of the first preview).
   var PCH_W = 1720, PCH_H = 2456, PCH_WX = 860, PCH_WY = 1808, PCH_WR = 192, PCH_BODY_H = 2355;
   var PCH_UNIT = 133 / PCH_BODY_H, PCH_SH_PAD = 80;
   var pchArt = { ready: false, img: null, lines: null, ember: null, shadow: null };
@@ -3841,13 +3842,127 @@ var HE_IO = HEIOFactory();
       im.src = src;
     });
   }
+  function rotate180Canvas(im) {
+    var c = document.createElement('canvas');
+    c.width = im.naturalWidth || im.width;
+    c.height = im.naturalHeight || im.height;
+    var g = c.getContext('2d');
+    g.translate(c.width, c.height);
+    g.rotate(Math.PI);
+    g.drawImage(im, 0, 0);
+    return c;
+  }
+  function derivePchWindowFromAlpha(im) {
+    var w = im.width, h = im.height;
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(im, 0, 0);
+    var data = g.getImageData(0, 0, w, h).data;
+    function alphaAt(x, y) { return data[(y * w + x) * 4 + 3] / 255; }
+    function lumaAt(x, y) {
+      var i = (y * w + x) * 4;
+      return (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+    }
+    var mark = new Uint8Array(w * h); // 1 = exterior, 2 = window
+    function id(x, y) { return y * w + x; }
+    var q = [];
+    function pushExt(x, y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      if (mark[id(x, y)] || alphaAt(x, y) >= 16 / 255) return;
+      mark[id(x, y)] = 1;
+      q.push(id(x, y));
+    }
+    var x, y, i;
+    for (x = 0; x < w; x++) { pushExt(x, 0); pushExt(x, h - 1); }
+    for (y = 0; y < h; y++) { pushExt(0, y); pushExt(w - 1, y); }
+    for (i = 0; i < q.length; i++) {
+      x = q[i] % w; y = (q[i] / w) | 0;
+      pushExt(x - 1, y); pushExt(x + 1, y); pushExt(x, y - 1); pushExt(x, y + 1);
+    }
+    q = [];
+    for (y = 0; y < h; y++)
+      for (x = 0; x < w; x++)
+        if (!mark[id(x, y)] && alphaAt(x, y) < 16 / 255) { mark[id(x, y)] = 2; q.push(id(x, y)); }
+    function isGlass(x, y) {
+      if (x < 0 || y < 0 || x >= w || y >= h || mark[id(x, y)]) return false;
+      var a = alphaAt(x, y), lu = lumaAt(x, y);
+      if (a < 40 / 255) return true;
+      if (a < 230 / 255 && lu > 70 / 255) return true;
+      if (a < 120 / 255 && lu > 40 / 255) return true;
+      return false;
+    }
+    for (i = 0; i < q.length; i++) {
+      x = q[i] % w; y = (q[i] / w) | 0;
+      var dy, dx;
+      for (dy = -1; dy <= 1; dy++)
+        for (dx = -1; dx <= 1; dx++)
+          if ((dx || dy) && isGlass(x + dx, y + dy)) {
+            mark[id(x + dx, y + dy)] = 2;
+            q.push(id(x + dx, y + dy));
+          }
+    }
+    var sx = 0, sy = 0, nWin = 0, bodyMinY = h, bodyMaxY = -1, dist = [];
+    for (y = 0; y < h; y++)
+      for (x = 0; x < w; x++) {
+        if (mark[id(x, y)] === 2) { sx += x + .5; sy += y + .5; nWin++; }
+        if (mark[id(x, y)] !== 1 && alphaAt(x, y) > 16 / 255) {
+          if (y < bodyMinY) bodyMinY = y;
+          if (y > bodyMaxY) bodyMaxY = y;
+        }
+      }
+    PCH_W = w; PCH_H = h;
+    if (nWin < 8) {
+      PCH_WX = w * 0.5; PCH_WY = h * (648 / 2456); PCH_WR = w * (192 / 1720);
+    } else {
+      PCH_WX = sx / nWin; PCH_WY = sy / nWin;
+      for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+          if (mark[id(x, y)] === 2) {
+            var ddx = (x + .5) - PCH_WX, ddy = (y + .5) - PCH_WY;
+            dist.push(Math.sqrt(ddx * ddx + ddy * ddy));
+          }
+      dist.sort(function (a, b) { return a - b; });
+      var idx = Math.max(0, Math.min(dist.length - 1, Math.floor(.95 * dist.length)));
+      PCH_WR = dist[idx];
+    }
+    PCH_BODY_H = Math.max(1, bodyMaxY - bodyMinY + 1);
+    PCH_UNIT = 133 / PCH_BODY_H;
+    PCH_SH_PAD = 80 * (PCH_W / 1720);
+  }
+  // Downward drop of the already-rotated body. The pre-baked shadow is not
+  // rotated with the art, so the light stays from above.
+  function bakePchShadow(art, pad, offsetY, blur) {
+    var w = art.width, h = art.height;
+    pad = Math.max(1, pad | 0);
+    offsetY = Math.max(0, offsetY | 0);
+    var c = document.createElement('canvas');
+    c.width = w + 2 * pad;
+    c.height = h + 2 * pad + offsetY;
+    var g = c.getContext('2d');
+    g.shadowColor = 'rgba(0,0,0,0.55)';
+    g.shadowBlur = blur;
+    g.shadowOffsetX = 0;
+    g.shadowOffsetY = offsetY;
+    g.drawImage(art, pad, pad);
+    g.shadowColor = 'transparent';
+    g.shadowBlur = 0;
+    g.shadowOffsetY = 0;
+    g.globalCompositeOperation = 'destination-out';
+    g.drawImage(art, pad, pad);
+    g.globalCompositeOperation = 'source-over';
+    return c;
+  }
   var pchReady = Promise.all([
     loadPchImg('assets/celestial.png'),
     loadPchImg('assets/celestial_lines.png'),
-    loadPchImg('assets/celestial_ember.png'),
-    loadPchImg('assets/celestial_shadow.png')
+    loadPchImg('assets/celestial_ember.png')
   ]).then(function (ims) {
-    pchArt.img = ims[0]; pchArt.lines = ims[1]; pchArt.ember = ims[2]; pchArt.shadow = ims[3];
+    pchArt.img = rotate180Canvas(ims[0]);
+    pchArt.lines = rotate180Canvas(ims[1]);
+    pchArt.ember = rotate180Canvas(ims[2]);
+    derivePchWindowFromAlpha(pchArt.img);
+    pchArt.shadow = bakePchShadow(pchArt.img, PCH_SH_PAD, 24, 36);
     pchArt.ready = true;
   }).catch(function (err) { console.warn(err); });
   function drawMagnify(c, x, y, r, mag) {
