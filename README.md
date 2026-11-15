@@ -35,6 +35,11 @@ The layout, controls and engine are the same. A few things that belong to the br
 
 See `BUILDING.md`. The Windows binaries in this release were cross-compiled on Linux with MinGW-w64 (GCC 13) and a small patch to JUCE (`patches/juce-8.0.15-mingw.patch`). With Visual Studio 2022 no patch is needed.
 
+## Changes in 1.0.2
+
+- **Loads on real Windows.** 1.0.0 and 1.0.1 failed to load in FL Studio with "Entry Point Not Found: TaskDialogIndirect". The DLLs imported a function that only exists in Common Controls v6 but had no manifest asking for v6. The VST3 and CLAP now carry a Common Controls v6 manifest, and the message box looks that function up at run time (falling back to a plain message box), so the plugin no longer depends on it to load.
+- The CLAP now has the same Windows file-version info as the VST3.
+
 ## Changes in 1.0.1
 
 - Looper **Sync to host** (on by default): bar-rounded first layer, bar-aligned start, locked to the host's tempo, position, jumps and loops; free-running when the host is stopped.

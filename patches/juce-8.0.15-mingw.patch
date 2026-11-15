@@ -1,5 +1,5 @@
 diff --git a/modules/juce_core/native/juce_SystemStats_windows.cpp b/modules/juce_core/native/juce_SystemStats_windows.cpp
-index 15aa581..4000496 100644
+index 15aa581e63..4000496ccd 100644
 --- a/modules/juce_core/native/juce_SystemStats_windows.cpp
 +++ b/modules/juce_core/native/juce_SystemStats_windows.cpp
 @@ -80,7 +80,7 @@ static int findNumberOfPhysicalCores() noexcept
@@ -12,7 +12,7 @@ index 15aa581..4000496 100644
  {
    uint32 la = 0, lb = 0, lc = 0, ld = 0;
 diff --git a/modules/juce_core/system/juce_TargetPlatform.h b/modules/juce_core/system/juce_TargetPlatform.h
-index 7850b4c..56d53db 100644
+index 7850b4c6e9..56d53dbdde 100644
 --- a/modules/juce_core/system/juce_TargetPlatform.h
 +++ b/modules/juce_core/system/juce_TargetPlatform.h
 @@ -110,7 +110,13 @@
@@ -31,7 +31,7 @@ index 7850b4c..56d53db 100644
  
    /** If defined, this indicates that the processor is little-endian. */
 diff --git a/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp b/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
-index d0752ef..5b3c9c2 100644
+index d0752efafc..5b3c9c2b3c 100644
 --- a/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
 +++ b/modules/juce_graphics/image_formats/juce_JPEGLoader.cpp
 @@ -220,7 +220,7 @@ namespace JPEGHelpers
@@ -44,7 +44,7 @@ index d0752ef..5b3c9c2 100644
     #endif
  
 diff --git a/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp b/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
-index e1c9708..72335b1 100644
+index e1c97088b1..72335b16bf 100644
 --- a/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
 +++ b/modules/juce_graphics/native/juce_Direct2DImage_windows.cpp
 @@ -34,6 +34,10 @@
@@ -59,7 +59,7 @@ index e1c9708..72335b1 100644
  */
  static std::vector<Direct2DPixelDataPage> makePages (ComSmartPtr<ID2D1Device1> device,
 diff --git a/modules/juce_graphics/native/juce_DirectX_windows.cpp b/modules/juce_graphics/native/juce_DirectX_windows.cpp
-index ccbd6ca..fecb6f4 100644
+index ccbd6caef9..fecb6f4d9e 100644
 --- a/modules/juce_graphics/native/juce_DirectX_windows.cpp
 +++ b/modules/juce_graphics/native/juce_DirectX_windows.cpp
 @@ -622,7 +622,7 @@ DxgiAdapter::Ptr Direct2DDeviceResources::findAdapter (const DxgiAdapters& adapt
@@ -72,7 +72,7 @@ index ccbd6ca..fecb6f4 100644
  
      return findAdapter (adapters, device);
 diff --git a/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h b/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
-index e2e6c14..701b772 100644
+index e2e6c14f3f..701b772743 100644
 --- a/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
 +++ b/modules/juce_gui_basics/native/accessibility/juce_UIATextProvider_windows.h
 @@ -35,6 +35,10 @@
@@ -87,7 +87,7 @@ index e2e6c14..701b772 100644
  class UIATextProvider  : public UIAProviderBase,
                           public ComBaseClassHelper<ITextProvider2>
 diff --git a/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp b/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
-index 344e93c..b440d80 100644
+index 344e93c81d..b440d80db8 100644
 --- a/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
 +++ b/modules/juce_gui_basics/native/juce_Direct2DHwndContext_windows.cpp
 @@ -144,7 +144,7 @@ public:
@@ -107,4 +107,51 @@ index 344e93c..b440d80 100644
 +        if (const auto hr = chain->GetBuffer (0, __uuidof (IDXGISurface), reinterpret_cast<void**> (surface.resetAndGetPointerAddress())); FAILED (hr))
              return nullptr;
          JUCE_END_IGNORE_WARNINGS_GCC_LIKE
+ 
+diff --git a/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp b/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
+index 9be087deb1..02aeebcd59 100644
+--- a/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
++++ b/modules/juce_gui_basics/native/juce_NativeMessageBox_windows.cpp
+@@ -168,9 +168,42 @@ std::unique_ptr<ScopedMessageBoxInterface> ScopedMessageBoxInterface::create (co
+                 config.cButtons = (UINT) buttonLabels.size();
+ 
+                 int buttonIndex = 0;
++
++               #if JUCE_MINGW
++                // TaskDialogIndirect only exists in comctl32 v6. A static import makes the whole DLL fail to load
++                // when the loader binds comctl32 v5 (plugin DLLs without a v6 manifest, or a host process without
++                // one), so look it up at run time and fall back to a plain MessageBox.
++                using TaskDialogIndirectFn = HRESULT (WINAPI*) (const TASKDIALOGCONFIG*, int*, int*, BOOL*);
++                static const auto taskDialogIndirect = []() -> TaskDialogIndirectFn
++                {
++                    if (auto* comctl = LoadLibraryW (L"comctl32.dll"))
++                        return reinterpret_cast<TaskDialogIndirectFn> (reinterpret_cast<void*> (GetProcAddress (comctl, "TaskDialogIndirect")));
++
++                    return nullptr;
++                }();
++
++                if (taskDialogIndirect != nullptr && SUCCEEDED (taskDialogIndirect (&config, &buttonIndex, nullptr, nullptr)))
++                    return buttonIndex;
++
++                const auto numButtons = (int) buttonLabels.size();
++                const UINT type = (numButtons >= 3 ? MB_YESNOCANCEL : numButtons == 2 ? MB_OKCANCEL : MB_OK)
++                                | (options.getIconType() == MessageBoxIconType::WarningIcon  ? MB_ICONWARNING
++                                 : options.getIconType() == MessageBoxIconType::InfoIcon     ? MB_ICONINFORMATION
++                                 : options.getIconType() == MessageBoxIconType::QuestionIcon ? MB_ICONQUESTION : 0u);
++
++                switch (MessageBoxW (parent, config.pszContent, config.pszWindowTitle, type))
++                {
++                    case IDOK:
++                    case IDYES:     return 0;
++                    case IDNO:      return 1;
++                    case IDCANCEL:  return numButtons >= 3 ? 2 : (numButtons == 2 ? 1 : 0);
++                    default:        return 0;
++                }
++               #else
+                 TaskDialogIndirect (&config, &buttonIndex, nullptr, nullptr);
+ 
+                 return buttonIndex;
++               #endif
+             };
+         }
  

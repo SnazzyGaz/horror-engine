@@ -18,7 +18,8 @@ cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLA
 ## Windows binaries cross-compiled on Linux (how this release was made)
 
 JUCE 8 refuses MinGW, so patch it first; the patch only marks MinGW as a 64-bit Windows compiler and works around four
-spots where JUCE relies on MSVC (`__uuidof` on a variable, two SDK constants, `__cpuid`, jpeglib's `boolean`):
+spots where JUCE relies on MSVC (`__uuidof` on a variable, two SDK constants, `__cpuid`, jpeglib's `boolean`), and makes
+the native message box look up `TaskDialogIndirect` at run time instead of importing it:
 
 ```
 cd JUCE && git apply ../patches/juce-8.0.15-mingw.patch
@@ -27,7 +28,7 @@ cd JUCE && git apply ../patches/juce-8.0.15-mingw.patch
 MinGW-w64 needs headers new enough for JUCE 8 (`d2d1_3.h` with `ID2D1SpriteBatch`, `dcomp.h`,
 `ISelectionProvider2` in `uiautomationcore.h`): mingw-w64 12 (Debian trixie) is too old, 13.0.0 works. Either install
 current [mingw-w64-headers](https://github.com/mingw-w64/mingw-w64) over your distribution's (keep its winpthreads
-headers), or leave the system alone and build against a private overlay (how 1.0.1 was built):
+headers), or leave the system alone and build against a private overlay (how 1.0.1 and 1.0.2 were built):
 
 ```
 # overlay = the distribution's headers with the mingw-w64 13.0.0 headers copied on top
@@ -49,6 +50,11 @@ ninja -C build-win HorrorEngine_VST3 HorrorEngine_CLAP
 
 `src/mingw_guids.c` defines two GUIDs older MinGW import libraries lack. The DLLs link libstdc++, libgcc and winpthread
 statically, so they depend only on Windows system DLLs.
+
+MinGW does not see JUCE's MSVC `/MANIFESTDEPENDENCY` pragma, so `src/win/manifest.rc` embeds the Common Controls v6
+manifest (`src/win/HorrorEngine.manifest`, RT_MANIFEST id 2) in the VST3 and CLAP. Wine accepts DLLs without it;
+Windows does not. To check a build, `x86_64-w64-mingw32-objdump -p "Horror Engine.vst3"` should list no `COMCTL32.dll`
+and no `TaskDialogIndirect`.
 
 ## Linux
 

@@ -3,7 +3,7 @@
 #   cmake -B build -DJUCE_DIR=/path/to/JUCE-8.0.15 -DCJE_DIR=/path/to/clap-juce-extensions
 #   (or leave both out and CMake fetches JUCE 8.0.15 and the pinned clap-juce-extensions)
 cmake_minimum_required(VERSION 3.22)
-project(HorrorEngineSeance VERSION 1.0.1 LANGUAGES C CXX)
+project(HorrorEngineSeance VERSION 1.0.2 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -73,7 +73,7 @@ juce_add_plugin(HorrorEngine
   PLUGIN_CODE HrSe
   PRODUCT_NAME "Horror Engine"
   DESCRIPTION "Nine physical-model horror instruments on a spirit board"
-  VERSION 1.0.1
+  VERSION 1.0.2
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE
   EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -98,7 +98,7 @@ endif()
 
 if (MINGW)
   target_sources(HorrorEngine PRIVATE src/mingw_guids.c)
-  target_link_libraries(HorrorEngine PRIVATE imm32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
+  target_link_libraries(HorrorEngine PRIVATE imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
 endif()
 
 clap_juce_extensions_plugin(TARGET HorrorEngine
@@ -107,6 +107,19 @@ clap_juce_extensions_plugin(TARGET HorrorEngine
   CLAP_MANUAL_URL "https://github.com/SnazzyGaz/horror-engine"
   CLAP_SUPPORT_URL "https://github.com/SnazzyGaz/horror-engine")
 
+if (MINGW)
+  # Common Controls v6 manifest (RT_MANIFEST id 2) in each plugin DLL. It goes on the final DLL targets, not the
+  # static SharedCode library, because nothing references a resource object so the linker would drop it.
+  set_source_files_properties(src/win/manifest.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/win/HorrorEngine.manifest)
+  foreach(he_target HorrorEngine_VST3 HorrorEngine_CLAP)
+    target_sources(${he_target} PRIVATE src/win/manifest.rc)
+  endforeach()
+  # JUCE only links its version resource into the VST3; give the CLAP the same file-version info.
+  if (TARGET HorrorEngine_rc_lib)
+    target_link_libraries(HorrorEngine_CLAP PRIVATE HorrorEngine_rc_lib)
+  endif()
+endif()
+
 if (HE_SNAP)
   juce_add_gui_app(HorrorSnap PRODUCT_NAME "HorrorSnap")
   target_sources(HorrorSnap PRIVATE tools/snap.cpp src/PluginProcessor.cpp src/Controller.cpp src/Look.cpp src/Widgets.cpp src/Board.cpp src/Panels.cpp src/Drawers.cpp src/PluginEditor.cpp)
@@ -114,6 +127,6 @@ if (HE_SNAP)
   target_link_libraries(HorrorSnap PRIVATE he_core HorrorEngineFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_extra juce::juce_recommended_config_flags)
   if (MINGW)
     target_sources(HorrorSnap PRIVATE src/mingw_guids.c)
-    target_link_libraries(HorrorSnap PRIVATE ksguid ksuser imm32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
+    target_link_libraries(HorrorSnap PRIVATE ksguid ksuser imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
   endif()
 endif()
