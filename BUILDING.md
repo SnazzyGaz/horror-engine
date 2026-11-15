@@ -24,8 +24,21 @@ spots where JUCE relies on MSVC (`__uuidof` on a variable, two SDK constants, `_
 cd JUCE && git apply ../patches/juce-8.0.15-mingw.patch
 ```
 
-MinGW-w64 needs headers new enough for Direct2D 1.3 (`d2d1_3.h`, `dcomp.h`): install current
-[mingw-w64-headers](https://github.com/mingw-w64/mingw-w64) over your distribution's (keep its winpthreads headers).
+MinGW-w64 needs headers new enough for JUCE 8 (`d2d1_3.h` with `ID2D1SpriteBatch`, `dcomp.h`,
+`ISelectionProvider2` in `uiautomationcore.h`): mingw-w64 12 (Debian trixie) is too old, 13.0.0 works. Either install
+current [mingw-w64-headers](https://github.com/mingw-w64/mingw-w64) over your distribution's (keep its winpthreads
+headers), or leave the system alone and build against a private overlay (how 1.0.1 was built):
+
+```
+# overlay = the distribution's headers with the mingw-w64 13.0.0 headers copied on top
+cp -rL /usr/x86_64-w64-mingw32/include ~/mingw-include-13
+(cd mingw-w64-13.0.0/mingw-w64-headers && ./configure --host=x86_64-w64-mingw32 --prefix=$PWD/out --with-default-msvcrt=msvcrt && make install)
+cp -r mingw-w64-13.0.0/mingw-w64-headers/out/include/. ~/mingw-include-13/
+G=/usr/lib/gcc/x86_64-w64-mingw32/14-posix; O=~/mingw-include-13
+CXXINC="-nostdinc -nostdinc++ -isystem $G/include/c++ -isystem $G/include/c++/x86_64-w64-mingw32 -isystem $G/include/c++/backward -isystem $G/include -isystem $G/include-fixed -isystem $O"
+CINC="-nostdinc -isystem $G/include -isystem $G/include-fixed -isystem $O"
+# then add  -DCMAKE_CXX_FLAGS="$CXXINC" -DCMAKE_C_FLAGS="$CINC"  to the cmake line below
+```
 Then:
 
 ```
