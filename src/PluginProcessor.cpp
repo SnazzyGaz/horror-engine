@@ -77,12 +77,21 @@ void HorrorProcessor::prepareToPlay(double sr, int maxBlock) {
   inBuf_.setSize(2, jmax(1, maxBlock)); outTmp_.setSize(2, jmax(1, maxBlock));
   int rs = (int)std::ceil(62 * sr_ / he::BL) * he::BL;
   if (ring_.getNumSamples() != rs) ring_.setSize(2, rs); ring_.clear(); ringW_ = 0; ringFill_ = 0;
-  held_.clear(); inputOn_ = false; blocks_ = 0;
+  held_.clear(); inputOn_ = false; blocks_ = 0; for (auto& h : hold_) h = ParamHold();
   if (inputSource.load() != IN_NONE) { host_->inputOn(true); inputOn_ = true; }
 }
 
-void HorrorProcessor::applyParams(bool force) {
-  for (int i = 0; i < he::NPARAM; i++) { double v = *raw_[i]; if (force || v != last_[i]) { last_[i] = v; host_->setParam(i, v); } }
+void HorrorProcessor::applyParams(bool force, int numSamples) {
+  for (int i = 0; i < he::NPARAM; i++) {
+    double v = *raw_[i];
+    if (!force && hold_[i].holding() && !hold_[i].follow(params_[i]->convertTo0to1((float)v), numSamples)) continue;   // a CC's value is still on its way to the host
+    if (force || v != last_[i]) { last_[i] = v; host_->setParam(i, v); }
+  }
+}
+// a CC set parameter k: the engine takes it now, the host parameter follows from the controller's timer
+void HorrorProcessor::midiParam(int k, double v) {
+  host_->setParam(k, v); last_[k] = v; hold_[k].midi(params_[k]->convertTo0to1((float)v), (int64_t)(sr_ * .5));
+  AudioNote n; n.k = k; n.v = (float)v; pushNote(n);
 }
 
 void HorrorProcessor::pushNote(const AudioNote& n) {
@@ -153,7 +162,7 @@ void HorrorProcessor::handleMidi(const MidiMessage& msg) {
   if (st == 176 && d1 <= 119) {
     if (learnArmed.load() > 0) { learnArmed = 0; AudioNote n; n.type = AudioNote::LEARN_GOT; n.ch = ch; n.cc = d1; pushNote(n); return; }
     int mid = mmap[ch][d1].load();
-    if (mid >= 0) { double v = Controller::midiValue(mid, d2); host_->setParam(mid, v); last_[mid] = v; AudioNote n; n.k = mid; n.v = (float)v; pushNote(n); return; }
+    if (mid >= 0) { midiParam(mid, Controller::midiValue(mid, d2)); return; }
   }
   // moments over MIDI: notes on channel 16 from C2 (36) fire moment 1, 2, 3...; CC 24-43 on any channel fire them on a rise past 64
   if (ch == 15 && (st == 144 || st == 128)) { if (st == 144 && d2 > 0 && d1 >= 36) momentN(d1 - 36); return; }
@@ -162,8 +171,7 @@ void HorrorProcessor::handleMidi(const MidiMessage& msg) {
   else if (st == 128 || st == 144) noteOff(1000 + d1);
   else if (st == 176 && d1 >= 20 && d1 <= 23) {
     static const int macro[4] = {he::P_MACRO_DREAD, he::P_MACRO_DISTANCE, he::P_MACRO_MATERIAL, he::P_MACRO_PITCH};
-    int k = macro[d1 - 20]; double v = Controller::denorm(k, d2 / 127.0); host_->setParam(k, v); last_[k] = v;
-    AudioNote n; n.k = k; n.v = (float)v; pushNote(n);
+    int k = macro[d1 - 20]; midiParam(k, Controller::denorm(k, d2 / 127.0));
   }
 }
 
@@ -171,7 +179,7 @@ void HorrorProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midi)
   ScopedNoDenormals nd;
   int n = buffer.getNumSamples(), outs = getTotalNumOutputChannels(), ins = getTotalNumInputChannels();
   if (!host_) prepareToPlay(getSampleRate() > 0 ? getSampleRate() : 48000, n);
-  applyParams(false);
+  applyParams(false, n);
   host_->wantJunk = wantJunk.load();
   // Sync to host: the host's tempo, position and play state for the looper (CLAP's transport arrives here too, through
   // clap-juce-extensions). Without a tempo or while stopped the looper runs free, as in the web app.

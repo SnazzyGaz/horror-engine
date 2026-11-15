@@ -10,3 +10,5 @@ target_link_libraries(he_render he_core)
 # Sync to host with a fake playhead
 add_executable(sync_test ../test/sync_test.cpp)
 target_link_libraries(sync_test he_core)
+# A CC must not flicker back to the host's stale parameter value (src/ParamHold.h)
+add_executable(param_hold_test ../test/param_hold_test.cpp)

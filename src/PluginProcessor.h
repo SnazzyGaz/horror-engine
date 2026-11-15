@@ -1,6 +1,7 @@
 // Horror Engine · Séance, the plugin: VST3 and CLAP around the C++ port of src/engine.js.
 // Horror Engine by Garyck Arntzen (https://x.com/_mintydoge). Plugin released under the GNU AGPLv3 (see LICENSE).
 #pragma once
+#include "ParamHold.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <atomic>
@@ -80,7 +81,7 @@ class HorrorProcessor : public juce::AudioProcessor {
 
  private:
   static juce::AudioProcessorValueTreeState::ParameterLayout layout();
-  void applyParams(bool force);
+  void applyParams(bool force, int numSamples = 0);
   void handleMidi(const juce::MidiMessage& m);
   void runEvent(const UiEvent& e);
   void noteOn(int tag, double hz, double vel);
@@ -95,6 +96,8 @@ class HorrorProcessor : public juce::AudioProcessor {
   juce::RangedAudioParameter* params_[he::NPARAM] = {};
   std::atomic<float>* raw_[he::NPARAM] = {};
   double last_[he::NPARAM] = {};
+  ParamHold hold_[he::NPARAM];   // a CC moved this parameter; keep its value until the host parameter catches up
+  void midiParam(int k, double v);
   double sr_ = 48000;
   int blocks_ = 0;
   // held notes (MIDI and the computer keyboard): the latest leads
