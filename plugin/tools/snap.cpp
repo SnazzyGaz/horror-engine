@@ -86,8 +86,12 @@ struct SnapApp : public JUCEApplication {
       case 17: shot("16_guide"); quit(); return;
     }
   }
+  float snapScale = 1.f;
   void dreadShots(const StringArray& a) {
     out = File(a[1].isNotEmpty() ? a[1].unquoted() : "/workspace/planchette-preview/final/plugin"); out.createDirectory();
+    snapScale = (a.size() > 2 && a[2].isNotEmpty()) ? a[2].getFloatValue() : 1.f;
+    if (snapScale < .25f) snapScale = 1.f;
+    std::printf("dread shots, scale=%.2f, out=%s\n", snapScale, out.getFullPathName().toRawUTF8());
     p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
     ed.reset(p->createEditor());
     win = std::make_unique<DocumentWindow>("snap-dread", Colours::black, 0); win->setUsingNativeTitleBar(false); win->setTitleBarHeight(0);
@@ -98,10 +102,10 @@ struct SnapApp : public JUCEApplication {
     auto* e = dynamic_cast<HorrorEditor*>(ed.get());
     if (!e) return;
     e->repaint(); e->testBoard().repaint();
-    auto full = ed->createComponentSnapshot(ed->getLocalBounds(), true, 1.0f);
+    auto full = ed->createComponentSnapshot(ed->getLocalBounds(), true, snapScale);
     File f = out.getChildFile(name + ".png"); f.deleteFile(); FileOutputStream os(f); PNGImageFormat().writeImageToStream(full, os);
     auto& b = e->testBoard();
-    auto board = b.createComponentSnapshot(b.getLocalBounds(), true, 1.0f);
+    auto board = b.createComponentSnapshot(b.getLocalBounds(), true, snapScale);
     File fb = out.getChildFile(name + "-board.png"); fb.deleteFile(); FileOutputStream osb(fb); PNGImageFormat().writeImageToStream(board, osb);
     std::printf("wrote %s and %s-board\n", name.toRawUTF8(), name.toRawUTF8());
   }

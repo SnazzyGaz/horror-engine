@@ -2,6 +2,7 @@
 #include "Board.h"
 #include "PluginProcessor.h"
 #include "BinaryData.h"
+#include <vector>
 
 using namespace juce;
 using namespace look;
@@ -9,9 +10,14 @@ using namespace look;
 static const float PI_F = MathConstants<float>::pi;
 
 // Celestial planchette: uniform scale of Gaz's drawing. Window is centred on the
-// hand so the tip still points at the letter (hit-testing is unchanged). Raster
-// is 2x the SVG (860x1228 -> 1720x2456). At s=1 the body is 133 logical px tall
-// (70% of the first preview).
+// hand so the tip still points at the letter (hit-testing is unchanged). The
+// master rasters are Gaz's SVG at 2x (860x1228 -> 1720x2456), made with a
+// proper SVG renderer (the drawing uses a <mask> that JUCE's parser cannot
+// apply). At s=1 the body is 133 logical px tall (70% of the first preview).
+// Those masters are Lanczos-3 resampled to the exact on-screen pixel size
+// (editor scale and the display/OpenGL scale factor) and blit 1:1, so the
+// linework stays a clean antialiased stroke. Ember is a soft tint of that
+// same line mask, not a second pre-coloured raster.
 static constexpr float PCH_W = 1720.f, PCH_H = 2456.f, PCH_WX = 860.f, PCH_WY = 1808.f, PCH_WR = 192.f;
 static constexpr float PCH_BODY_H = 2355.f, PCH_UNIT = 133.f / PCH_BODY_H, PCH_SH_PAD = 80.f;
 
@@ -19,14 +25,128 @@ static Image loadPngBin(const char* data, int size) {
   if (data == nullptr || size <= 0) return {};
   return ImageFileFormat::loadFrom(data, (size_t) size);
 }
-static Image scaleImageHQ(const Image& src, int w, int h) {
+
+struct PchRgba { float r, g, b, a; };
+static float lanczos3(float x) {
+  x = std::fabs(x);
+  if (x < 1e-6f) return 1.f;
+  if (x >= 3.f) return 0.f;
+  const float pi = MathConstants<float>::pi;
+  return (3.f * std::sin(pi * x) * std::sin(pi * x / 3.f)) / (pi * pi * x * x);
+}
+static void pchPackPremul(const Image& src, std::vector<PchRgba>& out) {
+  const int w = src.getWidth(), h = src.getHeight();
+  out.resize((size_t) w * (size_t) h);
+  Image::BitmapData d(src, Image::BitmapData::readOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const Colour c = d.getPixelColour(x, y);
+      const float a = c.getFloatAlpha();
+      out[(size_t) y * (size_t) w + (size_t) x] = { c.getFloatRed() * a, c.getFloatGreen() * a, c.getFloatBlue() * a, a };
+    }
+}
+static void pchLanczosAxis(const std::vector<PchRgba>& src, int sw, int sh,
+                           std::vector<PchRgba>& dst, int dw, int dh, bool horizontal) {
+  dst.assign((size_t) dw * (size_t) dh, {});
+  if (horizontal) {
+    const float scale = (float) sw / (float) dw;
+    for (int y = 0; y < sh; ++y) {
+      const PchRgba* srow = src.data() + (size_t) y * (size_t) sw;
+      PchRgba* drow = dst.data() + (size_t) y * (size_t) dw;
+      for (int x = 0; x < dw; ++x) {
+        const float cx = ((float) x + .5f) * scale - .5f;
+        const int x0 = (int) std::floor(cx - 3.f + 1e-6f);
+        const int x1 = (int) std::ceil(cx + 3.f - 1e-6f);
+        float r = 0, g = 0, b = 0, a = 0, wsum = 0;
+        for (int xi = x0; xi <= x1; ++xi) {
+          const float wt = lanczos3(cx - (float) xi);
+          if (wt == 0.f || xi < 0 || xi >= sw) continue;
+          const PchRgba& p = srow[xi];
+          r += p.r * wt; g += p.g * wt; b += p.b * wt; a += p.a * wt; wsum += wt;
+        }
+        if (wsum > 1e-8f) { r /= wsum; g /= wsum; b /= wsum; a /= wsum; }
+        drow[x] = { r, g, b, a };
+      }
+    }
+  } else {
+    const float scale = (float) sh / (float) dh;
+    for (int x = 0; x < sw; ++x) {
+      for (int y = 0; y < dh; ++y) {
+        const float cy = ((float) y + .5f) * scale - .5f;
+        const int y0 = (int) std::floor(cy - 3.f + 1e-6f);
+        const int y1 = (int) std::ceil(cy + 3.f - 1e-6f);
+        float r = 0, g = 0, b = 0, a = 0, wsum = 0;
+        for (int yi = y0; yi <= y1; ++yi) {
+          const float wt = lanczos3(cy - (float) yi);
+          if (wt == 0.f || yi < 0 || yi >= sh) continue;
+          const PchRgba& p = src[(size_t) yi * (size_t) sw + (size_t) x];
+          r += p.r * wt; g += p.g * wt; b += p.b * wt; a += p.a * wt; wsum += wt;
+        }
+        if (wsum > 1e-8f) { r /= wsum; g /= wsum; b /= wsum; a /= wsum; }
+        dst[(size_t) y * (size_t) dw + (size_t) x] = { r, g, b, a };
+      }
+    }
+  }
+}
+// Lanczos-3 resample with premultiplied alpha. Used so the 2x SVG master is
+// never handed to JUCE's runtime drawImage scaler (which turned fine
+// linework into speckled noise at typical board sizes).
+static Image scaleImageLanczos(const Image& src, int w, int h) {
   if (!src.isValid() || w < 1 || h < 1) return {};
+  if (src.getWidth() == w && src.getHeight() == h) return src.createCopy();
+  std::vector<PchRgba> packed, mid, outp;
+  pchPackPremul(src, packed);
+  if (src.getWidth() != w) pchLanczosAxis(packed, src.getWidth(), src.getHeight(), mid, w, src.getHeight(), true);
+  else mid.swap(packed);
+  if (src.getHeight() != h) pchLanczosAxis(mid, w, src.getHeight(), outp, w, h, false);
+  else outp.swap(mid);
   Image out(Image::ARGB, w, h, true);
-  Graphics g(out);
-  g.setImageResamplingQuality(Graphics::highResamplingQuality);
-  g.drawImage(src, Rectangle<float>(0, 0, (float) w, (float) h));
+  Image::BitmapData d(out, Image::BitmapData::writeOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const PchRgba& p = outp[(size_t) y * (size_t) w + (size_t) x];
+      const float a = jlimit(0.f, 1.f, p.a);
+      if (a <= 1e-8f) { d.setPixelColour(x, y, Colours::transparentBlack); continue; }
+      const float ia = 1.f / a;
+      d.setPixelColour(x, y, Colour::fromFloatRGBA(jlimit(0.f, 1.f, p.r * ia),
+                                                   jlimit(0.f, 1.f, p.g * ia),
+                                                   jlimit(0.f, 1.f, p.b * ia), a));
+    }
   return out;
 }
+// Soft tint of the cream linework: multiply the line colour by the ember
+// gold (the colour of celestial_ember.png), keeping the antialiased alpha
+// as a soft mask — no threshold.
+static Image tintByAlpha(const Image& src, Colour col) {
+  if (!src.isValid()) return {};
+  const int w = src.getWidth(), h = src.getHeight();
+  Image out(Image::ARGB, w, h, true);
+  Image::BitmapData bin(src, Image::BitmapData::readOnly);
+  Image::BitmapData bout(out, Image::BitmapData::writeOnly);
+  const float cr = col.getFloatRed(), cg = col.getFloatGreen(), cb = col.getFloatBlue();
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const Colour s = bin.getPixelColour(x, y);
+      const float a = s.getFloatAlpha();
+      if (a <= 0.f) continue;
+      bout.setPixelColour(x, y, Colour::fromFloatRGBA(s.getFloatRed() * cr,
+                                                      s.getFloatGreen() * cg,
+                                                      s.getFloatBlue() * cb, a));
+    }
+  return out;
+}
+// 1:1 device-pixel blit: each cached pixel maps to one physical pixel, no
+// runtime resampling. (Graphics::drawImage into a dest rect was still
+// filtering, which turned the cream 1-pixel strokes into dim grey.)
+static void blit1to1(Graphics& g, const Image& im, float dx, float dy, float phys) {
+  if (!im.isValid() || phys <= 0.f) return;
+  const float inv = 1.f / phys;
+  Graphics::ScopedSaveState st(g);
+  g.setImageResamplingQuality(Graphics::lowResamplingQuality);
+  g.addTransform(AffineTransform::scale(inv, inv).followedBy(AffineTransform::translation(dx, dy)));
+  g.drawImageAt(im, 0, 0);
+}
+
 static Image bakeLineGlow(const Image& src, Colour col, int radius) {
   if (!src.isValid() || radius < 1) return {};
   const int pad = radius + 2;
@@ -223,7 +343,7 @@ bool Board::ruler(BoardRuler& R) const {
 static double rX(const BoardRuler& R, double st) { return R.kind == 0 ? .5 + st / (24 * R.r) : R.kind == 1 ? .5 + st / 36 : st / 12; }
 static double rSt(const BoardRuler& R, double x) { return R.kind == 0 ? (x - .5) * 24 * R.r : R.kind == 1 ? (x - .5) * 36 : std::floor(x * 12 + .5); }
 
-void Board::ensureCaches(float w, float h, float scale) {
+void Board::ensureCaches(float w, float h, float scale, float physScale) {
   if (!candleCream.isValid()) {
     const int dim = 256;
     auto radial = [](int d, Colour inner, Colour outer) {
@@ -242,30 +362,36 @@ void Board::ensureCaches(float w, float h, float scale) {
   if (!pchSrcArt.isValid()) {
     pchSrcArt    = loadPngBin(BinaryData::celestial_png,        BinaryData::celestial_pngSize);
     pchSrcLines  = loadPngBin(BinaryData::celestial_lines_png,  BinaryData::celestial_lines_pngSize);
-    pchSrcEmber  = loadPngBin(BinaryData::celestial_ember_png,  BinaryData::celestial_ember_pngSize);
     pchSrcShadow = loadPngBin(BinaryData::celestial_shadow_png, BinaryData::celestial_shadow_pngSize);
   }
-  // Bake art at s0*1.06 so the pressure pulse (up to +6%) never upscales the 1720px source.
+  // Exact on-screen size, including the current pressure pulse and the real
+  // physical scale (not clamped to 2). Rebuild only when the integer pixel
+  // size changes, then blit 1:1.
+  const float phys = physScale > 0.f ? physScale : scale;
   const float s0 = jmax(.75f, jmin(1.4f, h / 540));
-  const float sCache = s0 * 1.06f;
-  if (pchSrcArt.isValid() && (pchCacheS != sCache || pchCacheScale != scale || !pchArt.isValid())) {
-    const float unit = PCH_UNIT * sCache;
-    const int cw = jmax(1, (int) std::ceil(PCH_W * unit * scale));
-    const int ch = jmax(1, (int) std::ceil(PCH_H * unit * scale));
-    const int sw = jmax(1, (int) std::ceil((PCH_W + 2 * PCH_SH_PAD) * unit * scale));
-    const int sh = jmax(1, (int) std::ceil((PCH_H + 2 * PCH_SH_PAD) * unit * scale));
-    pchArt    = flattenPchBody(scaleImageHQ(pchSrcArt, cw, ch));
-    pchLines  = scaleImageHQ(pchSrcLines,  cw, ch);
-    pchEmber  = scaleImageHQ(pchSrcEmber,  cw, ch);
-    pchShadow = scaleImageHQ(pchSrcShadow, sw, sh);
-    pchBodyMask = makePchMask(pchArt);
-    pchBodySil  = makePchSilhouette(pchBodyMask);
-    const int radius = jmax(4, (int) std::round(12.f * sCache * scale));
-    pchGlowPad    = radius + 2;
-    pchLinesGlow  = bakeLineGlow(pchLines, Colour((juce::uint8) 233, (juce::uint8) 211, (juce::uint8) 154), radius);
-    pchEmberGlow  = bakeLineGlow(pchEmber, Colour((juce::uint8) 255, (juce::uint8) 70,  (juce::uint8) 18),  radius);
-    pchCacheS     = sCache;
-    pchCacheScale = scale;
+  const float sNow = s0 * (1.f + (down ? .06f * curP : 0.f));
+  if (pchSrcArt.isValid()) {
+    const float unit = PCH_UNIT * sNow;
+    const int cw = jmax(1, (int) std::round(PCH_W * unit * phys));
+    const int ch = jmax(1, (int) std::round(PCH_H * unit * phys));
+    const int sw = jmax(1, (int) std::round((PCH_W + 2 * PCH_SH_PAD) * unit * phys));
+    const int sh = jmax(1, (int) std::round((PCH_H + 2 * PCH_SH_PAD) * unit * phys));
+    if (pchCacheW != cw || pchCacheH != ch || pchCacheScale != phys || !pchArt.isValid()) {
+      pchArt    = flattenPchBody(scaleImageLanczos(pchSrcArt, cw, ch));
+      pchLines  = scaleImageLanczos(pchSrcLines,  cw, ch);
+      pchEmber  = tintByAlpha(pchLines, Colour((juce::uint8) 244, (juce::uint8) 162, (juce::uint8) 66));
+      pchShadow = scaleImageLanczos(pchSrcShadow, sw, sh);
+      pchBodyMask = makePchMask(pchArt);
+      pchBodySil  = makePchSilhouette(pchBodyMask);
+      const int radius = jmax(2, (int) std::round(8.f * sNow * phys));
+      pchGlowPad    = radius + 2;
+      pchLinesGlow  = bakeLineGlow(pchLines, Colour((juce::uint8) 233, (juce::uint8) 211, (juce::uint8) 154), radius);
+      pchEmberGlow  = bakeLineGlow(pchEmber, Colour((juce::uint8) 255, (juce::uint8) 110, (juce::uint8) 36),  radius);
+      pchCacheS     = sNow;
+      pchCacheScale = phys;
+      pchCacheW     = cw;
+      pchCacheH     = ch;
+    }
   }
   if (rulerPath.isEmpty() || layerW != w || layerH != h) {
     rulerPath.clear();
@@ -434,14 +560,15 @@ void Board::paint(Graphics& g) {
   he_paint::ScopeT _pt(he_paint::Total);
   float w = (float)getWidth(), h = (float)getHeight();
   Path clip; clip.addRoundedRectangle(getLocalBounds().toFloat(), 14); g.reduceClipRegion(clip);
-  float scale = jmin(2.f, (float)g.getInternalContext().getPhysicalPixelScaleFactor());
+  const float physScale = (float) g.getInternalContext().getPhysicalPixelScaleFactor();
+  float scale = jmin(2.f, physScale);
   {
     he_paint::ScopeT _pb(he_paint::Bg);
     if (!bg.isValid() || bgScale != scale) paintBg(getWidth(), getHeight(), scale);
     g.drawImage(bg, Rectangle<float>(0, 0, w, h));
   }
   if (L.empty() || lw != w || lh != h) layoutLetters(w, h);
-  ensureCaches(w, h, scale);
+  ensureCaches(w, h, scale, physScale);
   const auto& tm = ctl.tm; float lvl = jmax(ctl.pkL, ctl.pkR);
   auto look = dreadLook(proc.value(he::P_MACRO_DREAD), proc.outputLevel(), motionReduced(), Time::getMillisecondCounterHiRes());
   float fade = look.vis ? 1.f - look.vis * .82f : 1.f, gL = look.vis ? look.glow * look.flick : 0;
@@ -564,9 +691,15 @@ void Board::paint(Graphics& g) {
     he_paint::ScopeT _pplan(he_paint::Planchette);
     float s = jmax(.75f, jmin(1.4f, h / 540)) * (1 + (live ? .06f * curP : 0)), pr = live ? curP : 0;
     const float unit = PCH_UNIT, wr = PCH_WR * unit, rCss = wr * s;
-    const float dw = PCH_W * unit * s, dh = PCH_H * unit * s;
-    const float dx = X - PCH_WX * unit * s, dy = Y - PCH_WY * unit * s;
-    const float shs = PCH_SH_PAD * unit * s;
+    // Blit the cached art 1:1 in physical pixels (dest size is cache / physScale).
+    const float invP = 1.f / jmax(1e-6f, physScale);
+    const float dw = pchArt.isValid() ? (float) pchArt.getWidth() * invP : PCH_W * unit * s;
+    const float dh = pchArt.isValid() ? (float) pchArt.getHeight() * invP : PCH_H * unit * s;
+    const float dx = std::round((X - PCH_WX / PCH_W * dw) * physScale) * invP;
+    const float dy = std::round((Y - PCH_WY / PCH_H * dh) * physScale) * invP;
+    const float shs = pchShadow.isValid() && pchArt.isValid()
+                        ? .5f * ((float) pchShadow.getWidth() * invP - dw)
+                        : PCH_SH_PAD * unit * s;
     auto dest = Rectangle<float>(dx, dy, dw, dh);
     float gl = live ? .55f + .45f * pr + jmin(.4f, lvl) : .25f;
     bool ember = look.vis > 0; float ev = ember ? look.vis : 0, eg = ember ? look.glow * look.flick : 0;
@@ -597,8 +730,13 @@ void Board::paint(Graphics& g) {
       }
     }
 
+    // Letters leave a low fill-colour alpha on the Graphics context;
+    // reset it or the planchette blit is composited at ~25-60% and the
+    // cream linework goes grey.
+    g.setOpacity(1.f);
+    g.setColour(Colours::white);
     if (pchShadow.isValid())
-      g.drawImage(pchShadow, Rectangle<float>(dx - shs, dy - shs, dw + 2 * shs, dh + 2 * shs));
+      blit1to1(g, pchShadow, dx - shs, dy - shs, physScale);
 
     auto bodyXform = [&]() {
       if (!pchBodyMask.isValid() || pchBodyMask.getWidth() <= 0) return AffineTransform();
@@ -608,18 +746,14 @@ void Board::paint(Graphics& g) {
     if (pchBodyMask.isValid()) {
       Graphics::ScopedSaveState st(g);
       g.reduceClipRegion(pchBodyMask, bodyXform());
-      g.setColour(Colour(0xff131313));
+      g.setColour(Colour(0xff101010));
       g.fillRect(dest);
     }
+    g.setOpacity(1.f);
+    g.setColour(Colours::white);
     if (pchArt.isValid())
-      g.drawImage(pchArt, dest);
+      blit1to1(g, pchArt, dx, dy, physScale);
 
-    auto glowDest = [&](const Image& glow) {
-      if (!glow.isValid() || !pchArt.isValid() || pchArt.getWidth() <= 0) return Rectangle<float>();
-      float k = dw / (float) pchArt.getWidth();
-      float pad = (float) pchGlowPad * k;
-      return Rectangle<float>(dx - pad, dy - pad, dw + 2 * pad, dh + 2 * pad);
-    };
     // Glow may sit in the glass and on the rim/linework, but not out on the board.
     auto clipBodyMinusHole = [&](Graphics& gg) {
       if (pchBodyMask.isValid()) gg.reduceClipRegion(pchBodyMask, bodyXform());
@@ -641,17 +775,17 @@ void Board::paint(Graphics& g) {
       clipBodySil(g);
       if (ember && ev > 0) {
         float aL = jmin(1.f, ev * (.45f + .7f * (eg > 0 ? eg : ev)));
-        auto gd = glowDest(pchEmberGlow);
-        if (pchEmberGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchEmberGlow, gd); }
+        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale);
+        if (pchEmberGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmberGlow, dx - gpad, dy - gpad, physScale); }
         if (pchEmber.isValid()) {
-          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchEmber, dest); }
-          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL * .7f); g.drawImage(pchEmber, dest); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmber, dx, dy, physScale); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL * .7f); blit1to1(g, pchEmber, dx, dy, physScale); }
         }
       } else if (live) {
         float aL = .35f + .35f * gl;
-        auto gd = glowDest(pchLinesGlow);
-        if (pchLinesGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchLinesGlow, gd); }
-        if (pchLines.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchLines, dest); }
+        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale);
+        if (pchLinesGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLinesGlow, dx - gpad, dy - gpad, physScale); }
+        if (pchLines.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLines, dx, dy, physScale); }
       }
     }
 

@@ -66,7 +66,7 @@ class Board : public juce::Component, private juce::Timer {
   void hookVBlank();
   void paintBg(int W, int H, float scale);
   void layoutLetters(float w, float h);
-  void ensureCaches(float w, float h, float scale);
+  void ensureCaches(float w, float h, float scale, float physScale);
   void buildLetterGlyphs(float scale);
   void buildDreadLayer(float w, float h, float scale, float vis, float dark, float hole);
   void buildInsetLayer(float w, float h, float scale, float vis);
@@ -91,9 +91,10 @@ class Board : public juce::Component, private juce::Timer {
   juce::String reading;
   // static / slowly-changing paint caches (rebuilt on size, scale, or Dread)
   juce::Image candleCream, candleEmber, ringHaloCream, ringHaloEmber, planchetteShadow;
-  juce::Image pchSrcArt, pchSrcLines, pchSrcEmber, pchSrcShadow;
+  juce::Image pchSrcArt, pchSrcLines, pchSrcShadow;
   juce::Image pchArt, pchLines, pchEmber, pchShadow, pchLinesGlow, pchEmberGlow, pchBodyMask, pchBodySil;
   float       pchCacheS = 0, pchCacheScale = 0;
+  int         pchCacheW = 0, pchCacheH = 0;
   int         pchGlowPad = 0;
   juce::Image dreadLayer, insetLayer, frameLayer;
   juce::Path rulerPath, planchetteBody;

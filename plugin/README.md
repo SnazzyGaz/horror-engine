@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.10](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.10) release and unzip it. Use **`HorrorEngine-Seance-1.0.10-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.11](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.11) release and unzip it. Use **`HorrorEngine-Seance-1.0.11-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,10 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.11
+
+- **The celestial planchette's linework is now clean at any editor scale.** In 1.0.10 the ornament broke into speckled orange dots at typical window sizes, because a large raster was downscaled at draw time and the ember glow used a noisy pre-coloured mask. The plugin now resamples Gaz's SVG art with Lanczos-3 to the exact on-screen pixel size (including the display/OpenGL scale factor), blits it 1:1, and tints the clean cream linework for the Dread ember (a soft multiply, no threshold). At rest the body is opaque black with clearly visible cream linework, matching the web board. The glass lens is unchanged. The sound is unchanged.
 
 ## Changes in 1.0.10
 
