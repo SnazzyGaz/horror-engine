@@ -1,7 +1,7 @@
 # Horror Engine · Séance: Windows build and validation of the VST3 and CLAP plugin.
 # Horror Engine by Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3.
 #
-# Builds with MSVC (Visual Studio 2022) on windows-latest, runs the engine tests, pluginval (strictness 5 or more)
+# Builds with MSVC (the newest Visual Studio on windows-latest, picked by CMake), runs the engine tests, pluginval (strictness 5 or more)
 # on the VST3 and clap-validator on the CLAP, and uploads the plugins and the validation logs.
 # JUCE 8.0.15 and clap-juce-extensions are fetched at the commits pinned in CMakeLists.txt.
 # The plugin sources live in plugin/ (PLUGIN_DIR). Runs on pushes to vst-plugin that touch the plugin, and by hand.
@@ -42,9 +42,9 @@ jobs:
           path: ${{ env.PLUGIN_DIR }}/build/_deps
           key: deps-${{ runner.os }}-${{ hashFiles(format('{0}/CMakeLists.txt', env.PLUGIN_DIR)) }}
 
-      - name: Configure (MSVC, x64)
+      - name: Configure (MSVC, x64, newest Visual Studio)
         working-directory: ${{ env.PLUGIN_DIR }}
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -B build -A x64
 
       - name: Build VST3 and CLAP
         working-directory: ${{ env.PLUGIN_DIR }}
@@ -53,7 +53,7 @@ jobs:
       - name: Engine tests (Sync to host, MIDI CC hold, 1 kHz to 768 kHz)
         working-directory: ${{ env.PLUGIN_DIR }}
         run: |
-          cmake -S test -B build-test -G "Visual Studio 17 2022" -A x64
+          cmake -S test -B build-test -A x64
           cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test --parallel
           ./build-test/Release/sync_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
