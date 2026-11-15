@@ -21,6 +21,12 @@ jobs:
         run: node test/offsets.js
       - name: v1.4 files, last minute, audio input, Bowed Cymbal
         run: node test/v14.js
+      - name: Drags glide (steady hand speed however moves arrive)
+        run: node test/glide.js
+      - name: GOODBYE is a hard stop
+        run: node test/goodbye.js
+      - name: Superball writes both channels; work buffers clear each block
+        run: node test/mono_voice_clear.js
 
   dom:
     name: UI checks (jsdom)

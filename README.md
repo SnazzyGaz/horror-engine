@@ -75,7 +75,7 @@ Horror Engine is one HTML page (with `vendor/three.min.js` beside it). It needs 
 
 **Double-click build.** Download the zip from [Releases](https://github.com/SnazzyGaz/horror-engine/releases). It contains `index.html`, `vendor/`, `LICENSE` and `CREDITS.md`. Unzip it, open `index.html` in a desktop browser (it works from `file://`), press **Start audio**, then drag a part of the machine.
 
-The `index.html` at the root of this repository is a snapshot kept so existing clones and the current GitHub Pages site keep working. It is **no longer updated** when the source changes. Until the first tagged release, use that snapshot or rebuild from source. After that, get the current double-click build from Releases, or rebuild:
+The `index.html` at the root of this repository is a snapshot kept so existing clones keep a playable page; it is **no longer updated** when the source changes. The live site is rebuilt from `src/` on every push to `main`. Get the current double-click build from [Releases](https://github.com/SnazzyGaz/horror-engine/releases), or rebuild:
 
 ```
 python3 build.py    # needs Pillow: pip install pillow
@@ -88,7 +88,7 @@ python3 -m http.server 8000
 # then open http://localhost:8000/
 ```
 
-The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io/horror-engine/) is built from `src/` on every push to `main` by a GitHub Action and deployed to GitHub Pages. That hosted build loads each skin's textures and models as separate, cacheable files, and fetches the Altar crypt assets only when the Altar skin is chosen (the Workshop skin never downloads them). Docs are on the same site: the [README](README.html), [instrument guide](docs/INSTRUMENTS.html), [FX and looper](docs/FX_AND_LOOPER.html), [recipes](docs/RECIPES.html) and [how it is built](docs/UNDER_THE_HOOD.html). Pushing a tag `v*` attaches the single-file (inlined) build, zipped with `LICENSE`, `CREDITS.md` and `vendor/`, to a GitHub Release, for opening from disk.
+The live site at [snazzygaz.github.io/horror-engine](https://snazzygaz.github.io/horror-engine/) is built from `src/` on every push to `main` by a GitHub Action and deployed to GitHub Pages. That hosted build loads each skin's textures and models as separate, cacheable files, and fetches the Altar crypt assets only when the Altar skin is chosen (the Workshop skin never downloads them). Docs are on the same site: the [README](README.html), [instrument guide](docs/INSTRUMENTS.html), [FX and looper](docs/FX_AND_LOOPER.html), [recipes](docs/RECIPES.html) and [how it is built](docs/UNDER_THE_HOOD.html). Pushing a tag `v1.*` (for example `v1.2.1`) attaches the single-file (inlined) build, zipped with `LICENSE`, `CREDITS.md` and `vendor/`, to a GitHub Release, for opening from disk. Plugin tags use the `plugin-v*` form and do not trigger that web-app release.
 
 **Tests.** The engine and file I/O run in Node, with no browser or GPU. From the repo root:
 
@@ -97,6 +97,9 @@ node test/engine.js
 node test/moments.js
 node test/offsets.js
 node test/v14.js
+node test/glide.js
+node test/goodbye.js
+node test/mono_voice_clear.js
 ```
 
 That checks that performance files load, presets round-trip, an offline render is deterministic, finite and limited, custom Moments and the per-voice offsets replay exactly, and the 1.4 file features (last minute, audio input, Bowed Cymbal) behave. `test/moments-dom.js` and `test/v14-dom.js` check the UI in a fake DOM (`npm install jsdom@24` first). All of them run on every push and pull request.
@@ -146,9 +149,18 @@ Each voice has a **Tune & place** row under its panel: **Tune** (semitones), **F
 
 The details are in [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md#saving-undo-and-sharing).
 
+## What's new in 1.2.1
+
+- **GOODBYE** (and Esc) is a hard stop: a 25 ms fade, then true silence. It stops every voice (Aura Hold and Freeze too), Moments, the looper's playback (layers are kept and muted; a take in progress is dropped), your sound in, and the hall, spring, body and harmonizer tails. Notes and gestures that arrive during the fade wait and play after it.
+- **Superball** writes both channels, and each voice's work buffers are cleared at the start of a block, so it no longer leaves a hanging mid-range tone on the right.
+- **Surface drags** send gliding moves, and the engine holds your hand speed across short gaps (up to 120 ms), so a slow skate on the glass or a bow stroke stays in touch between pointer updates.
+- The **Séance** VST3 and CLAP plugin for Windows is out; see [Getting sound out](#getting-sound-out) and the [changelog](CHANGELOG.md).
+
+The full list is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Getting sound out
 
-There is no plugin. Two ways that work:
+Three ways that work:
 
 1. **Record out.** Press **Record** (or `R`), play, then press it again. You get a zip with the mix as a WAV. With **Stems** on, you also get one WAV per voice that made a sound, plus the hall, reverse-swell, harmonizer and body returns. Drop them on your timeline at the same start point.
    - Every stem starts on the same sample as the mix and is the same length.
@@ -156,7 +168,9 @@ There is no plugin. Two ways that work:
    - Every take also includes a `.horror.json` performance file. **Render…** plays it back through the engine offline and writes the WAVs again.
 2. **Loopback.** Route the browser's output into your DAW with a loopback device and record it live against picture. Use BlackHole on macOS, VB-Cable or VoiceMeeter on Windows, or PipeWire or JACK on Linux.
 
-MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. Channel 16 is reserved for Moments: notes 36–40 fire the built-in five, 41 onwards your own. CC 24–43 on any channel fire Moments 1–20 on a rise past 64. Notes on channels 1–15 play the selected voice. A MIDI or VST version may come later. The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
+3. **Séance plugin (Windows).** [Horror Engine · Séance](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.5) is a VST3 and CLAP instrument: the spirit-board Surface, the nine voices, Macros, Moments, the looper and your sound in. It lives on the [`vst-plugin`](https://github.com/SnazzyGaz/horror-engine/tree/vst-plugin) branch. Every knob is a host parameter, and the looper can sync to the host's tempo and bars. See the [plugin README](https://github.com/SnazzyGaz/horror-engine/blob/vst-plugin/plugin/README.md). (Those `plugin/` paths exist on that branch, and will also work if the folder is later merged into `main`.)
+
+MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. Channel 16 is reserved for Moments: notes 36–40 fire the built-in five, 41 onwards your own. CC 24–43 on any channel fire Moments 1–20 on a rise past 64. Notes on channels 1–15 play the selected voice. The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
 
 ## How it's built
 
