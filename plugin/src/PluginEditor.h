@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "Board.h"
 #include "Panels.h"
+#include <juce_opengl/juce_opengl.h>
 
 class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
  public:
@@ -15,12 +16,17 @@ class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
   bool keyStateChanged(bool isKeyDown) override;
   void mouseDown(const juce::MouseEvent&) override;
   void parentHierarchyChanged() override;
+  void visibilityChanged() override;
+  bool usesOpenGL() const { return glOk; }
   // test hooks (tools/snap.cpp)
   void testDrawer(int i) { if (i < 0) drawer(open, 0); else drawer(i, 1); }
   void testPop(int w) { pop(w); }
   void testGuide() { guide.setVisible(true); guide.setBounds(getLocalBounds()); guide.toFront(true); }
   void testDrag(float x, float y, bool down) { board.testDrag(x, y, down); }
+  void testSet(float x, float y, bool down, float pr = .6f) { board.testSet(x, y, down, pr); }
+  void testClearTrail() { board.testClearTrail(); }
   juce::Component& testBoard() { return board; }
+  Board& testBoardObj() { return board; }
  private:
   void timerCallback() override;
   void drawer(int i, int force = -1);   // force: -1 toggle, 0 close, 1 open
@@ -35,6 +41,8 @@ class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
   juce::TooltipWindow tips{this, 600};
   int open = -1, popOpen = 0, lastVersion = -1; bool keysShown = false;
   void takeKeys(); void syncKeys();
+  void attachGL(); void detachGL();
+  std::unique_ptr<juce::OpenGLContext> gl_; bool glTried = false, glOk = false;
   juce::Rectangle<int> grid;
   struct KeyNote { int code; int tag; };
   std::vector<KeyNote> keysDown;

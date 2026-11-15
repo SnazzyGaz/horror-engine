@@ -3,7 +3,7 @@
 #   cmake -B build -DJUCE_DIR=/path/to/JUCE-8.0.15 -DCJE_DIR=/path/to/clap-juce-extensions
 #   (or leave both out and CMake fetches JUCE 8.0.15 and the pinned clap-juce-extensions)
 cmake_minimum_required(VERSION 3.22)
-project(HorrorEngineSeance VERSION 1.0.6 LANGUAGES C CXX)
+project(HorrorEngineSeance VERSION 1.0.7 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -82,7 +82,7 @@ juce_add_plugin(HorrorEngine
   PLUGIN_CODE HrSe
   PRODUCT_NAME "Horror Engine"
   DESCRIPTION "Nine physical-model horror instruments on a spirit board"
-  VERSION 1.0.6
+  VERSION 1.0.7
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE
   EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -99,7 +99,7 @@ set_target_properties(HorrorEngineFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_sources(HorrorEngine PRIVATE src/PluginProcessor.cpp src/Controller.cpp src/Look.cpp src/Widgets.cpp src/Board.cpp src/Panels.cpp src/Drawers.cpp src/PluginEditor.cpp)
 target_compile_definitions(HorrorEngine PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0
   JUCE_USE_WINDOWS_MEDIA_FORMAT=0 JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1 JUCE_REPORT_APP_USAGE=0)
-target_link_libraries(HorrorEngine PRIVATE he_core HorrorEngineFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_extra
+target_link_libraries(HorrorEngine PRIVATE he_core HorrorEngineFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_extra juce::juce_opengl
   PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 if (NOT MINGW)
   target_link_libraries(HorrorEngine PUBLIC juce::juce_recommended_lto_flags)
@@ -107,7 +107,7 @@ endif()
 
 if (MINGW)
   target_sources(HorrorEngine PRIVATE src/mingw_guids.c)
-  target_link_libraries(HorrorEngine PRIVATE imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
+  target_link_libraries(HorrorEngine PRIVATE opengl32 imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
 endif()
 
 clap_juce_extensions_plugin(TARGET HorrorEngine
@@ -133,9 +133,9 @@ if (HE_SNAP)
   juce_add_gui_app(HorrorSnap PRODUCT_NAME "HorrorSnap")
   target_sources(HorrorSnap PRIVATE tools/snap.cpp src/PluginProcessor.cpp src/Controller.cpp src/Look.cpp src/Widgets.cpp src/Board.cpp src/Panels.cpp src/Drawers.cpp src/PluginEditor.cpp)
   target_compile_definitions(HorrorSnap PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 HE_TEST_HOOKS=1 JUCE_PLUGINHOST_VST3=1 JUCE_USE_WINDOWS_MEDIA_FORMAT=0)
-  target_link_libraries(HorrorSnap PRIVATE he_core HorrorEngineFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_extra juce::juce_recommended_config_flags)
+  target_link_libraries(HorrorSnap PRIVATE he_core HorrorEngineFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_extra juce::juce_opengl juce::juce_recommended_config_flags)
   if (MINGW)
     target_sources(HorrorSnap PRIVATE src/mingw_guids.c)
-    target_link_libraries(HorrorSnap PRIVATE ksguid ksuser imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
+    target_link_libraries(HorrorSnap PRIVATE ksguid ksuser opengl32 imm32 shell32 shcore comctl32 dwmapi d2d1 d3d11 dxgi dwrite dcomp windowscodecs version winmm ws2_32 wininet ole32 oleaut32 uuid shlwapi rpcrt4 gdi32 user32 advapi32 comdlg32 setupapi dbghelp crypt32)
   endif()
 endif()

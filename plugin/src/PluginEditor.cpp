@@ -4,6 +4,37 @@
 using namespace juce;
 using namespace look;
 
+static bool seanceWantGL() {
+  auto env = SystemStats::getEnvironmentVariable("HE_SEANCE_OPENGL", {});
+  if (env == "0" || env.equalsIgnoreCase("off") || env.equalsIgnoreCase("false") || env.equalsIgnoreCase("software")) return false;
+  if (env == "1" || env.equalsIgnoreCase("on") || env.equalsIgnoreCase("true") || env.equalsIgnoreCase("force")) return true;
+  PropertiesFile::Options o;
+  o.applicationName = "HorrorEngine";
+  o.filenameSuffix = "ini";
+  o.folderName = "HorrorEngine";
+  o.osxLibrarySubFolder = "Application Support";
+  PropertiesFile pf(o);
+  if (pf.containsKey("opengl")) return pf.getBoolValue("opengl", true);
+  return true;   // try OpenGL; fall back to software if the context never attaches
+}
+
+void HorrorEditor::attachGL() {
+  if (glTried) return;
+  glTried = true;
+  if (!seanceWantGL()) return;
+  gl_ = std::make_unique<OpenGLContext>();
+  gl_->setComponentPaintingEnabled(true);
+  gl_->setContinuousRepainting(false);
+  gl_->setMultisamplingEnabled(false);
+  gl_->attachTo(*this);
+}
+
+void HorrorEditor::detachGL() {
+  if (gl_) { gl_->detach(); gl_.reset(); }
+  glOk = false;
+}
+
+
 HorrorEditor::HorrorEditor(HorrorProcessor& p)
     : AudioProcessorEditor(p), proc(p), ctl(p.controller()), top(ctl), tokens(ctl), board(p, ctl), side(ctl), rail(ctl), chain(ctl),
       dVoice(ctl), dFx(ctl), dLoop(ctl), dIn(ctl), browse(ctl), menu(ctl), toast(ctl) {
@@ -24,9 +55,11 @@ HorrorEditor::HorrorEditor(HorrorProcessor& p)
   setResizable(true, true); setResizeLimits(1100, 680, 2560, 1600);
   setSize(1280, 760);
   startTimerHz(30);
+  attachGL();
 }
-HorrorEditor::~HorrorEditor() { removeMouseListener(this); setLookAndFeel(nullptr); }
-void HorrorEditor::parentHierarchyChanged() { takeKeys(); }
+HorrorEditor::~HorrorEditor() { removeMouseListener(this); detachGL(); setLookAndFeel(nullptr); }
+void HorrorEditor::parentHierarchyChanged() { takeKeys(); if (gl_ && isShowing()) glOk = gl_->isAttached(); }
+void HorrorEditor::visibilityChanged() { if (gl_ && isShowing()) glOk = gl_->isAttached(); }
 // the editor only asks for keyboard focus while computer-keyboard playing is on; otherwise keys go to the host
 void HorrorEditor::takeKeys() { if (ctl.keysOn && isShowing()) grabKeyboardFocus(); }
 void HorrorEditor::syncKeys() {

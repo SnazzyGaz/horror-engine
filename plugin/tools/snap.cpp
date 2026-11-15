@@ -46,6 +46,7 @@ struct SnapApp : public JUCEApplication {
     auto a = StringArray::fromTokens(cmd, true); for (auto& x : a) x = x.unquoted();
     if (a[0] == "--vst3") { hostTest(a); return; }
     if (a[0] == "--dread") { dreadShots(a); return; }
+    if (a[0] == "--bench") { benchMode(a); return; }
     out = File(cmd.unquoted().isNotEmpty() ? cmd.unquoted() : "/tmp/snaps"); out.createDirectory();
     p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
     ed.reset(p->createEditor());
@@ -113,17 +114,123 @@ struct SnapApp : public JUCEApplication {
     c.gesture('d', .55f, .55f, .7f);
     run(.15); c.gesture('u', 0, 0, 0);
     run(sec);
-    for (int i = 0; i < 8; i++) { c.poll(); MessageManager::getInstance()->runDispatchLoopUntil(16); }
+    for (int i = 0; i < 8; i++) c.poll();
   }
   void dreadGo() {
     auto& c = p->controller();
     c.setParam(he::P_MACRO_DREAD, 0); c.select(he::EBOW); run(.3); c.poll();
-    MessageManager::getInstance()->runDispatchLoopUntil(50);
     dreadShot("dread-0");
     dreadHold(.5f, 1.2); dreadShot("dread-0.5");
     dreadHold(1.f, 1.2); dreadShot("dread-1");
     quit();
   }
+
+  void benchMode(const StringArray& a) {
+    File dest(a.size() > 1 && a[1].isNotEmpty() ? a[1] : "/tmp/he-paint-bench");
+    dest.createDirectory();
+    out = dest;
+    p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
+    ed.reset(p->createEditor());
+    win = std::make_unique<DocumentWindow>("snap-bench", Colours::black, 0); win->setUsingNativeTitleBar(false); win->setTitleBarHeight(0);
+    win->setContentNonOwned(ed.get(), true); win->setTopLeftPosition(-4000, -4000); win->setVisible(true);
+    Timer::callAfterDelay(400, [this] { benchGo(); });
+  }
+  void benchAudio(double sec) {
+    auto& c = p->controller();
+    c.select(he::EBOW);
+    c.setParam(he::P_EBOW_HOLD, 1);
+    c.gesture('d', .55f, .55f, .7f);
+    run(.12); c.gesture('u', 0, 0, 0);
+    run(sec);
+    c.poll();
+  }
+  static const char* slotName(int i) {
+    static const char* n[] = {"bg","dread","candle","scope","ruler","trail","letters","junk","planchette","inset","over","plaque","paint_total"};
+    return (i >= 0 && i < he_paint::NSlots) ? n[i] : "?";
+  }
+  void benchCase(const char* label, int ew, int eh, float px, float dread, bool moving) {
+    auto* e = dynamic_cast<HorrorEditor*>(ed.get());
+    auto& c = p->controller();
+    ed->setSize(ew, eh);
+    c.setParam(he::P_MACRO_DREAD, dread);
+    c.select(he::EBOW);
+    if (dread > 0 || moving) benchAudio(.4);
+    else { run(.05); c.poll(); }
+    e->testClearTrail();
+    if (moving) e->testDrag(.45f, .52f, true);
+    else e->testSet(.5f, .5f, false);
+    auto& board = e->testBoardObj();
+    int bw = board.getWidth(), bh = board.getHeight();
+    int iw = jmax(1, (int)std::round(bw * px)), ih = jmax(1, (int)std::round(bh * px));
+    Image img(Image::ARGB, iw, ih, true);
+    {
+      Graphics g(img); if (px != 1.f) g.addTransform(AffineTransform::scale(px));
+      board.paintEntireComponent(g, true);
+    }
+    const int N = 60;
+    he_paint::reset(); he_paint::on = true;
+    double t0 = Time::getMillisecondCounterHiRes();
+    for (int i = 0; i < N; i++) {
+      if (moving) {
+        float x = .40f + .22f * std::sin(i * .21f), y = .48f + .12f * std::cos(i * .17f);
+        e->testSet(x, y, true, .6f);
+        AudioBuffer<float> b(2, 64); MidiBuffer m; b.clear(); p->processBlock(b, m);
+      }
+      img.clear(img.getBounds());
+      Graphics g(img); if (px != 1.f) g.addTransform(AffineTransform::scale(px));
+      board.paintEntireComponent(g, true);
+      he_paint::frames++;
+    }
+    double wall = Time::getMillisecondCounterHiRes() - t0;
+    he_paint::on = false;
+    double ms = wall / N;
+    int denom = he_paint::frames > 0 ? he_paint::frames : N;
+    double secAcc[he_paint::NSlots];
+    for (int i = 0; i < he_paint::NSlots; ++i) secAcc[i] = he_paint::acc[i] / denom;
+    auto plaqueMs = [&](Plaque& pl) {
+      int pw = jmax(1, pl.getWidth()), ph = jmax(1, pl.getHeight());
+      Image pi(Image::ARGB, jmax(1, (int)std::round(pw * px)), jmax(1, (int)std::round(ph * px)), true);
+      { Graphics g(pi); if (px != 1.f) g.addTransform(AffineTransform::scale(px)); pl.paint(g); }
+      double u0 = Time::getMillisecondCounterHiRes();
+      for (int i = 0; i < N; i++) {
+        pi.clear(pi.getBounds());
+        Graphics g(pi); if (px != 1.f) g.addTransform(AffineTransform::scale(px));
+        pl.paint(g);
+      }
+      return (Time::getMillisecondCounterHiRes() - u0) / N;
+    };
+    double pYes = plaqueMs(board.yes), pNo = plaqueMs(board.no), pBye = plaqueMs(board.bye);
+    std::printf("CASE %s  editor=%dx%d  board=%dx%d  scale=%.2f  dread=%.1f  %s\n",
+                label, ew, eh, bw, bh, px, dread, moving ? "moving+scope" : "still");
+    std::printf("  paintEntireComponent  %.3f ms/frame  (wall %.1f ms / %d)\n", ms, wall, N);
+    std::printf("  est. one-core CPU at 60 Hz: %.0f%%   (frame budget 16.7 ms)\n", ms / (1000.0 / 60.0) * 100.0);
+    std::printf("  sections (ms/frame):\n");
+    for (int i = 0; i < he_paint::NSlots; ++i)
+      std::printf("    %-12s %7.3f  (%5.1f%% of paint_total)\n", slotName(i), secAcc[i],
+                  secAcc[he_paint::Total] > 0 ? secAcc[i] / secAcc[he_paint::Total] * 100.0 : 0.0);
+    std::printf("  plaques isolated: yes %.3f  no %.3f  goodbye %.3f ms/paint\n", pYes, pNo, pBye);
+    std::fflush(stdout);
+  }
+  void benchGo() {
+    std::printf("\n==== Horror Engine Seance editor paint bench ====\n");
+    std::printf("host: %s  %d CPUs  %s\n", SystemStats::getCpuModel().toRawUTF8(), SystemStats::getNumCpus(), SystemStats::getOperatingSystemName().toRawUTF8());
+    struct C { const char* name; int w, h; float px; };
+    const C cs[] = {
+      {"default", 1280, 760, 1.f},
+      {"1.5x-window", 1920, 1140, 1.f},
+      {"2x-window", 2560, 1520, 1.f},
+      {"1.5x-dpi", 1280, 760, 1.5f},
+      {"2x-dpi", 1280, 760, 2.f},
+    };
+    for (auto& c0 : cs)
+      for (float d : {0.f, 1.f})
+        benchCase(c0.name, c0.w, c0.h, c0.px, d, true);
+    benchCase("default", 1280, 760, 1.f, 0.f, false);
+    std::printf("==== bench done ====\n");
+    std::fflush(stdout);
+    quit();
+  }
+
   void shutdown() override { if (win) win->clearContentComponent(); ed.reset(); win.reset(); hosted.reset(); p.reset(); }
 };
 START_JUCE_APPLICATION(SnapApp)

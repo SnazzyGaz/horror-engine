@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.6](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.6) release and unzip it. Use **`HorrorEngine-Seance-1.0.6-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.7](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.7) release and unzip it. Use **`HorrorEngine-Seance-1.0.7-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,11 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.7
+
+- **The editor is smoother and uses less CPU**, especially at high Dread and when the host scales the window. The board was software-rasterizing every letter's glow, the planchette halo and a couple of full-board gradients at 60 Hz, which could take more than one CPU core and drop frames in FL Studio. Letter shapes and glow sprites are now cached and only their brightness changes each frame, the planchette uses a pre-baked shadow and halo, unchanged frames are skipped, and the UI follows the display refresh (or 30 Hz if that is not available). The look is the same as 1.0.6; the sound is unchanged.
+- **OpenGL is used for the editor when it can be**, which takes the final blit off the CPU. If the host cannot create a context, it falls back to software automatically. To force software, set the environment variable `HE_SEANCE_OPENGL=0`, or put `opengl=0` in `%APPDATA%\HorrorEngine\HorrorEngine.ini`.
 
 ## Changes in 1.0.6
 
