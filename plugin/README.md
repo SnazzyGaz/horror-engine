@@ -35,6 +35,14 @@ The layout, controls and engine are the same. A few things that belong to the br
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
 
+## Changes in 1.0.4
+
+- **Drags pull smoothly at any buffer size.** The board now sends gliding moves: each move walks the hand to its new spot over about 1.5 times the usual gap between moves (one block to 120 ms) instead of jumping there and stopping. Your mouse moves reach the engine in clumps (one per screen frame, all applied at the start of each host buffer), so before this the hand speed that Bowed and Glass hear pulsed at the frame or buffer rate, which sounded steppy. Hand-speed ripple at 512- and 1024-sample buffers drops from 0.12-0.29 to 0.03-0.08 (a hand sampled every block measures about 0.01).
+- **Slow skating keeps the glass in touch.** A slow mouse only reports a move when it reaches a new pixel, sometimes five frames apart, so the glass kept letting go (about 40% of the time at 10 px/s). Glides hold the hand's speed across those gaps (about 6%).
+- The short, irregular bursts you still hear when skating slowly with the nail are the glass's stick-slip (3-8 slips a second at slow speeds), not the input. Wetness smooths them out.
+- Recorded moments, loop layers and performance files keep glides as glides. Old ones (plain moves) play exactly as before, and preset renders are bit-identical to the web app.
+- New engine test `drag_test` (in CI): bursty moves fed as 256-, 512- and 1024-sample buffers at 44.1 and 48 kHz on Bowed and Glass, plus a slow skate.
+
 ## Changes in 1.0.3
 
 - **GOODBYE is a hard stop.** GOODBYE and Esc now silence everything at once: every voice (Aura's Hold and Freeze included), moments and custom moments, looper playback, your sound in, and the hall, spring, body and harmonizer tails. The output fades over 25 ms (no click), then stays at true silence until you play again.

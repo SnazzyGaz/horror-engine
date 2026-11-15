@@ -17,6 +17,8 @@ buffers made when the plugin is prepared. Since 1.0.1 the things that grow while
 Measured with `tools/rt_harness.cpp` (9 s of playing on all nine voices, two loop layers, ghost, mute, undo and redo):
 heap allocations inside `render()` went from 2 to 0, and in message handling from 110 to 90.
 
+Gliding moves (1.0.4) allocate nothing: a glide is ten numbers in each contact slot, stepped once per block.
+
 GOODBYE (1.0.3) also allocates nothing: at the end of its fade every voice is copy-assigned from a pristine set built
 with the engine (same buffer sizes, so no reallocation), and the hall, spring, body and harmonizer buffers are zeroed in place.
 

@@ -48,7 +48,10 @@ struct HG {
 };
 
 // a contact on a voice instance (Engine.Cv entries) and a gesture slot (Slot)
-struct Slot { int src = -1; bool on = false; double tx = .5, ty = .5, x = .5, y = .5, p = .6, spd = 0, hz = 0, autoSpd = -1, kick = 0; explicit Slot(int s = -1) : src(s) {} };
+// lm..rp: a gliding move ('n', engine.js Slot): last move frame, average gap (blocks), glide length and blocks left, start and end
+struct Slot { int src = -1; bool on = false; double tx = .5, ty = .5, x = .5, y = .5, p = .6, spd = 0, hz = 0, autoSpd = -1, kick = 0;
+  double lm = 0, gi = 0; int ra = 0, rk = 0; double rsx = .5, rsy = .5, rsp = .6, rx = .5, ry = .5, rp = .6;
+  explicit Slot(int s = -1) : src(s) {} };
 struct Contact { bool on = false; double x = .5, y = .5, p = .6, spd = 0, hz = 0; bool autoOn = false; Slot* own = nullptr; double kick = 0; };
 
 // what every voice may read from the engine

@@ -143,7 +143,15 @@ class Engine : public EState {
       if (s == 0 && (int)P[P_EBOW_EXCITE] > 0) S.kick = .3 + .7 * p;
       if (s == 5 && (int)P[P_SPRING_MODE] == 0) spring.hit(p);
       strip[s].quiet = 0;
-    } else if (k == 'm') { S.tx = x; S.ty = y; S.p = p; }
+      S.lm = frame; S.ra = S.rk = 0; S.gi = 0;
+    } else if (k == 'm') { S.tx = x; S.ty = y; S.p = p; S.ra = S.rk = 0; }
+    // 'n': a move that glides (engine.js): the target walks to (x, y, p) over 1.5 times the usual gap between moves (one block to 120 ms)
+    else if (k == 'n') {
+      double nb = std::round((frame - S.lm) / BL); int mx = (int)std::max(1.0, std::round(.12 * sr / BL));
+      S.lm = frame;
+      if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }
+      else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = (int)std::min((double)mx, std::max(1.0, std::round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }
+    }
     else S.on = false;
   }
   void user(int s, char k, double x, double y, double p, double hz) {
@@ -153,6 +161,7 @@ class Engine : public EState {
   }
   void smooth(Slot& S, double dt) {
     if (!S.on) { S.spd *= .8; return; }
+    if (S.rk > 0) { S.rk--; double gf = 1 - (double)S.rk / S.ra; S.tx = S.rsx + (S.rx - S.rsx) * gf; S.ty = S.rsy + (S.ry - S.rsy) * gf; S.p = S.rsp + (S.rp - S.rsp) * gf; }
     double nx = S.x + (S.tx - S.x) * .35, ny = S.y + (S.ty - S.y) * .35, d = std::sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
     S.x = nx; S.y = ny; S.spd += (fmin2(1, d / dt / 2.5) - S.spd) * .1;
   }
@@ -829,6 +838,7 @@ void Host::loop(const char* action, int layer, double v, bool free) { Msg m; m.t
 void Host::panic() { Msg m; m.t = Msg::PANIC; msg(m); }
 void Host::inputOn(bool on) { Msg m; m.t = Msg::INPUT; m.on = on; msg(m); }
 int64_t Host::frame() const { return (int64_t)e_->frame; }
+Host::Touch Host::touch(int voice) const { Touch t; if (voice < 0 || voice >= NS) return t; const Slot& S = e_->slots[voice][0]; t.on = S.on; t.x = S.x; t.y = S.y; t.p = S.p; t.spd = S.spd; return t; }
 bool Host::takeCapture(CmCapture& out) { Engine& e = *e_; if (!e.capReady) return false; e.capReady = false; std::swap(out, e.cap); return true; }
 bool Host::momentActive(int id) const { const Engine& e = *e_; return id == M_RISER ? e.riser.on : id == M_STINGER ? e.sting.on : id == M_DRONE ? e.drone.on : id == M_HEART ? e.heart.on : id == M_WALLS ? e.walls.on : false; }
 bool Host::cmActive(int id) const { for (auto& I : e_->cms) if (I->id == id) return true; return false; }

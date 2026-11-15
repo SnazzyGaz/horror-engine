@@ -41,7 +41,7 @@ struct Msg {
   enum Type { PARAM, GESTURE, MOMENT, CMOMENT, CMDEF, CMREC, LOOP, PANIC, INPUT, INIT } t = PARAM;
   // PARAM
   int k = -1; double v = 0;
-  // GESTURE: s voice, g 'd' down / 'm' move / 'u' up
+  // GESTURE: s voice, g 'd' down / 'm' move / 'n' gliding move (the board's drags, 1.0.4) / 'u' up
   int s = 0; char g = 'd'; double x = .5, y = .5, p = .6, hz = 0;
   // MOMENT / CMOMENT (id = custom moment handle) / CMREC (on)
   int id = 0; bool on = false; double arg = 0;
@@ -109,6 +109,9 @@ class Host {
   bool momentActive(int id) const;                           // a built-in moment is running
   bool cmActive(int id) const;                               // a custom moment is playing
   static int paramIndex(const char* id);                     // -1 if unknown
+  // the live touch on a voice, after the engine's smoothing (read-only; for tests and meters)
+  struct Touch { bool on = false; double x = 0, y = 0, p = 0, spd = 0; };
+  Touch touch(int voice) const;
 
  private:
   double sr_;

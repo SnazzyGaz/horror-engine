@@ -254,7 +254,7 @@ void Board::mouseDown(const MouseEvent& e) {
 void Board::mouseDrag(const MouseEvent& e) {
   if (!down) return; point(e); hoverX = curX; hoverY = curY;
   double now = Time::getMillisecondCounterHiRes(); trail.push_back({curX, curY, now}); if (trail.size() > 90) trail.erase(trail.begin());
-  if (now - lastSend > 6) { lastSend = now; ctl.gesture('m', curX, curY, curP); }
+  if (now - lastSend > 6) { lastSend = now; ctl.gesture('n', curX, curY, curP); }   // gliding moves (1.0.4)
 }
 void Board::mouseUp(const MouseEvent&) { if (!down) return; down = false; ctl.padDown = false; ctl.gesture('u', 0, 0, 0); }
 void Board::mouseMove(const MouseEvent& e) { hoverX = jlimit(0.f, 1.f, e.position.x / (float)getWidth()); hoverY = jlimit(0.f, 1.f, 1 - e.position.y / (float)getHeight()); hover = true; }
@@ -262,5 +262,5 @@ void Board::mouseExit(const MouseEvent&) { hover = false; }
 void Board::mouseWheelMove(const MouseEvent&, const MouseWheelDetails& w) {
   if (w.deltaY == 0) return;
   ctl.basePr = jlimit(.05, 1.0, ctl.basePr + (w.deltaY > 0 ? .05 : -.05));
-  if (down) { curP = (float)ctl.basePr; ctl.gesture('m', curX, curY, curP); }
+  if (down) { curP = (float)ctl.basePr; ctl.gesture('n', curX, curY, curP); }
 }

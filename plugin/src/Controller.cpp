@@ -360,7 +360,7 @@ bool Controller::cmValid(const var& c) const {
   for (auto& e : *ev.getArray()) {
     if (!e.isArray() || e.size() < 3 || e.size() > 7) return false;
     if (!isNum(e[0]) || (double)e[0] < 0 || !isNum(e[1]) || (double)e[1] != std::floor((double)e[1]) || (int)e[1] < 0 || (int)e[1] > 8) return false;
-    String k = e[2].toString(); if (!e[2].isString() || (k != "d" && k != "m" && k != "u")) return false;
+    String k = e[2].toString(); if (!e[2].isString() || (k != "d" && k != "m" && k != "n" && k != "u")) return false;
     for (int i = 3; i < e.size(); i++) if (!isNum(e[i])) return false;
   }
   if (!ln.isVoid()) {

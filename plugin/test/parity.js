@@ -15,7 +15,9 @@ function tour(ev, t0, voices) {
   voices.forEach(function (s, n) {
     var t = t0 + n * 0.9, f = F(t), p = .4 + .07 * n;
     ev.push([f, { t: 'g', s: s, k: 'd', x: .3 + .05 * n, y: .4, p: p, hz: s === 4 && n % 2 ? 220 : 0 }]);
-    for (var j = 1; j < 120; j++) ev.push([f + j * 300, { t: 'g', s: s, k: 'm', x: .3 + .05 * n + .3 * Math.sin(j * .07), y: .4 + .3 * Math.sin(j * .05 + n), p: Math.min(1, p + .3 * Math.sin(j * .03)), hz: 0 }]);
+    // every other voice glides ('n', what the board sends since 1.0.4), with uneven gaps: some land in the same block
+    var gl = n % 2 === 1;
+    for (var j = 1; j < 120; j++) ev.push([f + j * 300 + (gl ? (j % 5 === 0 ? -250 : j % 7 === 0 ? 900 : 0) : 0), { t: 'g', s: s, k: gl ? 'n' : 'm', x: .3 + .05 * n + .3 * Math.sin(j * .07), y: .4 + .3 * Math.sin(j * .05 + n), p: Math.min(1, p + .3 * Math.sin(j * .03)), hz: 0 }]);
     ev.push([f + 120 * 300, { t: 'g', s: s, k: 'u' }]);
   });
 }
@@ -38,7 +40,7 @@ Object.keys(PRESETS).forEach(function (n) {
 })();
 (function () { // custom moments: gestures on two voices, a relative knob lane, an absolute choice, an exponential knob
   var P = base('Clock Tower'), ev = [], def = { voice: -1, len: 3, ev: [], lanes: [] };
-  for (var j = 0; j < 60; j++) def.ev.push([.1 + j * .03, j < 30 ? 0 : 2, j === 0 || j === 30 ? 'd' : j === 29 || j === 59 ? 'u' : 'm', .2 + j * .01, .5 + .3 * Math.sin(j * .2), .6, 0]);
+  for (var j = 0; j < 60; j++) def.ev.push([.1 + j * .03, j < 30 ? 0 : 2, j === 0 || j === 30 ? 'd' : j === 29 || j === 59 ? 'u' : j > 30 ? 'n' : 'm', .2 + j * .01, .5 + .3 * Math.sin(j * .2), .6, 0]);
   def.lanes.push({ k: 'macro.dread', min: 0, max: 1, pts: [[0, 0], [.5, .2], [1.5, .5], [2.5, .1]] });
   def.lanes.push({ k: 'bowed.object', min: 0, max: 4, int: 1, abs: 1, pts: [[0, 3], [1.2, 1]] });
   def.lanes.push({ k: 'rev.decay', min: .5, max: 30, exp: 1, pts: [[0, 0], [1, .3]] });
