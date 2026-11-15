@@ -1,10 +1,11 @@
 # Building Horror Engine · Séance
 
-You need CMake 3.22+, Ninja (or Visual Studio), [JUCE](https://github.com/juce-framework/JUCE) 8.0.11 or newer (the release is built with 8.0.15) and [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (with its submodules).
+You need CMake 3.22+, Ninja (or Visual Studio), [JUCE](https://github.com/juce-framework/JUCE) 8.0.15 (pinned: CMake stops on another version unless you pass `-DHE_ALLOW_OTHER_JUCE=ON`) and [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (with its submodules; pinned to commit 6bde108, CLAP 1.2.7). Leave out `-DJUCE_DIR` and `-DCJE_DIR` and CMake fetches both pinned versions itself (with the MinGW patch applied when cross-compiling).
 
 ```
 git clone --depth 1 -b 8.0.15 https://github.com/juce-framework/JUCE.git
-git clone --depth 1 --recurse-submodules https://github.com/free-audio/clap-juce-extensions.git
+git clone https://github.com/free-audio/clap-juce-extensions.git
+cd clap-juce-extensions && git checkout 6bde108329ff9fc24404b79b8b397261a75cf6a8 && git submodule update --init --recursive
 ```
 
 ## Windows with Visual Studio 2022
