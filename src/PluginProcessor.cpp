@@ -77,7 +77,7 @@ void HorrorProcessor::prepareToPlay(double sr, int maxBlock) {
   inBuf_.setSize(2, jmax(1, maxBlock)); outTmp_.setSize(2, jmax(1, maxBlock));
   int rs = (int)std::ceil(62 * sr_ / he::BL) * he::BL;
   if (ring_.getNumSamples() != rs) ring_.setSize(2, rs); ring_.clear(); ringW_ = 0; ringFill_ = 0;
-  held_.clear(); inputOn_ = false; blocks_ = 0; for (auto& h : hold_) h = ParamHold();
+  held_.clear(); held_.reserve(128); inputOn_ = false; blocks_ = 0; for (auto& h : hold_) h = ParamHold();
   if (inputSource.load() != IN_NONE) { host_->inputOn(true); inputOn_ = true; }
 }
 

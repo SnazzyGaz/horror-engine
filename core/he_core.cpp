@@ -96,6 +96,9 @@ class Engine : public EState {
     for (int i = 0; i < 256; i++) hw[i] = 1;
     macros(true); voiceMacros(true);
     recM.ev.reserve(8192); recM.pv.reserve(8192);
+    // preallocate what grows during playing, so the audio thread does not allocate in the common case
+    // (see NOTES-realtime.md for what still allocates: one-off looper/undo/ghost/moment commands)
+    recEv.reserve(16384); act.reserve(256); layers.reserve(64); undo.reserve(52); redo.reserve(52);
   }
 
   // first: the constructor's call, made before any parameter is set (the JavaScript reads undefined there)
@@ -199,7 +202,7 @@ class Engine : public EState {
   }
   void loopCmd(const Msg& m) {
     const std::string& a = m.a;
-    if (a == "undo" || a == "redo") { auto& from = a == "undo" ? undo : redo; auto& to = a == "undo" ? redo : undo; if (from.empty()) return; to.push_back(snap()); Snap S = from.back(); from.pop_back(); restore(S); return; }
+    if (a == "undo" || a == "redo") { auto& from = a == "undo" ? undo : redo; auto& to = a == "undo" ? redo : undo; if (from.empty()) return; to.push_back(snap()); Snap S = std::move(from.back()); from.pop_back(); restore(S); return; }
     if (a == "rec") {
       if (recOn) { Msg s2 = m; s2.a = "stop"; return loopCmd(s2); }
       recOn = true; recStart = lc; recEv.clear(); recSync = syncAct && barLen > 0;
@@ -207,7 +210,8 @@ class Engine : public EState {
       if (recSync) { double pb = prevBar(lc); recOrigin = lc - pb < .125 * barLen ? pb : pb + barLen; }
     }
     else if (a == "stop" && recOn) {
-      double R0 = recStart, dur = lc - R0; std::vector<REv> ev = recEv; recOn = false; recEv.clear();
+      double R0 = recStart, dur = lc - R0; const std::vector<REv>& ev = recEv; recOn = false;
+      struct Clear { std::vector<REv>& v; ~Clear() { v.clear(); } } clearRec{recEv};   // keeps recEv's reserved capacity
       bool synced = recSync && syncAct && barLen > 0; recSync = false;
       if (synced) { if (ev.empty()) return; }
       else if (dur < sr * .25 || ev.empty()) return;
