@@ -39,6 +39,7 @@ See `BUILDING.md`. The Windows binaries in this release were cross-compiled on L
 
 - Horror Engine (the instruments, the engine, the Séance layout) © 2026 Garyck Arntzen.
 - The bowed-string friction curve follows the bow-table idea published in STK by Perry R. Cook and Gary P. Scavone.
-- [JUCE](https://juce.com) 8.0.15 (AGPLv3), [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) and the [CLAP](https://github.com/free-audio/clap) SDK (MIT), the VST3 SDK bundled with JUCE (MIT).
+- Source: [github.com/SnazzyGaz/horror-engine](https://github.com/SnazzyGaz/horror-engine) (AGPLv3); the plugin's complete source is also in the source zip that comes with it.
+- [JUCE](https://juce.com) 8.0.15 (AGPLv3), [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions), the [CLAP](https://github.com/free-audio/clap) SDK and clap-helpers (MIT), the VST3 SDK bundled with JUCE (MIT), and from JUCE: FLAC and Ogg Vorbis (BSD), libpng, the IJG jpeg library, zlib, HarfBuzz (MIT) and SheenBidi (Apache 2.0). MinGW builds also link the mingw-w64 runtime, winpthreads and the GCC runtime statically. Full licence texts: `THIRD_PARTY_NOTICES.txt` (regenerate with `tools/make_notices.py`).
 - Fonts: IM FELL English SC (Igino Marini), Crimson Pro (The Crimson Pro Project Authors), IBM Plex Mono (IBM), all under the SIL Open Font License 1.1 (`OFL.txt`). Crimson Pro is embedded as static instances (Regular, Medium, SemiBold, Italic) of its variable font.
 - VST is a registered trademark of Steinberg Media Technologies GmbH.

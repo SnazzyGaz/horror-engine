@@ -1,5 +1,5 @@
 // Internal: voices I-V (E-bow string, hurdy-gurdy, friction bank, bowed metal, glass, struck metal).
-// Line-for-line port of src/engine.js. (c) 2026 Garyck Arntzen (https://x.com/_mintydoge), MIT licence.
+// Line-for-line port of src/engine.js. Horror Engine (c) 2026 Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3 (see LICENSE).
 #pragma once
 #include "he_state.h"
 

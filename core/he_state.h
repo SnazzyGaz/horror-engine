@@ -1,5 +1,5 @@
 // Internal: shared helpers and the engine state the voices read. Part of the C++ port of src/engine.js.
-// (c) 2026 Garyck Arntzen (https://x.com/_mintydoge), MIT licence.
+// Horror Engine (c) 2026 Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3 (see LICENSE).
 #pragma once
 #include <cmath>
 #include <cstdint>

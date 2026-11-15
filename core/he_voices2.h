@@ -1,5 +1,5 @@
 // Internal: voices VI-IX (spring tank, junk tray, Aura, superball), the hall, the body and the harmonizer.
-// Line-for-line port of src/engine.js. (c) 2026 Garyck Arntzen (https://x.com/_mintydoge), MIT licence.
+// Line-for-line port of src/engine.js. Horror Engine (c) 2026 Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3 (see LICENSE).
 #pragma once
 #include "he_state.h"
 

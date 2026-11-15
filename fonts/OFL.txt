@@ -1,10 +1,13 @@
-Fonts embedded in the Séance tester (seance/index.html), unmodified, recompressed to WOFF2:
+Fonts embedded in the Horror Engine Séance plugin (fonts/*.ttf, compiled into the binary):
 
-IM FELL English SC (IMFellEnglishSC-Regular)
+IM FELL English SC (IMFellEnglishSC-Regular.ttf), unmodified
   © 2007 Igino Marini (www.iginomarini.com) With Reserved Font Name IM FELL English SC
-Crimson Pro (CrimsonPro-VariableFont_wght, CrimsonPro-Italic-VariableFont_wght)
+Crimson Pro (CrimsonPro-Regular.ttf, -Medium.ttf, -SemiBold.ttf, -Italic.ttf): static instances at weights
+  400, 500 and 600 and the 400 italic, generated from the Crimson Pro variable fonts (CrimsonPro-VariableFont_wght,
+  CrimsonPro-Italic-VariableFont_wght) with no other changes; a Modified Version under the OFL (Crimson Pro has
+  no Reserved Font Name)
   Copyright 2018 The Crimson Pro Project Authors (https://github.com/Fonthausen/CrimsonPro)
-IBM Plex Mono (IBMPlexMono-Regular)
+IBM Plex Mono (IBMPlexMono-Regular.ttf), unmodified
   Copyright 2017 IBM Corp. All rights reserved. With Reserved Font Name "Plex"
 
 These Font Software are licensed under the SIL Open Font License, Version 1.1.
