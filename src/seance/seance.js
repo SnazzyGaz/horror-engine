@@ -280,31 +280,111 @@
     if (ds !== lastDs) { lastDs = ds; b.style.setProperty('--dread', ds); }
     if (gs !== lastGs) { lastGs = gs; b.style.setProperty('--dread-glow', gs); }
   }
-  function planchette(c, x, y, s, live, pr, lvl, look) {
-    c.save(); c.translate(x, y); c.scale(s, s);
-    var body = new Path2D('M0 -46 C 27 -46, 43 -18, 41 4 C 39 25, 17 48, 0 49 C -17 48, -39 25, -41 4 C -43 -18, -27 -46, 0 -46 Z');
+  // Celestial planchette: a uniform scale of Gaz's drawn SVG. The window is centred
+  // on the hand so the tip still points at the letter (hit-testing is unchanged).
+  // Raster is 2x the SVG viewBox (860x1228 -> 1720x2456). Window in SVG is (500, 940) r=96.
+  // At s=1 the body is 133 CSS px tall (70% of the first preview, which was 190).
+  var PCH_W = 1720, PCH_H = 2456, PCH_WX = 860, PCH_WY = 1808, PCH_WR = 192, PCH_BODY_H = 2355;
+  var PCH_UNIT = 133 / PCH_BODY_H, PCH_SH_PAD = 80;
+  var pchArt = { ready: false, img: null, lines: null, ember: null, shadow: null };
+  var pchSnap = null;
+  function loadPchImg(src) {
+    return new Promise(function (res, rej) {
+      var im = new Image();
+      im.onload = function () { res(im); };
+      im.onerror = function () { rej(new Error('planchette asset failed: ' + src)); };
+      im.src = src;
+    });
+  }
+  var pchReady = Promise.all([
+    loadPchImg('assets/celestial.png'),
+    loadPchImg('assets/celestial_lines.png'),
+    loadPchImg('assets/celestial_ember.png'),
+    loadPchImg('assets/celestial_shadow.png')
+  ]).then(function (ims) {
+    pchArt.img = ims[0]; pchArt.lines = ims[1]; pchArt.ember = ims[2]; pchArt.shadow = ims[3];
+    pchArt.ready = true;
+  }).catch(function (err) { console.warn(err); });
+  function drawMagnify(c, x, y, r, mag) {
+    var cvs = c.canvas, t = c.getTransform(), dpr = t.a;
+    if (!pchSnap || pchSnap.width !== cvs.width || pchSnap.height !== cvs.height) {
+      pchSnap = document.createElement('canvas');
+      pchSnap.width = cvs.width; pchSnap.height = cvs.height;
+    }
+    var sc = pchSnap.getContext('2d');
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    sc.clearRect(0, 0, pchSnap.width, pchSnap.height);
+    sc.drawImage(cvs, 0, 0);
+    var cx = x * dpr + t.e, cy = y * dpr + t.f, R = r * dpr;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.beginPath(); c.arc(cx, cy, R, 0, 6.283); c.clip();
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    c.drawImage(pchSnap, 0, 0, pchSnap.width, pchSnap.height, cx - cx * mag, cy - cy * mag, pchSnap.width * mag, pchSnap.height * mag);
+    c.restore();
+  }
+  function planchette(c, x, y, s, live, pr, lvl, look, useGlass) {
+    if (useGlass === undefined) useGlass = true;
+    if (!pchArt.ready) return;
+    var unit = PCH_UNIT, wr = PCH_WR * unit, rCss = wr * s;
+    var dx = -PCH_WX * unit, dy = -PCH_WY * unit, dw = PCH_W * unit, dh = PCH_H * unit;
     var ember = look && look.vis, ev = ember ? look.vis : 0, eg = ember ? look.glow * look.flick : 0;
-    c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 14; c.shadowOffsetY = 6;
-    var g = c.createRadialGradient(0, -2, 6, 0, 0, 52);
-    g.addColorStop(0, 'rgba(233,211,154,0)'); g.addColorStop(.3, 'rgba(201,168,101,' + (live ? .20 : .12) + ')'); g.addColorStop(.75, 'rgba(201,168,101,' + (live ? .13 : .08) + ')'); g.addColorStop(1, 'rgba(120,96,60,.16)');
-    c.fillStyle = g; c.fill(body); c.shadowColor = 'transparent';
-    c.lineWidth = 1.5; c.strokeStyle = 'rgba(233,211,154,' + (live ? .85 : .5) + ')'; c.stroke(body);
-    c.save(); c.scale(.88, .88); c.lineWidth = .8; c.strokeStyle = 'rgba(233,211,154,.22)'; c.stroke(body); c.restore();
-    // felt feet
-    c.fillStyle = 'rgba(10,7,5,.55)'; [[0, -36], [-27, 30], [27, 30]].forEach(function (p) { c.beginPath(); c.arc(p[0], p[1], 2.6, 0, 6.283); c.fill(); });
-    // the lens: a glowing glass eye over the letter (ember as Dread rises; it stays lit at full Dread)
     var gl = live ? .55 + .45 * pr + Math.min(.4, lvl) : .25;
     if (ember) gl = Math.max(gl, .35 + .65 * eg);
+    if (useGlass) drawMagnify(c, x, y, rCss * .99, 1.14);
+    c.save(); c.translate(x, y); c.scale(s, s);
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    if (pchArt.shadow) {
+      var shs = PCH_SH_PAD * unit;
+      c.drawImage(pchArt.shadow, dx - shs, dy - shs, pchArt.shadow.width * unit, pchArt.shadow.height * unit);
+    }
+    c.drawImage(pchArt.img, dx, dy, dw, dh);
+    if (live || ev) {
+      c.save();
+      if (ember && ev > 0) {
+        var aL = Math.min(1, ev * (.45 + .7 * (eg || ev)));
+        c.shadowColor = 'rgba(255,70,18,' + (.3 + .55 * eg).toFixed(2) + ')';
+        c.shadowBlur = 5 + 16 * (eg || ev);
+        c.globalAlpha = aL;
+        c.drawImage(pchArt.ember, dx, dy, dw, dh);
+        c.globalAlpha = aL * .7;
+        c.drawImage(pchArt.ember, dx, dy, dw, dh);
+      } else if (live) {
+        c.shadowColor = 'rgba(233,211,154,' + (.25 + .4 * gl).toFixed(2) + ')';
+        c.shadowBlur = 6 + 8 * pr;
+        c.globalAlpha = .35 + .35 * gl;
+        c.drawImage(pchArt.lines, dx, dy, dw, dh);
+      }
+      c.restore();
+    }
     var halo = ember ? 'rgba(255,80,28,' : 'rgba(233,211,154,';
-    c.shadowColor = halo + Math.min(1, ember ? .4 + .7 * gl : gl).toFixed(2) + ')'; c.shadowBlur = (live ? 10 + 18 * pr : 4) + (ember ? 8 + 16 * eg : 0);
-    c.beginPath(); c.arc(0, 0, 15, 0, 6.283); c.lineWidth = 1.6;
-    c.strokeStyle = ember ? (live ? '#ffb08a' : 'rgba(255,140,80,' + (.45 + .4 * ev).toFixed(2) + ')') : (live ? '#f1dfae' : 'rgba(233,211,154,.6)');
+    // glow lives outside the window so the letter stays readable
+    c.save();
+    c.beginPath(); c.rect(-dw, -dh, dw * 3, dh * 3); c.arc(0, 0, wr, 0, 6.283, true); c.clip();
+    c.shadowColor = halo + Math.min(1, ember ? .35 + .55 * gl : gl * .85).toFixed(2) + ')';
+    c.shadowBlur = (live ? 8 + 14 * pr : 3) + (ember ? 6 + 12 * eg : 0);
+    c.beginPath(); c.arc(0, 0, wr, 0, 6.283); c.lineWidth = 1.6;
+    c.strokeStyle = ember ? (live ? '#ffb08a' : 'rgba(255,140,80,' + (.45 + .4 * ev).toFixed(2) + ')') : (live ? '#f1dfae' : 'rgba(233,211,154,.55)');
     c.stroke();
-    c.shadowBlur = 0; var lg = c.createRadialGradient(-4, -5, 1, 0, 0, 15);
-    if (ember) { lg.addColorStop(0, 'rgba(255,170,110,' + ((live ? .22 : .1) + .28 * ev + .2 * eg).toFixed(2) + ')'); lg.addColorStop(1, 'rgba(255,90,30,.04)'); }
-    else { lg.addColorStop(0, 'rgba(255,246,220,' + (live ? .22 : .1) + ')'); lg.addColorStop(1, 'rgba(255,246,220,.02)'); }
-    c.fillStyle = lg; c.fill();
-    c.beginPath(); c.arc(0, 0, 11, Math.PI * 1.1, Math.PI * 1.45); c.strokeStyle = ember ? 'rgba(255,200,160,.55)' : 'rgba(255,250,235,.45)'; c.lineWidth = 1.2; c.stroke();
+    c.restore();
+    if (useGlass) {
+      var ha = (live ? .10 : .05) + (ember ? .08 * ev + .06 * eg : 0);
+      var lg = c.createRadialGradient(-wr * .28, -wr * .35, wr * .06, 0, 0, wr);
+      if (ember) {
+        lg.addColorStop(0, 'rgba(255,190,140,' + (ha + .06).toFixed(2) + ')');
+        lg.addColorStop(.55, 'rgba(255,120,60,' + (ha * .4).toFixed(2) + ')');
+        lg.addColorStop(1, 'rgba(255,90,30,0)');
+      } else {
+        lg.addColorStop(0, 'rgba(255,250,230,' + (ha + .05).toFixed(2) + ')');
+        lg.addColorStop(.5, 'rgba(210,225,230,' + (ha * .45).toFixed(2) + ')');
+        lg.addColorStop(1, 'rgba(255,246,220,0)');
+      }
+      c.beginPath(); c.arc(0, 0, wr - .35, 0, 6.283); c.fillStyle = lg; c.fill();
+      c.beginPath(); c.arc(0, 0, wr * .72, Math.PI * 1.1, Math.PI * 1.45);
+      c.strokeStyle = ember ? 'rgba(255,220,180,.45)' : 'rgba(255,250,235,.5)'; c.lineWidth = 1.3; c.stroke();
+      c.beginPath(); c.ellipse(-wr * .22, -wr * .32, wr * .14, wr * .07, -.5, 0, 6.283);
+      c.fillStyle = ember ? 'rgba(255,235,210,.16)' : 'rgba(255,255,250,.18)'; c.fill();
+    }
     c.restore();
   }
   var lastHL = '';
@@ -317,9 +397,19 @@
     var lvl = S.tm ? Math.max(S.tm.pk[0], S.tm.pk[1]) : 0;
     var now = performance.now();
     var look = dreadLook(P['macro.dread'] || 0, lvl, S.still, now);
-    dreadCSS(look.vis, look.glow * look.flick);
     var p = S.down ? S.cur : hover.on ? hover : rest; if (S.down || hover.on) { rest.x = p.x; rest.y = p.y; }
-    var px = p.x * w, py = (1 - p.y) * h, live = S.down;
+    var px = p.x * w, py = (1 - p.y) * h, live = S.down, pr = live ? S.cur.p : 0, useGlass = true, preview = window.__seancePreview;
+    if (preview) {
+      p = { x: preview.x, y: preview.y, p: preview.pr || 0 };
+      px = p.x * w; py = (1 - p.y) * h;
+      live = !!preview.live;
+      pr = live ? (preview.pr != null ? preview.pr : .7) : 0;
+      if (preview.lvl != null) lvl = preview.lvl;
+      look = dreadLook(preview.dread != null ? preview.dread : (P['macro.dread'] || 0), lvl, preview.still !== false, preview.t || 0);
+      if (preview.glass === false) useGlass = false;
+      if (preview.trail) S = { dpr: S.dpr, W: S.W, H: S.H, cur: p, down: live, trail: preview.trail, tm: S.tm, junk: S.junk, sel: S.sel, still: true, analyser: null, scope: S.scope, basePr: S.basePr };
+    }
+    dreadCSS(look.vis, look.glow * look.flick);
     // Dread: the wood darkens and a vignette closes in (skipped entirely at Dread 0)
     if (look.vis) {
       c.fillStyle = 'rgba(4,1,1,' + look.dark.toFixed(3) + ')'; c.fillRect(0, 0, w, h);
@@ -405,7 +495,7 @@
       var J = S.junk, n = (J.length - 3) / 3;
       for (i = 0; i < n; i++) { c.strokeStyle = i % 3 ? 'rgba(236,225,200,' + (.6 * fade).toFixed(3) + ')' : 'rgba(201,168,101,' + (.85 * fade).toFixed(3) + ')'; c.lineWidth = 1.4; c.beginPath(); c.arc(J[i * 3] * w, (1 - J[i * 3 + 1]) * h, Math.max(2.5, J[i * 3 + 2] * Math.min(w, h) * .8), 0, 6.283); c.stroke(); }
     }
-    planchette(c, px, py, Math.max(.75, Math.min(1.4, h / 540)) * (1 + (live ? .06 * S.cur.p : 0)), live, live ? S.cur.p : 0, lvl, look);
+    planchette(c, px, py, Math.max(.75, Math.min(1.4, h / 540)) * (1 + (live ? .06 * pr : 0)), live, pr, lvl, look, useGlass);
     // the reading in the corner
     var hl = live ? (lit >= 0 ? lay.L[lit].ch : '\u00B7') + (R ? '  \u00B7  ' + (stNow > 0 ? '+' : stNow < 0 ? '\u2212' : '') + (R.q ? Math.abs(stNow) : Math.abs(stNow).toFixed(1)) + ' st' : '  \u00B7  x ' + Math.round(p.x * 100) + '  y ' + Math.round(p.y * 100)) : '';
     if (hl !== lastHL) { lastHL = hl; $('hl').textContent = hl; }
@@ -415,5 +505,5 @@
   fill($('sprk'), ['spring.decay', 'spring.tension', 'spring.disp']);
   HK.select(H.sel()); HK.oct(H.oct()); presetUI();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { lay = null; });
-  window.__seance = { drawer: drawer, step: step, pick: pick, ruler: ruler, layout: function () { return lay; }, dreadLook: dreadLook };
+  window.__seance = { drawer: drawer, step: step, pick: pick, ruler: ruler, layout: function () { return lay; }, dreadLook: dreadLook, pchReady: pchReady };
 })();

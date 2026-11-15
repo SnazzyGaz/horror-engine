@@ -247,6 +247,13 @@ def write_seance(dest):
     html = seance_html()
     open(os.path.join(dest, 'index.html'), 'w', encoding='utf-8').write(html)
     shutil.copy2(os.path.join(here, 'vendor', 'fonts', 'OFL.txt'), os.path.join(dest, 'OFL.txt'))
+    asrc = os.path.join(here, 'src', 'seance', 'assets')
+    adest = os.path.join(dest, 'assets')
+    if os.path.isdir(asrc):
+        os.makedirs(adest, exist_ok=True)
+        for name in os.listdir(asrc):
+            if name.endswith(('.png', '.svg')):
+                shutil.copy2(os.path.join(asrc, name), os.path.join(adest, name))
     print('seance', os.path.join(dest, 'index.html'), len(html), 'bytes')
 
 
