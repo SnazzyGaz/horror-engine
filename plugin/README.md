@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.12](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.12) release and unzip it. Use **`HorrorEngine-Seance-1.0.12-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.13](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.13) release and unzip it. Use **`HorrorEngine-Seance-1.0.13-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,10 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.13
+
+- **The planchette now sits with the point facing up.** Gaz's drawing is rotated 180° once when the editor loads (a rotation, not a mirror, so the symbol stays exactly as drawn). The window, now near the top, is re-derived from the rotated alpha and still sits on the letter under the hand. The drop shadow is baked downward from the rotated body so the light stays from above; it is not rotated with the art. The 1.0.12 cache behaviour is unchanged: the rotation happens at load, never per frame. The glass lens, ember glow, opaque body and board hit area are unchanged. The sound is unchanged.
 
 ## Changes in 1.0.12
 

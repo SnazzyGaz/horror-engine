@@ -11,8 +11,10 @@ using namespace look;
 
 static const float PI_F = MathConstants<float>::pi;
 
-// Celestial planchette: uniform scale of Gaz's drawing. Window is centred on the
-// hand so the tip still points at the letter (hit-testing is unchanged).
+// Celestial planchette: uniform scale of Gaz's drawing, rotated 180° once at
+// load so the tip points up (a rotation, not a mirror: the symbol stays
+// exactly as drawn). The window, now near the top, is centred on the hand
+// so it still sits on the letter (hit-testing is unchanged).
 //
 // Default masters are Gaz's SVG at 2x (860x1228 -> 1720x2456), made with a
 // proper SVG renderer (the drawing uses a <mask> that JUCE's parser cannot
@@ -51,8 +53,8 @@ static void applyPchGeomFromImage(const Image& im) {
 
 // Window centre, radius and tip from the PNG's alpha: the interior hole
 // (including a light glass highlight) is the viewing window, and the
-// southernmost body pixels are the tip. The hand still sits on the window
-// centre, same as the 2x masters.
+// tip is the end of the body farthest from the window. The hand still sits
+// on the window centre, same as the 2x masters.
 static bool pchKeepWindowAlpha = false;
 static void derivePchWindowFromAlpha(const Image& im) {
   const int w = im.getWidth(), h = im.getHeight();
@@ -162,6 +164,35 @@ static Image derivePchLines(const Image& art) {
 static Image loadPngBin(const char* data, int size) {
   if (data == nullptr || size <= 0) return {};
   return ImageFileFormat::loadFrom(data, (size_t) size);
+}
+
+// 180° rotation, not a mirror: (x, y) -> (w-1-x, h-1-y).
+static Image rotate180(const Image& src) {
+  if (!src.isValid()) return {};
+  const int w = src.getWidth(), h = src.getHeight();
+  Image out(Image::ARGB, w, h, true);
+  Image::BitmapData bin(src, Image::BitmapData::readOnly);
+  Image::BitmapData bout(out, Image::BitmapData::writeOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x)
+      bout.setPixelColour(w - 1 - x, h - 1 - y, bin.getPixelColour(x, y));
+  return out;
+}
+
+// Soft drop shadow of an already-rotated body, offset downward so the light
+// stays from above (the baked shadow is not rotated with the art).
+static Image bakePchDropShadow(const Image& body, int pad, int offsetY, int radius) {
+  if (!body.isValid()) return {};
+  pad = jmax(1, pad);
+  radius = jmax(1, radius);
+  offsetY = jmax(0, offsetY);
+  const int w = body.getWidth() + 2 * pad;
+  const int h = body.getHeight() + 2 * pad + offsetY;
+  Image sil(Image::ARGB, w, h, true);
+  { Graphics g(sil); g.drawImageAt(body, pad, pad); }
+  Image out(Image::ARGB, w, h, true);
+  { Graphics g(out); DropShadow(Colour(0x99000000), radius, {0, offsetY}).drawForImage(g, sil); }
+  return out;
 }
 
 struct PchRgba { float r, g, b, a; };
@@ -503,21 +534,28 @@ void Board::ensureCaches(float w, float h, float scale, float physScale) {
   if (!pchSrcArt.isValid()) {
     // Prefer a hand-drawn plugin-size PNG if it was compiled into BinaryData.
     int nPlug = 0;
+    bool pluginArt = false;
     if (const char* plug = BinaryData::getNamedResource("celestial_plugin_png", nPlug))
       pchSrcArt = loadPngBin(plug, nPlug);
     if (pchSrcArt.isValid()) {
-      derivePchWindowFromAlpha(pchSrcArt);
-      pchKeepWindowAlpha = true;
-      int nL = 0, nS = 0;
+      pluginArt = true;
+      int nL = 0;
       if (const char* lines = BinaryData::getNamedResource("celestial_plugin_lines_png", nL))
         pchSrcLines = loadPngBin(lines, nL);
-      if (const char* sh = BinaryData::getNamedResource("celestial_plugin_shadow_png", nS))
-        pchSrcShadow = loadPngBin(sh, nS);
-      if (!pchSrcLines.isValid()) pchSrcLines = derivePchLines(pchSrcArt);
     } else {
       pchSrcArt    = loadPngBin(BinaryData::celestial_png,        BinaryData::celestial_pngSize);
       pchSrcLines  = loadPngBin(BinaryData::celestial_lines_png,  BinaryData::celestial_lines_pngSize);
-      pchSrcShadow = loadPngBin(BinaryData::celestial_shadow_png, BinaryData::celestial_shadow_pngSize);
+    }
+    // Point up: rotate 180° once at load (not a mirror). Re-derive the
+    // window from the rotated alpha. Do not rotate a pre-baked shadow —
+    // it would flip the light; the cache bakes a downward drop instead.
+    if (pchSrcArt.isValid()) {
+      pchSrcArt = rotate180(pchSrcArt);
+      if (pchSrcLines.isValid()) pchSrcLines = rotate180(pchSrcLines);
+      else if (pluginArt) pchSrcLines = derivePchLines(pchSrcArt);
+      pchSrcShadow = {};
+      derivePchWindowFromAlpha(pchSrcArt);
+      pchKeepWindowAlpha = pluginArt;
     }
   }
   // Rasterise at layout scale s0 and the real physical scale only. The 6%
@@ -540,11 +578,11 @@ void Board::ensureCaches(float w, float h, float scale, float physScale) {
       pchEmber  = tintByAlpha(pchLines, Colour((juce::uint8) 244, (juce::uint8) 162, (juce::uint8) 66));
       pchBodyMask = makePchMask(pchArt);
       pchBodySil  = makePchSilhouette(pchBodyMask);
-      if (pchSrcShadow.isValid())
-        pchShadow = scaleImageLanczos(pchSrcShadow, sw, sh);
-      else if (pchBodyMask.isValid()) {
+      if (pchBodyMask.isValid()) {
         const int rad = jmax(4, (int) std::round(14.f * s0 * phys));
-        pchShadow = bakeLineGlow(pchBodyMask, Colour(0x99000000), rad);
+        const int offY = jmax(1, (int) std::round(6.f * s0 * phys));
+        const int pad = jmax(rad + 2, (int) std::round(PCH_SH_PAD * unit * phys));
+        pchShadow = bakePchDropShadow(pchBodyMask, pad, offY, rad);
       } else pchShadow = {};
       const int radius = jmax(2, (int) std::round(8.f * s0 * phys));
       pchGlowPad    = radius + 2;
