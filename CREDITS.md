@@ -41,6 +41,10 @@ The beam-mounted goat skull is "Goat Skull" by Bohnen, licensed under [CC BY 4.0
 
 Other altar surfaces reuse the workshop textures above (oak veneer for the timber, the old wood floor for beams and hoops, iron and steel for rusted metal, the slate texture for the ledge), or are made for the project with no outside source: the ribcage, vertebrae, long and flat bones, skull bowl, horns, candles, entrails, carved panel, chalk sigils, eyeballs, rusted railroad spikes, blood stain masks and rust paint are procedural (`src/sculpt.js`, `src/altar.js`).
 
+## Séance planchette
+
+The celestial planchette on the spirit board (the black teardrop with the lattice symbol in the astrolabe ring) is original artwork by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintydoge)).
+
 ## Libraries
 
 - three.js r160, MIT License, Copyright © 2010-2023 three.js authors (`vendor/three.LICENSE`).

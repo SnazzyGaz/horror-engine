@@ -3,7 +3,7 @@
 #   cmake -B build -DJUCE_DIR=/path/to/JUCE-8.0.15 -DCJE_DIR=/path/to/clap-juce-extensions
 #   (or leave both out and CMake fetches JUCE 8.0.15 and the pinned clap-juce-extensions)
 cmake_minimum_required(VERSION 3.22)
-project(HorrorEngineSeance VERSION 1.0.8 LANGUAGES C CXX)
+project(HorrorEngineSeance VERSION 1.0.9 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -82,7 +82,7 @@ juce_add_plugin(HorrorEngine
   PLUGIN_CODE HrSe
   PRODUCT_NAME "Horror Engine"
   DESCRIPTION "Nine physical-model horror instruments on a spirit board"
-  VERSION 1.0.8
+  VERSION 1.0.9
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE
   EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -93,7 +93,8 @@ juce_add_plugin(HorrorEngine
 
 juce_add_binary_data(HorrorEngineFonts SOURCES
   fonts/IMFellEnglishSC-Regular.ttf fonts/CrimsonPro-Regular.ttf fonts/CrimsonPro-Medium.ttf fonts/CrimsonPro-SemiBold.ttf
-  fonts/CrimsonPro-Italic.ttf fonts/IBMPlexMono-Regular.ttf)
+  fonts/CrimsonPro-Italic.ttf fonts/IBMPlexMono-Regular.ttf
+  art/celestial.png art/celestial_lines.png art/celestial_ember.png art/celestial_shadow.png)
 set_target_properties(HorrorEngineFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_sources(HorrorEngine PRIVATE src/PluginProcessor.cpp src/Controller.cpp src/Look.cpp src/Widgets.cpp src/Board.cpp src/Panels.cpp src/Drawers.cpp src/PluginEditor.cpp)

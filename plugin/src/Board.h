@@ -52,6 +52,12 @@ class Board : public juce::Component, private juce::Timer {
   void refresh();
   void testDrag(float x, float y, bool d) { curX = x; curY = y; curP = .6f; down = d; for (int i = 0; i < 40; i++) trail.push_back({x - .3f + i * .0075f, y + .05f * std::sin(i * .3f), juce::Time::getMillisecondCounterHiRes() - (40 - i) * 20}); }
   void testSet(float x, float y, bool d, float pr = .6f) { curX = x; curY = y; curP = pr; down = d; hover = !d; if (!d) { hoverX = x; hoverY = y; } }
+  bool testOnLetter(juce::juce_wchar ch, bool d, float pr = .6f) {
+    float w = (float) getWidth(), h = (float) getHeight();
+    if (w < 1 || h < 1) return false;
+    for (auto& q : L) if (q.ch == ch) { testSet(q.x / w, 1.f - q.y / h, d, pr); return true; }
+    return false;
+  }
   void testClearTrail() { trail.clear(); }
   Plaque yes, no, bye;
  private:
@@ -85,6 +91,10 @@ class Board : public juce::Component, private juce::Timer {
   juce::String reading;
   // static / slowly-changing paint caches (rebuilt on size, scale, or Dread)
   juce::Image candleCream, candleEmber, ringHaloCream, ringHaloEmber, planchetteShadow;
+  juce::Image pchSrcArt, pchSrcLines, pchSrcEmber, pchSrcShadow;
+  juce::Image pchArt, pchLines, pchEmber, pchShadow, pchLinesGlow, pchEmberGlow;
+  float       pchCacheS = 0, pchCacheScale = 0;
+  int         pchGlowPad = 0;
   juce::Image dreadLayer, insetLayer, frameLayer;
   juce::Path rulerPath, planchetteBody;
   float dreadVis = -1, dreadDark = 0, dreadHole = 0, insetVis = -1, layerScale = 0, layerW = 0, layerH = 0;

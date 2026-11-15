@@ -1,11 +1,42 @@
 // Horror Engine · Séance: the spirit board. Horror Engine by Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3.
 #include "Board.h"
 #include "PluginProcessor.h"
+#include "BinaryData.h"
 
 using namespace juce;
 using namespace look;
 
 static const float PI_F = MathConstants<float>::pi;
+
+// Celestial planchette: uniform scale of Gaz's drawing. Window is centred on the
+// hand so the tip still points at the letter (hit-testing is unchanged). Raster
+// is 2x the SVG (860x1228 -> 1720x2456). At s=1 the body is 133 logical px tall
+// (70% of the first preview).
+static constexpr float PCH_W = 1720.f, PCH_H = 2456.f, PCH_WX = 860.f, PCH_WY = 1808.f, PCH_WR = 192.f;
+static constexpr float PCH_BODY_H = 2355.f, PCH_UNIT = 133.f / PCH_BODY_H, PCH_SH_PAD = 80.f;
+
+static Image loadPngBin(const char* data, int size) {
+  if (data == nullptr || size <= 0) return {};
+  return ImageFileFormat::loadFrom(data, (size_t) size);
+}
+static Image scaleImageHQ(const Image& src, int w, int h) {
+  if (!src.isValid() || w < 1 || h < 1) return {};
+  Image out(Image::ARGB, w, h, true);
+  Graphics g(out);
+  g.setImageResamplingQuality(Graphics::highResamplingQuality);
+  g.drawImage(src, Rectangle<float>(0, 0, (float) w, (float) h));
+  return out;
+}
+static Image bakeLineGlow(const Image& src, Colour col, int radius) {
+  if (!src.isValid() || radius < 1) return {};
+  const int pad = radius + 2;
+  Image padded(Image::ARGB, src.getWidth() + 2 * pad, src.getHeight() + 2 * pad, true);
+  { Graphics g(padded); g.drawImageAt(src, pad, pad); }
+  Image glow(Image::ARGB, padded.getWidth(), padded.getHeight(), true);
+  { Graphics g(glow); DropShadow(col, radius, {0, 0}).drawForImage(g, padded); }
+  return glow;
+}
+
 
 // Matches seance.js dreadLook: vis is 0 at Dread 0 (every draw path below is then the old one).
 struct DreadLook { float vis, dark, hole, glow, flick; };
@@ -144,10 +175,6 @@ bool Board::ruler(BoardRuler& R) const {
 static double rX(const BoardRuler& R, double st) { return R.kind == 0 ? .5 + st / (24 * R.r) : R.kind == 1 ? .5 + st / 36 : st / 12; }
 static double rSt(const BoardRuler& R, double x) { return R.kind == 0 ? (x - .5) * 24 * R.r : R.kind == 1 ? (x - .5) * 36 : std::floor(x * 12 + .5); }
 
-static Path planchettePath() {
-  Path p; p.startNewSubPath(0, -46); p.cubicTo(27, -46, 43, -18, 41, 4); p.cubicTo(39, 25, 17, 48, 0, 49); p.cubicTo(-17, 48, -39, 25, -41, 4); p.cubicTo(-43, -18, -27, -46, 0, -46); p.closeSubPath(); return p;
-}
-
 void Board::ensureCaches(float w, float h, float scale) {
   if (!candleCream.isValid()) {
     const int dim = 256;
@@ -163,18 +190,33 @@ void Board::ensureCaches(float w, float h, float scale) {
     candleEmber = radial(dim, rgba(255, 110, 50, 1.f), rgba(255, 80, 30, 0));
     ringHaloCream = radial(dim, rgba(233, 211, 154, 1.f), rgba(233, 211, 154, 0));
     ringHaloEmber = radial(dim, rgba(255, 80, 28, 1.f), rgba(255, 80, 28, 0));
-    // planchette drop-shadow at s=1, logical pixels, generous padding
-    {
-      Path body = planchettePath();
-      auto pb = body.getBounds().expanded(24.f, 30.f);
-      int sw = jmax(1, (int)std::ceil(pb.getWidth())), sh = jmax(1, (int)std::ceil(pb.getHeight()));
-      planchetteShadow = Image(Image::ARGB, sw, sh, true);
-      Graphics gs(planchetteShadow);
-      Path b = body; b.applyTransform(AffineTransform::translation(-pb.getX(), -pb.getY()));
-      DropShadow(Colours::black.withAlpha(.6f), 14, {0, 6}).drawForPath(gs, b);
-    }
   }
-  if (planchetteBody.isEmpty()) planchetteBody = planchettePath();
+  if (!pchSrcArt.isValid()) {
+    pchSrcArt    = loadPngBin(BinaryData::celestial_png,        BinaryData::celestial_pngSize);
+    pchSrcLines  = loadPngBin(BinaryData::celestial_lines_png,  BinaryData::celestial_lines_pngSize);
+    pchSrcEmber  = loadPngBin(BinaryData::celestial_ember_png,  BinaryData::celestial_ember_pngSize);
+    pchSrcShadow = loadPngBin(BinaryData::celestial_shadow_png, BinaryData::celestial_shadow_pngSize);
+  }
+  // Bake art at s0*1.06 so the pressure pulse (up to +6%) never upscales the 1720px source.
+  const float s0 = jmax(.75f, jmin(1.4f, h / 540));
+  const float sCache = s0 * 1.06f;
+  if (pchSrcArt.isValid() && (pchCacheS != sCache || pchCacheScale != scale || !pchArt.isValid())) {
+    const float unit = PCH_UNIT * sCache;
+    const int cw = jmax(1, (int) std::ceil(PCH_W * unit * scale));
+    const int ch = jmax(1, (int) std::ceil(PCH_H * unit * scale));
+    const int sw = jmax(1, (int) std::ceil((PCH_W + 2 * PCH_SH_PAD) * unit * scale));
+    const int sh = jmax(1, (int) std::ceil((PCH_H + 2 * PCH_SH_PAD) * unit * scale));
+    pchArt    = scaleImageHQ(pchSrcArt,    cw, ch);
+    pchLines  = scaleImageHQ(pchSrcLines,  cw, ch);
+    pchEmber  = scaleImageHQ(pchSrcEmber,  cw, ch);
+    pchShadow = scaleImageHQ(pchSrcShadow, sw, sh);
+    const int radius = jmax(8, (int) std::round(24.f * sCache * scale));
+    pchGlowPad    = radius + 2;
+    pchLinesGlow  = bakeLineGlow(pchLines, Colour((juce::uint8) 233, (juce::uint8) 211, (juce::uint8) 154), radius);
+    pchEmberGlow  = bakeLineGlow(pchEmber, Colour((juce::uint8) 255, (juce::uint8) 70,  (juce::uint8) 18),  radius);
+    pchCacheS     = sCache;
+    pchCacheScale = scale;
+  }
   if (rulerPath.isEmpty() || layerW != w || layerH != h) {
     rulerPath.clear();
     for (int j = 0; j <= 60; j++) {
@@ -258,10 +300,21 @@ void Board::buildFrameLayer(float w, float h, float scale) {
 Rectangle<int> Board::planchetteDirty(float px, float py, float vis) const {
   float w = (float)getWidth(), h = (float)getHeight();
   float X = px * w, Y = (1 - py) * h;
-  float crad = jmax(w, h) * (.32f - (vis ? .1f * vis : 0));
   float s = jmax(.75f, jmin(1.4f, h / 540)) * 1.1f;
-  float pad = jmax(crad, 70.f * s);
-  return Rectangle<int>((int)std::floor(X - pad), (int)std::floor(Y - pad), (int)std::ceil(2 * pad), (int)std::ceil(2 * pad));
+  float u = PCH_UNIT * s;
+  float sh = PCH_SH_PAD * u;
+  float left  = X - PCH_WX * u - sh;
+  float top   = Y - PCH_WY * u - sh;
+  float right = X + (PCH_W - PCH_WX) * u + sh;
+  float bot   = Y + (PCH_H - PCH_WY) * u + sh;
+  float halo  = PCH_WR * u * 1.55f + 40.f * s;
+  left = jmin(left, X - halo); top = jmin(top, Y - halo);
+  right = jmax(right, X + halo); bot = jmax(bot, Y + halo);
+  float crad = jmax(w, h) * (.32f - (vis ? .1f * vis : 0));
+  left = jmin(left, X - crad); top = jmin(top, Y - crad);
+  right = jmax(right, X + crad); bot = jmax(bot, Y + crad);
+  return Rectangle<int>((int) std::floor(left), (int) std::floor(top),
+                        (int) std::ceil(right - left), (int) std::ceil(bot - top));
 }
 
 Board::~Board() { vblank = {}; stopTimer(); }
@@ -456,44 +509,121 @@ void Board::paint(Graphics& g) {
       }
     }
   }
-  // the planchette: cached body + pre-baked shadow and ring halo
+  // the planchette: cached celestial art, glass lens, play-glow and Dread ember
   {
     he_paint::ScopeT _pplan(he_paint::Planchette);
     float s = jmax(.75f, jmin(1.4f, h / 540)) * (1 + (live ? .06f * curP : 0)), pr = live ? curP : 0;
-    auto T = AffineTransform::scale(s).translated(X, Y);
-    Path body = planchetteBody; body.applyTransform(T);
-    {
-      // shadow image was baked at s=1 with 14px blur and (0,6) offset; scale it with the planchette
-      auto pb = planchettePath().getBounds().expanded(24.f, 30.f);
-      auto dest = Rectangle<float>(pb.getX(), pb.getY(), pb.getWidth(), pb.getHeight()).transformedBy(T);
-      g.drawImage(planchetteShadow, dest);
-    }
-    ColourGradient bgr(rgba(233, 211, 154, 0), X, Y - 2 * s, rgba(120, 96, 60, .16f), X + 52 * s, Y, true);
-    bgr.clearColours(); bgr.addColour(0, rgba(233, 211, 154, 0)); bgr.addColour(.3, rgba(201, 168, 101, live ? .20f : .12f)); bgr.addColour(.75, rgba(201, 168, 101, live ? .13f : .08f)); bgr.addColour(1, rgba(120, 96, 60, .16f));
-    g.setGradientFill(bgr); g.fillPath(body);
-    g.setColour(rgba(233, 211, 154, live ? .85f : .5f)); g.strokePath(body, PathStrokeType(1.5f * s));
-    Path inner = planchetteBody; inner.applyTransform(AffineTransform::scale(.88f * s).translated(X, Y)); g.setColour(rgba(233, 211, 154, .22f)); g.strokePath(inner, PathStrokeType(.8f * .88f * s));
-    g.setColour(rgba(10, 7, 5, .55f)); for (auto f : {Point<float>(0, -36), Point<float>(-27, 30), Point<float>(27, 30)}) { auto c = f.transformedBy(T); g.fillEllipse(c.x - 2.6f * s, c.y - 2.6f * s, 5.2f * s, 5.2f * s); }
+    const float unit = PCH_UNIT, wr = PCH_WR * unit, rCss = wr * s;
+    const float dw = PCH_W * unit * s, dh = PCH_H * unit * s;
+    const float dx = X - PCH_WX * unit * s, dy = Y - PCH_WY * unit * s;
+    const float shs = PCH_SH_PAD * unit * s;
+    auto dest = Rectangle<float>(dx, dy, dw, dh);
     float gl = live ? .55f + .45f * pr + jmin(.4f, lvl) : .25f;
     bool ember = look.vis > 0; float ev = ember ? look.vis : 0, eg = ember ? look.glow * look.flick : 0;
     if (ember) gl = jmax(gl, .35f + .65f * eg);
-    Path ring; ring.addEllipse(X - 15 * s, Y - 15 * s, 30 * s, 30 * s);
-    Path ringS; PathStrokeType(1.6f * s).createStrokedPath(ringS, ring);
-    float blur = (live ? 10 + 18 * pr : 4) + (ember ? 8 + 16 * eg : 0);
-    float haloA = ember ? jmin(1.f, .4f + .7f * gl) : jmin(1.f, gl);
-    float haloR = (blur * s) + 15 * s;
-    { Graphics::ScopedSaveState st(g); g.setOpacity(haloA);
-      g.drawImage(ember ? ringHaloEmber : ringHaloCream, Rectangle<float>(X - haloR, Y - haloR, 2 * haloR, 2 * haloR)); }
-    if (ember) g.setColour(live ? Colour(0xffffb08a) : rgba(255, 140, 80, .45f + .4f * ev));
-    else g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .6f));
-    g.fillPath(ringS);
-    if (ember) {
-      ColourGradient lg(rgba(255, 170, 110, (live ? .22f : .1f) + .28f * ev + .2f * eg), X - 4 * s, Y - 5 * s, rgba(255, 90, 30, .04f), X - 4 * s + 15 * s, Y - 5 * s, true); g.setGradientFill(lg); g.fillPath(ring);
-    } else {
-      ColourGradient lg(rgba(255, 246, 220, live ? .22f : .1f), X - 4 * s, Y - 5 * s, rgba(255, 246, 220, .02f), X - 4 * s + 15 * s, Y - 5 * s, true); g.setGradientFill(lg); g.fillPath(ring);
+
+    // Magnify what is already under the window (cached bg, dread, nearby letters).
+    if (pchArt.isValid()) {
+      Graphics::ScopedSaveState st(g);
+      Path hole; hole.addEllipse(X - rCss * .99f, Y - rCss * .99f, 2 * rCss * .99f, 2 * rCss * .99f);
+      g.reduceClipRegion(hole);
+      g.addTransform(AffineTransform::scale(1.14f, 1.14f, X, Y));
+      if (bg.isValid()) g.drawImage(bg, Rectangle<float>(0, 0, w, h));
+      if (look.vis && dreadLayer.isValid()) g.drawImage(dreadLayer, Rectangle<float>(0, 0, w, h));
+      float reach = sp * 2.2f;
+      for (size_t i = 0; i < L.size(); i++) {
+        auto& q = L[i]; float dq = std::hypot(q.x - X, q.y - Y);
+        if (dq > rCss * 3.f + reach) continue;
+        float a0 = (q.row ? .20f : .26f) + jmin(.08f, lvl * .2f), a = a0;
+        if (dq < reach) a = a0 + (live ? .42f : .14f) * (1 - dq / reach);
+        if (look.vis) {
+          float nearL = dq < reach ? 1 - dq / reach : 0, aL = jmin(1.f, a + look.vis * (.28f + .5f * gL) + nearL * .2f);
+          int er = (int) std::round(236 + (255 - 236) * look.vis), eg2 = (int) std::round(225 + (96 - 225) * look.vis), eb = (int) std::round(200 + (40 - 200) * look.vis);
+          if ((int) i == lit && live) g.setColour(Colour((juce::uint8) er, (juce::uint8) jmin(255, eg2 + 40), (juce::uint8) jmin(255, eb + 40)));
+          else g.setColour(rgba(er, eg2, eb, aL));
+        } else if ((int) i == lit && live) g.setColour(Colour(0xfff6e7bf));
+        else g.setColour(rgba(236, 225, 200, a));
+        g.fillPath(q.path, AffineTransform::translation(q.x, q.y));
+      }
     }
-    Path hl; hl.addCentredArc(X, Y, 11 * s, 11 * s, 0, PI_F * 1.1f + PI_F * .5f, PI_F * 1.45f + PI_F * .5f, true);
-    g.setColour(ember ? rgba(255, 200, 160, .55f) : rgba(255, 250, 235, .45f)); g.strokePath(hl, PathStrokeType(1.2f * s));
+
+    if (pchShadow.isValid())
+      g.drawImage(pchShadow, Rectangle<float>(dx - shs, dy - shs, dw + 2 * shs, dh + 2 * shs));
+    if (pchArt.isValid())
+      g.drawImage(pchArt, dest);
+
+    auto glowDest = [&](const Image& glow) {
+      if (!glow.isValid() || !pchArt.isValid() || pchArt.getWidth() <= 0) return Rectangle<float>();
+      float k = dw / (float) pchArt.getWidth();
+      float pad = (float) pchGlowPad * k;
+      return Rectangle<float>(dx - pad, dy - pad, dw + 2 * pad, dh + 2 * pad);
+    };
+    if (live || ev) {
+      if (ember && ev > 0) {
+        float aL = jmin(1.f, ev * (.45f + .7f * (eg > 0 ? eg : ev)));
+        auto gd = glowDest(pchEmberGlow);
+        if (pchEmberGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchEmberGlow, gd); }
+        if (pchEmber.isValid()) {
+          { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchEmber, dest); }
+          { Graphics::ScopedSaveState st(g); g.setOpacity(aL * .7f); g.drawImage(pchEmber, dest); }
+        }
+      } else if (live) {
+        float aL = .35f + .35f * gl;
+        auto gd = glowDest(pchLinesGlow);
+        if (pchLinesGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchLinesGlow, gd); }
+        if (pchLines.isValid()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchLines, dest); }
+      }
+    }
+
+    // Outward-only rim glow so the letter stays readable through the window.
+    {
+      Path ringClip;
+      ringClip.addRectangle(dx - dw, dy - dh, dw * 3, dh * 3);
+      ringClip.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
+      ringClip.setUsingNonZeroWinding(false);
+      Graphics::ScopedSaveState st(g);
+      g.reduceClipRegion(ringClip);
+      float blur = (live ? 8 + 14 * pr : 3) + (ember ? 6 + 12 * eg : 0);
+      float haloA = ember ? jmin(1.f, .35f + .55f * gl) : jmin(1.f, gl * .85f);
+      float haloR = rCss + blur;
+      { Graphics::ScopedSaveState st2(g); g.setOpacity(haloA);
+        g.drawImage(ember ? ringHaloEmber : ringHaloCream, Rectangle<float>(X - haloR, Y - haloR, 2 * haloR, 2 * haloR)); }
+      Path ring; ring.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
+      Path ringS; PathStrokeType(1.6f * s).createStrokedPath(ringS, ring);
+      if (ember) g.setColour(live ? Colour(0xffffb08a) : rgba(255, 140, 80, .45f + .4f * ev));
+      else g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .55f));
+      g.fillPath(ringS);
+    }
+
+    // Light glass fill + specular highlight in the window.
+    {
+      float ha = (live ? .10f : .05f) + (ember ? .08f * ev + .06f * eg : 0);
+      ColourGradient lg(Colours::transparentWhite, X - wr * .28f * s, Y - wr * .35f * s,
+                        Colours::transparentWhite, X - wr * .28f * s + wr * s, Y - wr * .35f * s, true);
+      lg.clearColours();
+      if (ember) {
+        lg.addColour(0,    rgba(255, 190, 140, ha + .06f));
+        lg.addColour(.55f, rgba(255, 120,  60, ha * .4f));
+        lg.addColour(1,    rgba(255,  90,  30, 0));
+      } else {
+        lg.addColour(0,    rgba(255, 250, 230, ha + .05f));
+        lg.addColour(.5f,  rgba(210, 225, 230, ha * .45f));
+        lg.addColour(1,    rgba(255, 246, 220, 0));
+      }
+      const float rr = rCss - .35f;
+      g.setGradientFill(lg);
+      g.fillEllipse(X - rr, Y - rr, 2 * rr, 2 * rr);
+      Path hl; hl.addCentredArc(X, Y, rCss * .72f, rCss * .72f, 0, PI_F * 1.1f, PI_F * 1.45f, true);
+      g.setColour(ember ? rgba(255, 220, 180, .45f) : rgba(255, 250, 235, .5f));
+      g.strokePath(hl, PathStrokeType(1.3f * s));
+      {
+        Graphics::ScopedSaveState st(g);
+        const float cx = X - wr * .22f * s, cy = Y - wr * .32f * s, rx = wr * .14f * s, ry = wr * .07f * s;
+        g.addTransform(AffineTransform::rotation(-0.5f, cx, cy));
+        g.setColour(ember ? rgba(255, 235, 210, .16f) : rgba(255, 255, 250, .18f));
+        g.fillEllipse(cx - rx, cy - ry, 2 * rx, 2 * ry);
+      }
+    }
   }
   // CSS-style inset shadow (cached; skipped at Dread 0)
   {

@@ -87,7 +87,7 @@ struct SnapApp : public JUCEApplication {
     }
   }
   void dreadShots(const StringArray& a) {
-    out = File(a[1].isNotEmpty() ? a[1].unquoted() : "/workspace/vst-review/renders/ui-1.0.6"); out.createDirectory();
+    out = File(a[1].isNotEmpty() ? a[1].unquoted() : "/workspace/planchette-preview/final/plugin"); out.createDirectory();
     p = std::make_unique<HorrorProcessor>(); p->setRateAndBufferSizeDetails(48000, 512); p->prepareToPlay(48000, 512);
     ed.reset(p->createEditor());
     win = std::make_unique<DocumentWindow>("snap-dread", Colours::black, 0); win->setUsingNativeTitleBar(false); win->setTitleBarHeight(0);
@@ -117,11 +117,17 @@ struct SnapApp : public JUCEApplication {
     for (int i = 0; i < 8; i++) c.poll();
   }
   void dreadGo() {
+    auto* e = dynamic_cast<HorrorEditor*>(ed.get());
     auto& c = p->controller();
     c.setParam(he::P_MACRO_DREAD, 0); c.select(he::EBOW); run(.3); c.poll();
-    dreadShot("dread-0");
-    dreadHold(.5f, 1.2); dreadShot("dread-0.5");
-    dreadHold(1.f, 1.2); dreadShot("dread-1");
+    if (e) e->testBoardObj().testSet(.50f, .48f, false);
+    dreadShot("01_rest_dread0");
+    dreadHold(.5f, 1.2);
+    if (e) { if (!e->testBoardObj().testOnLetter('S', true, .75f)) e->testBoardObj().testSet(.50f, .48f, true, .75f); }
+    dreadShot("02_playing_mid_dread");
+    dreadHold(1.f, 1.2);
+    if (e) { if (!e->testBoardObj().testOnLetter('S', true, .80f)) e->testBoardObj().testSet(.50f, .48f, true, .80f); }
+    dreadShot("03_full_dread");
     quit();
   }
 
