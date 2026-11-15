@@ -372,7 +372,7 @@ struct Body {
     if (szv != sz) { sz = szv; for (k = 0; k < 12; k++) { double f = BODY_F[k] / sz, t60 = .32 / (1 + k * .18), Rr = std::exp(-6.91 / (t60 * sr)), th = TAU * f / sr; a1[k] = 2 * Rr * std::cos(th); a2[k] = Rr * Rr; b[k] = (1 - Rr * Rr) * .5; } }
     double pz = P[P_BODY_PIEZO], X1 = x1, X2 = x2;
     double w0 = TAU * 300 / sr, al = std::sin(w0) / 1.4, c0 = std::cos(w0), a0 = 1 + al, hb0 = (1 + c0) / 2 / a0, ha1 = -2 * c0 / a0, ha2 = (1 - al) / a0;
-    double w1 = TAU * 2600 / sr, al1 = std::sin(w1) / 3, a01 = 1 + al1, pb0 = al1 / a01, pa1 = -2 * std::cos(w1) / a01, pa2 = (1 - al1) / a01, pkv = 0;
+    double w1 = TAU * fmin2(2600, .45 * sr) / sr,   /* below 5.8 kHz sample rates the 2.6 kHz band-pass would sit past Nyquist and blow up */ al1 = std::sin(w1) / 3, a01 = 1 + al1, pb0 = al1 / a01, pa1 = -2 * std::cos(w1) / a01, pa2 = (1 - al1) / a01, pkv = 0;
     for (i = 0; i < n; i++) {
       double x = inp[i], xd = x - X2, o = 0, od = 0; X2 = X1; X1 = x;
       for (k = 0; k < 12; k++) { double y = a1[k] * y1[k] - a2[k] * y2[k] + b[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y; if (k & 1) od += y; }

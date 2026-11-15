@@ -84,7 +84,7 @@ class Engine : public EState {
       Cv[s].resize(NV[s]); iq[s].assign(NV[s], 999);
       slots[s][0] = Slot(s); slots[s][1] = Slot(s); C[s] = &Cv[s][0];
     }
-    LA = (int)jsround(.002 * sr);
+    LA = (int)jsround(.002 * sr); if (LA > 248) LA = 248;   // the lookahead ring and hold window are 256 long: above 124 kHz the 2 ms lookahead would overrun them (the JavaScript reads past its array there too)
     symB = symA.d; symInW = symBb.d; symIn = symInW;
     auto bq = [&](int j, int type, double f, double Q) {
       double w = TAU * fmin2(f, sr * .45) / sr, al = std::sin(w) / (2 * Q), c = std::cos(w), a0 = 1 + al, b0 = (type ? 1 - c : 1 + c) / 2 / a0;

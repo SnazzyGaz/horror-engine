@@ -40,6 +40,7 @@ See `BUILDING.md`. The Windows binaries in this release were cross-compiled on L
 - Looper **Sync to host** (on by default): bar-rounded first layer, bar-aligned start, locked to the host's tempo, position, jumps and loops; free-running when the host is stopped.
 - The **computer keyboard is off by default**, so FL Studio and other hosts keep Space and letter keys; turn it on in the menu.
 - MIDI CC 20–23 and learned CCs no longer flicker between the CC value and the old parameter value.
+- No crash above 124 kHz (the limiter's lookahead overran its buffer; found by clap-validator) and no blow-up below 5.8 kHz (the body's band-pass sat past Nyquist).
 - 44.1 and 96 kHz now sound the same as the web app at those rates (the sample rate was applied after the voices were built).
 - Fewer allocations on the audio thread (`NOTES-realtime.md`); JUCE 8.0.15 and clap-juce-extensions pinned in CMake; full third-party licence texts in `THIRD_PARTY_NOTICES.txt`; Windows CI workflow.
 
