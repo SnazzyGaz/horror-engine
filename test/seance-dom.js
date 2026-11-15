@@ -97,6 +97,16 @@ const toks = () => [...w.document.querySelectorAll('#rack .src')];
   key('Escape'); pump(.3); ok($('mo_drone').getAttribute('aria-pressed') === 'false', 'Esc is still Silence');
   const muteB = [...w.document.querySelectorAll('#layers li .acts button')].filter(b => /Mute/.test(b.textContent));
   ok(/1 layer/.test($('sumLoop').textContent) && muteB.length === 1 && muteB[0].getAttribute('aria-pressed') === 'true', 'Goodbye keeps the looper layer and mutes it (its Mute button lights)');
+  /* Dread look on the board is visual only: the helper never writes engine state */
+  const L = w.__seance.dreadLook, d0 = P['macro.dread'];
+  const z = L(0, 1, false, 0);
+  ok(z.vis === 0 && z.dark === 0 && z.glow === 0 && z.flick === 1, 'Dread 0 is a no-op (no darkening, no glow, no flicker)');
+  ok(L(1, 0, true, 0).dark > L(.5, 0, true, 0).dark && L(.5, 0, true, 0).dark > 0, 'the board darkens as Dread rises');
+  ok(L(1, 0, true, 0).hole < L(.5, 0, true, 0).hole, 'the vignette closes in as Dread rises');
+  ok(L(1, 1, true, 0).glow > L(1, 0, true, 0).glow && L(1, 0, true, 0).glow > 0, 'letter glow follows the sound and starves when quiet');
+  ok(L(1, .5, true, 0).flick === 1 && L(1, .5, true, 1.7).flick === 1, 'prefers-reduced-motion (still): no flicker');
+  ok(L(1, .5, false, 0).flick !== L(1, .5, false, 80).flick, 'otherwise a slight flicker over time');
+  L(1, 1, false, 12); ok(P['macro.dread'] === d0, 'dreadLook does not write macro.dread');
   console.log(process.exitCode ? 'SOME CHECKS FAILED' : 'all seance checks passed');
   setTimeout(() => process.exit(), 50);
 })();
