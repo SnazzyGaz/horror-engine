@@ -146,9 +146,17 @@ Each voice has a **Tune & place** row under its panel: **Tune** (semitones), **F
 
 The details are in [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md#saving-undo-and-sharing).
 
+## Séance layout and plugin
+
+This branch is the **Séance** layout of Horror Engine: a spirit-board Surface (YES / NO / GOODBYE, the planchette, Macros, Moments, Pinned knobs, and the Voice, Effects, Looper and Your sound drawers) without the 3D machine. Build it with `python3 build.py --seance` and open `seance/index.html`, or play the tester on a clone of this branch.
+
+The **Séance plugin** (VST3 and CLAP, Windows) is the same layout as a DAW instrument. Its engine is a line-for-line C++ port of `src/engine.js`. The plugin source lives in `plugin/` on the [`vst-plugin`](https://github.com/SnazzyGaz/horror-engine/tree/vst-plugin) branch, not on this one, so links below go to that branch (they will also work if `plugin/` is later merged into `main`). Current release: [plugin-v1.0.5](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.5). See the [plugin README](https://github.com/SnazzyGaz/horror-engine/blob/vst-plugin/plugin/README.md).
+
+The engine on this branch is the 1.2.1 engine: GOODBYE is a hard stop, Superball writes both channels, and Surface drags glide.
+
 ## Getting sound out
 
-There is no plugin. Two ways that work:
+Three ways that work:
 
 1. **Record out.** Press **Record** (or `R`), play, then press it again. You get a zip with the mix as a WAV. With **Stems** on, you also get one WAV per voice that made a sound, plus the hall, reverse-swell, harmonizer and body returns. Drop them on your timeline at the same start point.
    - Every stem starts on the same sample as the mix and is the same length.
@@ -156,7 +164,9 @@ There is no plugin. Two ways that work:
    - Every take also includes a `.horror.json` performance file. **Render…** plays it back through the engine offline and writes the WAVs again.
 2. **Loopback.** Route the browser's output into your DAW with a loopback device and record it live against picture. Use BlackHole on macOS, VB-Cable or VoiceMeeter on Windows, or PipeWire or JACK on Linux.
 
-MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. Channel 16 is reserved for Moments: notes 36–40 fire the built-in five, 41 onwards your own. CC 24–43 on any channel fire Moments 1–20 on a rise past 64. Notes on channels 1–15 play the selected voice. A MIDI or VST version may come later. The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
+MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers that support Web MIDI, once audio is started. Channel 16 is reserved for Moments: notes 36–40 fire the built-in five, 41 onwards your own. CC 24–43 on any channel fire Moments 1–20 on a rise past 64. Notes on channels 1–15 play the selected voice. 3. **Séance plugin (Windows).** Install the VST3 or CLAP from [plugin-v1.0.5](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.5). Every knob is a host parameter, and the looper can sync to the host's tempo and bars.
+
+The recording details are in [docs/FX_AND_LOOPER.md](docs/FX_AND_LOOPER.md#recording-out).
 
 ## How it's built
 

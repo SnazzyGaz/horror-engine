@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var VERSION = '1.2.0', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
+  var VERSION = '1.2.1', AUTHOR = 'Garyck Arntzen', CREDIT = 'https://x.com/_mintydoge';
   var $ = function (id) { return document.getElementById(id); };
   var DEF = {}; HE_PARAMS.forEach(function (p) { DEF[p.id] = p; });
   var P = {}; HE_PARAMS.forEach(function (p) { P[p.id] = p.def; });
