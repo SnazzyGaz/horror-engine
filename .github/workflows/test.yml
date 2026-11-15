@@ -21,6 +21,8 @@ jobs:
         run: node test/offsets.js
       - name: v1.4 files, last minute, audio input, Bowed Cymbal
         run: node test/v14.js
+      - name: Drags glide (steady hand speed however moves arrive)
+        run: node test/glide.js
 
   dom:
     name: UI checks (jsdom)

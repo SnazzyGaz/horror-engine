@@ -978,7 +978,7 @@ function HECoreFactory() {
   };
 
   /* ---------- the engine ---------- */
-  function Slot(src) { this.src = src === undefined ? -1 : src; this.on = false; this.tx = .5; this.ty = .5; this.x = .5; this.y = .5; this.p = .6; this.spd = 0; this.hz = 0; this.auto = -1; }
+  function Slot(src) { this.src = src === undefined ? -1 : src; this.on = false; this.tx = .5; this.ty = .5; this.x = .5; this.y = .5; this.p = .6; this.spd = 0; this.hz = 0; this.auto = -1; this.lm = 0; this.gi = 0; this.ra = 0; this.rk = 0; this.rsx = .5; this.rsy = .5; this.rsp = .6; this.rx = .5; this.ry = .5; this.rp = .6; }
   function Engine(sr, seed) {
     this.sr = sr; this.rng = new Rng(seed || 1337); this.P = {};
     this.src = [new Ebow(this), new Hurdy(this), new Bowed(this), new Glass(this), new Struck(this), new Spring(this), new Junk(this), new Aura(this), new Moan(this)];
@@ -1081,7 +1081,19 @@ function HECoreFactory() {
       if (s === 0 && (this.P['ebow.excite'] | 0) > 0) S.kick = .3 + .7 * p;
       if (s === 5 && (this.P['spring.mode'] | 0) === 0) this.src[5].hit(p);
       this.strip[s].quiet = 0;
-    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; }
+      S.lm = this.frame; S.ra = S.rk = 0; S.gi = 0;
+    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; S.ra = S.rk = 0; }
+    // 'n': a move that glides. The hand travelled here since the last move; the engine sees moves only at block
+    // boundaries and in clumps (one browser frame, one audio callback or one host buffer at a time), so a plain move
+    // jumps and then stops, and the speed the bow and glass voices hear pulses. A glide walks the target there in
+    // straight steps over 1.5 times the usual gap between moves (a running average, one block to 40 ms), so a move
+    // that comes a little late finds the hand still travelling and the pull stays steady.
+    else if (k === 'n') {
+      var nb = Math.round((this.frame - S.lm) / BL), mx = Math.max(1, Math.round(.04 * this.sr / BL));
+      S.lm = this.frame;
+      if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }   // another move in the same block: same glide, new end
+      else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = Math.min(mx, Math.max(1, Math.round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }
+    }
     else S.on = false;
   };
   Engine.prototype.user = function (s, k, x, y, p, hz) {
@@ -1093,6 +1105,7 @@ function HECoreFactory() {
   // Each active contact keeps the instance it got (sticky); a new contact takes a free instance or steals the lowest-priority one.
   Engine.prototype.smooth = function (S, dt) {
     if (!S.on) { S.spd *= .8; return; }
+    if (S.rk > 0) { S.rk--; var gf = 1 - S.rk / S.ra; S.tx = S.rsx + (S.rx - S.rsx) * gf; S.ty = S.rsy + (S.ry - S.rsy) * gf; S.p = S.rsp + (S.rp - S.rsp) * gf; }
     var nx = S.x + (S.tx - S.x) * .35, ny = S.y + (S.ty - S.y) * .35, d = Math.sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
     S.x = nx; S.y = ny; S.spd += (Math.min(1, d / dt / 2.5) - S.spd) * .1;
   };

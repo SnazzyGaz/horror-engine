@@ -425,11 +425,11 @@
   pad.addEventListener('pointermove', function (e) {
     if (!down || e.pointerId !== pid) return; pt(e);
     var now = performance.now(); trail.push({ x: cur.x, y: cur.y, t: now }); if (trail.length > 90) trail.shift();
-    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
+    if (now - lastSend > 6) { lastSend = now; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); showPr(); }
   });
   function padUp(e) { if (!down || e.pointerId !== pid) return; down = false; send({ t: 'g', s: sel, k: 'u' }); showPr(); }
   pad.addEventListener('pointerup', padUp); pad.addEventListener('pointercancel', padUp); pad.addEventListener('lostpointercapture', padUp);
-  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'm', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
+  pad.addEventListener('wheel', function (e) { e.preventDefault(); basePr = Math.min(1, Math.max(.05, basePr - Math.sign(e.deltaY) * .05)); if (down) { cur.p = basePr; send({ t: 'g', s: sel, k: 'n', x: cur.x, y: cur.y, p: cur.p, hz: 0 }); } showPr(); }, { passive: false });
   pad.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
