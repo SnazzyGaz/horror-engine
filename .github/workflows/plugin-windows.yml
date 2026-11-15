@@ -4,12 +4,15 @@
 # Builds with MSVC (Visual Studio 2022) on windows-latest, runs the engine tests, pluginval (strictness 5 or more)
 # on the VST3 and clap-validator on the CLAP, and uploads the plugins and the validation logs.
 # JUCE 8.0.15 and clap-juce-extensions are fetched at the commits pinned in CMakeLists.txt.
-# If the plugin sources live in a subfolder of the repository, set PLUGIN_DIR to it.
+# The plugin sources live in plugin/ (PLUGIN_DIR). Runs on pushes to vst-plugin that touch the plugin, and by hand.
 name: Plugin (Windows)
 
 on:
   push:
-  pull_request:
+    branches: [vst-plugin]
+    paths:
+      - 'plugin/**'
+      - '.github/workflows/plugin-windows.yml'
   workflow_dispatch:
     inputs:
       strictness:
@@ -17,7 +20,7 @@ on:
         default: "5"
 
 env:
-  PLUGIN_DIR: .
+  PLUGIN_DIR: plugin
   PLUGINVAL_VERSION: v1.0.4
   CLAP_VALIDATOR_VERSION: "0.4.1"
   CLAP_VALIDATOR_ASSET: clap-validator-0.4.1-127-g152b982-windows.zip

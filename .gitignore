@@ -5,3 +5,8 @@ node_modules/
 *.wav
 *.zip
 shots/
+
+# plugin build output
+plugin/build*/
+plugin/out/
+plugin/logs/

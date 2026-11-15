@@ -162,9 +162,27 @@ MIDI notes and CC 20–23 (Dread, Distance, Material, Pitch) work in browsers th
 
 It is a single HTML page that uses three.js for the machine and Web Audio for the sound. Edit the files in `src/` and run `python3 build.py` (needs Pillow) to rebuild the inlined `index.html` used for `file://` and Releases. Do not commit that rebuilt `index.html`. The live site is a second, hosted build (`python3 build.py --hosted DEST`, needs Pillow and the `markdown` package) that keeps the same look and models but loads textures as files, and loads Altar assets only for the Altar skin. GitHub Actions runs the hosted build for Pages and the inlined build for Releases. See [docs/UNDER_THE_HOOD.md](docs/UNDER_THE_HOOD.md).
 
+## Séance plugin (VST3 and CLAP, Windows)
+
+`plugin/` holds **Horror Engine · Séance**, a VST3 and CLAP instrument for DAWs such as FL Studio, Reaper, Ableton Live, Cubase and Bitwig. It is the Séance layout of this branch (`python3 build.py --seance`) as a plugin: the spirit-board Surface, the nine voices, Macros, Moments, Pinned knobs, the Voice, Effects, Looper and Your sound drawers, presets, undo and MIDI learn. Its engine is a line-for-line C++ port of `src/engine.js`, checked sample by sample against the browser. There is no 3D machine and no on-screen keyboard; every knob is a host parameter, and the looper can sync to the host's tempo and bars. See [plugin/README.md](plugin/README.md).
+
+**Windows only for now** (64-bit VST3 and CLAP). Copy `Horror Engine.vst3` to `C:\Program Files\Common Files\VST3\` or `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\`, then rescan plugins in your DAW.
+
+**Building.** With Visual Studio 2022 and CMake 3.22+:
+
+```
+cd plugin
+cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLAP
+```
+
+CMake fetches the pinned JUCE 8.0.15 and clap-juce-extensions itself. [plugin/BUILDING.md](plugin/BUILDING.md) also covers the MinGW cross-build from Linux and the engine parity tests. The `Plugin (Windows)` GitHub Action builds both formats with MSVC on every push to `vst-plugin` that touches `plugin/`, runs the engine tests, pluginval and clap-validator, and uploads the plugins.
+
+**Licences.** The plugin is released under the **GNU AGPLv3** ([plugin/LICENSE](plugin/LICENSE)); the web app stays MIT. It is built with [JUCE](https://juce.com) 8.0.15 under JUCE's AGPLv3 option, the VST3 SDK (MIT), and the [CLAP](https://github.com/free-audio/clap) SDK with [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) (MIT). The bundled libraries' and fonts' licence texts are in [plugin/THIRD_PARTY_NOTICES.txt](plugin/THIRD_PARTY_NOTICES.txt) and [plugin/OFL.txt](plugin/OFL.txt). The plugin is by Garyck Arntzen ([@_mintydoge](https://x.com/_mintydoge)). VST is a registered trademark of Steinberg Media Technologies GmbH.
+
 ## Credits and licence
 
-Horror Engine by Garyck Arntzen ([@_mintydoge](https://x.com/_mintydoge)). MIT licence; see [LICENSE](LICENSE).
+Horror Engine by Garyck Arntzen ([@_mintydoge](https://x.com/_mintydoge)). MIT licence; see [LICENSE](LICENSE). The Séance plugin in `plugin/` is AGPLv3 (see above).
 
 - The surface textures are CC0 scans from Poly Haven and ambientCG, listed in [CREDITS.md](CREDITS.md).
 - The beam-mounted goat skull on the Altar skin is "Goat Skull" by [Bohnen](https://sketchfab.com/BOHNEN), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ([Sketchfab](https://sketchfab.com/3d-models/goat-skull-99b738abd7d34b27a38b363900856043)).
