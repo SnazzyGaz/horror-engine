@@ -36,6 +36,54 @@ static Image bakeLineGlow(const Image& src, Colour col, int radius) {
   { Graphics g(glow); DropShadow(col, radius, {0, 0}).drawForImage(g, padded); }
   return glow;
 }
+// Force the planchette body to opaque alpha and keep the window hole clear, so
+// the board cannot show through (matches the web celestial.png body).
+static Image flattenPchBody(const Image& src) {
+  if (!src.isValid()) return {};
+  const int w = src.getWidth(), h = src.getHeight();
+  Image out(Image::ARGB, w, h, true);
+  const float cx = PCH_WX * (w / PCH_W), cy = PCH_WY * (h / PCH_H);
+  const float cr = PCH_WR * (w / PCH_W);
+  Image::BitmapData bin(src, Image::BitmapData::readOnly);
+  Image::BitmapData bout(out, Image::BitmapData::writeOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const float dx = x + .5f - cx, dy = y + .5f - cy;
+      const float hole = std::sqrt(dx * dx + dy * dy) / cr;
+      Colour c = bin.getPixelColour(x, y);
+      float a = c.getFloatAlpha();
+      if (hole < .985f || a < .02f) { bout.setPixelColour(x, y, Colours::transparentBlack); continue; }
+      if (a > .5f) a = 1.f;
+      if (hole < 1.02f) a *= jlimit(0.f, 1.f, (hole - .985f) / .035f);
+      bout.setPixelColour(x, y, c.withAlpha(a));
+    }
+  return out;
+}
+static Image makePchMask(const Image& src) {
+  if (!src.isValid()) return {};
+  const int w = src.getWidth(), h = src.getHeight();
+  Image out(Image::ARGB, w, h, true);
+  Image::BitmapData bin(src, Image::BitmapData::readOnly);
+  Image::BitmapData bout(out, Image::BitmapData::writeOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      float a = bin.getPixelColour(x, y).getFloatAlpha();
+      bout.setPixelColour(x, y, a > .5f ? Colours::white : Colours::transparentBlack);
+    }
+  return out;
+}
+// Same silhouette with the window filled in, so play/Dread glow may sit in the
+// lens (as on the web) but still cannot bloom out onto the board.
+static Image makePchSilhouette(const Image& mask) {
+  if (!mask.isValid()) return {};
+  Image out = mask.createCopy();
+  Graphics g(out);
+  const int w = out.getWidth(), h = out.getHeight();
+  const float cx = PCH_WX * (w / PCH_W), cy = PCH_WY * (h / PCH_H), cr = PCH_WR * (w / PCH_W);
+  g.setColour(Colours::white);
+  g.fillEllipse(cx - cr, cy - cr, 2 * cr, 2 * cr);
+  return out;
+}
 
 
 // Matches seance.js dreadLook: vis is 0 at Dread 0 (every draw path below is then the old one).
@@ -206,11 +254,13 @@ void Board::ensureCaches(float w, float h, float scale) {
     const int ch = jmax(1, (int) std::ceil(PCH_H * unit * scale));
     const int sw = jmax(1, (int) std::ceil((PCH_W + 2 * PCH_SH_PAD) * unit * scale));
     const int sh = jmax(1, (int) std::ceil((PCH_H + 2 * PCH_SH_PAD) * unit * scale));
-    pchArt    = scaleImageHQ(pchSrcArt,    cw, ch);
+    pchArt    = flattenPchBody(scaleImageHQ(pchSrcArt, cw, ch));
     pchLines  = scaleImageHQ(pchSrcLines,  cw, ch);
     pchEmber  = scaleImageHQ(pchSrcEmber,  cw, ch);
     pchShadow = scaleImageHQ(pchSrcShadow, sw, sh);
-    const int radius = jmax(8, (int) std::round(24.f * sCache * scale));
+    pchBodyMask = makePchMask(pchArt);
+    pchBodySil  = makePchSilhouette(pchBodyMask);
+    const int radius = jmax(4, (int) std::round(12.f * sCache * scale));
     pchGlowPad    = radius + 2;
     pchLinesGlow  = bakeLineGlow(pchLines, Colour((juce::uint8) 233, (juce::uint8) 211, (juce::uint8) 154), radius);
     pchEmberGlow  = bakeLineGlow(pchEmber, Colour((juce::uint8) 255, (juce::uint8) 70,  (juce::uint8) 18),  radius);
@@ -549,6 +599,18 @@ void Board::paint(Graphics& g) {
 
     if (pchShadow.isValid())
       g.drawImage(pchShadow, Rectangle<float>(dx - shs, dy - shs, dw + 2 * shs, dh + 2 * shs));
+
+    auto bodyXform = [&]() {
+      if (!pchBodyMask.isValid() || pchBodyMask.getWidth() <= 0) return AffineTransform();
+      return AffineTransform::scale(dw / (float) pchBodyMask.getWidth(), dh / (float) pchBodyMask.getHeight()).translated(dx, dy);
+    };
+    // Opaque body underlay (clip + fill, not image alpha) so the board cannot show through.
+    if (pchBodyMask.isValid()) {
+      Graphics::ScopedSaveState st(g);
+      g.reduceClipRegion(pchBodyMask, bodyXform());
+      g.setColour(Colour(0xff131313));
+      g.fillRect(dest);
+    }
     if (pchArt.isValid())
       g.drawImage(pchArt, dest);
 
@@ -558,38 +620,52 @@ void Board::paint(Graphics& g) {
       float pad = (float) pchGlowPad * k;
       return Rectangle<float>(dx - pad, dy - pad, dw + 2 * pad, dh + 2 * pad);
     };
+    // Glow may sit in the glass and on the rim/linework, but not out on the board.
+    auto clipBodyMinusHole = [&](Graphics& gg) {
+      if (pchBodyMask.isValid()) gg.reduceClipRegion(pchBodyMask, bodyXform());
+      Path outside;
+      outside.addRectangle(dx - dw, dy - dh, dw * 3, dh * 3);
+      outside.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
+      outside.setUsingNonZeroWinding(false);
+      gg.reduceClipRegion(outside);
+    };
+    auto clipBodySil = [&](Graphics& gg) {
+      const Image& sil = pchBodySil.isValid() ? pchBodySil : pchBodyMask;
+      if (sil.isValid()) {
+        if (pchBodyMask.isValid() && pchBodyMask.getWidth() > 0)
+          gg.reduceClipRegion(sil, AffineTransform::scale(dw / (float) pchBodyMask.getWidth(), dh / (float) pchBodyMask.getHeight()).translated(dx, dy));
+      }
+    };
     if (live || ev) {
+      Graphics::ScopedSaveState st(g);
+      clipBodySil(g);
       if (ember && ev > 0) {
         float aL = jmin(1.f, ev * (.45f + .7f * (eg > 0 ? eg : ev)));
         auto gd = glowDest(pchEmberGlow);
-        if (pchEmberGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchEmberGlow, gd); }
+        if (pchEmberGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchEmberGlow, gd); }
         if (pchEmber.isValid()) {
-          { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchEmber, dest); }
-          { Graphics::ScopedSaveState st(g); g.setOpacity(aL * .7f); g.drawImage(pchEmber, dest); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchEmber, dest); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL * .7f); g.drawImage(pchEmber, dest); }
         }
       } else if (live) {
         float aL = .35f + .35f * gl;
         auto gd = glowDest(pchLinesGlow);
-        if (pchLinesGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchLinesGlow, gd); }
-        if (pchLines.isValid()) { Graphics::ScopedSaveState st(g); g.setOpacity(aL); g.drawImage(pchLines, dest); }
+        if (pchLinesGlow.isValid() && !gd.isEmpty()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchLinesGlow, gd); }
+        if (pchLines.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); g.drawImage(pchLines, dest); }
       }
     }
 
-    // Outward-only rim glow so the letter stays readable through the window.
+    // Rim stroke + soft halo, clipped to the body so it cannot bloom onto the board.
+    // The hole is excluded so the letter stays readable; in-lens light is the glass fill below.
     {
-      Path ringClip;
-      ringClip.addRectangle(dx - dw, dy - dh, dw * 3, dh * 3);
-      ringClip.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
-      ringClip.setUsingNonZeroWinding(false);
       Graphics::ScopedSaveState st(g);
-      g.reduceClipRegion(ringClip);
+      clipBodyMinusHole(g);
       float blur = (live ? 8 + 14 * pr : 3) + (ember ? 6 + 12 * eg : 0);
       float haloA = ember ? jmin(1.f, .35f + .55f * gl) : jmin(1.f, gl * .85f);
-      float haloR = rCss + blur;
-      { Graphics::ScopedSaveState st2(g); g.setOpacity(haloA);
-        g.drawImage(ember ? ringHaloEmber : ringHaloCream, Rectangle<float>(X - haloR, Y - haloR, 2 * haloR, 2 * haloR)); }
       Path ring; ring.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
       Path ringS; PathStrokeType(1.6f * s).createStrokedPath(ringS, ring);
+      Colour haloCol = ember ? rgba(255, 80, 28, haloA) : rgba(233, 211, 154, haloA);
+      DropShadow(haloCol, jmax(1, (int) std::round(blur)), {0, 0}).drawForPath(g, ringS);
       if (ember) g.setColour(live ? Colour(0xffffb08a) : rgba(255, 140, 80, .45f + .4f * ev));
       else g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .55f));
       g.fillPath(ringS);

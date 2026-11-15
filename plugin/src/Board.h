@@ -92,7 +92,7 @@ class Board : public juce::Component, private juce::Timer {
   // static / slowly-changing paint caches (rebuilt on size, scale, or Dread)
   juce::Image candleCream, candleEmber, ringHaloCream, ringHaloEmber, planchetteShadow;
   juce::Image pchSrcArt, pchSrcLines, pchSrcEmber, pchSrcShadow;
-  juce::Image pchArt, pchLines, pchEmber, pchShadow, pchLinesGlow, pchEmberGlow;
+  juce::Image pchArt, pchLines, pchEmber, pchShadow, pchLinesGlow, pchEmberGlow, pchBodyMask, pchBodySil;
   float       pchCacheS = 0, pchCacheScale = 0;
   int         pchGlowPad = 0;
   juce::Image dreadLayer, insetLayer, frameLayer;

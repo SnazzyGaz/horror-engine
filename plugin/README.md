@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.9](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.9) release and unzip it. Use **`HorrorEngine-Seance-1.0.9-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.10](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.10) release and unzip it. Use **`HorrorEngine-Seance-1.0.10-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,10 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.10
+
+- **The celestial planchette now matches the web board.** In 1.0.9 the black body could look transparent (the board and letters showed through, especially at rest) and the play/Dread glow bloomed out of the window onto the board. The body is now painted opaque, and the glow stays in the glass lens and on the rim and linework. The sound is unchanged.
 
 ## Changes in 1.0.9
 
