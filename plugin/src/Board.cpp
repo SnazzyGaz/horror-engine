@@ -3,6 +3,8 @@
 #include "PluginProcessor.h"
 #include "BinaryData.h"
 #include <vector>
+#include <algorithm>
+#include <cstdio>
 
 using namespace juce;
 using namespace look;
@@ -10,16 +12,152 @@ using namespace look;
 static const float PI_F = MathConstants<float>::pi;
 
 // Celestial planchette: uniform scale of Gaz's drawing. Window is centred on the
-// hand so the tip still points at the letter (hit-testing is unchanged). The
-// master rasters are Gaz's SVG at 2x (860x1228 -> 1720x2456), made with a
+// hand so the tip still points at the letter (hit-testing is unchanged).
+//
+// Default masters are Gaz's SVG at 2x (860x1228 -> 1720x2456), made with a
 // proper SVG renderer (the drawing uses a <mask> that JUCE's parser cannot
-// apply). At s=1 the body is 133 logical px tall (70% of the first preview).
-// Those masters are Lanczos-3 resampled to the exact on-screen pixel size
-// (editor scale and the display/OpenGL scale factor) and blit 1:1, so the
-// linework stays a clean antialiased stroke. Ember is a soft tint of that
-// same line mask, not a second pre-coloured raster.
-static constexpr float PCH_W = 1720.f, PCH_H = 2456.f, PCH_WX = 860.f, PCH_WY = 1808.f, PCH_WR = 192.f;
-static constexpr float PCH_BODY_H = 2355.f, PCH_UNIT = 133.f / PCH_BODY_H, PCH_SH_PAD = 80.f;
+// apply). They are Lanczos-3 resampled to the exact on-screen pixel size
+// (layout scale s0 from board height, and the display/OpenGL scale) and
+// cached. Rebuilds happen only when that size changes — never on the 6%
+// pressure pulse, which is a dest-scale blit of the already-cached sprite.
+// Ember is a soft tint of the cream line mask, baked once with the glow
+// sprites; per-frame work is blits plus opacity.
+//
+// Drop-in plugin art: put a small-size PNG at plugin/art/celestial_plugin.png
+// (~140 px wide, transparent background, opaque body, cream lines, window
+// hole fully transparent) and add the filename to juce_add_binary_data in
+// CMakeLists.txt. Optional companions: celestial_plugin_lines.png and
+// celestial_plugin_shadow.png. If the plugin PNG is present in BinaryData
+// (resource "celestial_plugin_png") it is used instead of the 2x masters.
+// Alignment (same relative place as the master): window centre is
+// (width/2, height*1808/2456), radius width*192/1720. Body height is kept
+// at 133 logical px at s=1 via PCH_UNIT = 133 / (height*2355/2456).
+static constexpr float PCH_MASTER_W = 1720.f, PCH_MASTER_H = 2456.f;
+static constexpr float PCH_MASTER_WX = 860.f, PCH_MASTER_WY = 1808.f, PCH_MASTER_WR = 192.f;
+static constexpr float PCH_MASTER_BODY_H = 2355.f, PCH_MASTER_SH_PAD = 80.f;
+static float PCH_W = PCH_MASTER_W, PCH_H = PCH_MASTER_H, PCH_WX = PCH_MASTER_WX, PCH_WY = PCH_MASTER_WY, PCH_WR = PCH_MASTER_WR;
+static float PCH_BODY_H = PCH_MASTER_BODY_H, PCH_UNIT = 133.f / PCH_MASTER_BODY_H, PCH_SH_PAD = PCH_MASTER_SH_PAD;
+
+static void applyPchGeomFromImage(const Image& im) {
+  PCH_W = (float) im.getWidth();
+  PCH_H = (float) im.getHeight();
+  PCH_WX = PCH_W * (PCH_MASTER_WX / PCH_MASTER_W);
+  PCH_WY = PCH_H * (PCH_MASTER_WY / PCH_MASTER_H);
+  PCH_WR = PCH_W * (PCH_MASTER_WR / PCH_MASTER_W);
+  PCH_BODY_H = PCH_H * (PCH_MASTER_BODY_H / PCH_MASTER_H);
+  PCH_UNIT = 133.f / PCH_BODY_H;
+  PCH_SH_PAD = PCH_MASTER_SH_PAD * (PCH_W / PCH_MASTER_W);
+}
+
+// Window centre, radius and tip from the PNG's alpha: the interior hole
+// (including a light glass highlight) is the viewing window, and the
+// southernmost body pixels are the tip. The hand still sits on the window
+// centre, same as the 2x masters.
+static bool pchKeepWindowAlpha = false;
+static void derivePchWindowFromAlpha(const Image& im) {
+  const int w = im.getWidth(), h = im.getHeight();
+  PCH_W = (float) w;
+  PCH_H = (float) h;
+  if (w < 4 || h < 4) { applyPchGeomFromImage(im); return; }
+  Image::BitmapData d(im, Image::BitmapData::readOnly);
+  auto alphaAt = [&](int x, int y) { return d.getPixelColour(x, y).getFloatAlpha(); };
+  auto lumaAt = [&](int x, int y) {
+    const Colour c = d.getPixelColour(x, y);
+    return 0.2126f * c.getFloatRed() + 0.7152f * c.getFloatGreen() + 0.0722f * c.getFloatBlue();
+  };
+  std::vector<uint8_t> mark((size_t) w * (size_t) h, 0); // 1 = exterior, 2 = window
+  auto id = [&](int x, int y) { return (size_t) y * (size_t) w + (size_t) x; };
+  std::vector<int> q; q.reserve((size_t) w * (size_t) h);
+  auto pushExt = [&](int x, int y) {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    if (mark[id(x, y)] || alphaAt(x, y) >= 16.f / 255.f) return;
+    mark[id(x, y)] = 1;
+    q.push_back((int) id(x, y));
+  };
+  for (int x = 0; x < w; ++x) { pushExt(x, 0); pushExt(x, h - 1); }
+  for (int y = 0; y < h; ++y) { pushExt(0, y); pushExt(w - 1, y); }
+  for (size_t i = 0; i < q.size(); ++i) {
+    const int x = q[i] % w, y = q[i] / w;
+    pushExt(x - 1, y); pushExt(x + 1, y); pushExt(x, y - 1); pushExt(x, y + 1);
+  }
+  q.clear();
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x)
+      if (!mark[id(x, y)] && alphaAt(x, y) < 16.f / 255.f) {
+        mark[id(x, y)] = 2;
+        q.push_back((int) id(x, y));
+      }
+  auto isGlass = [&](int x, int y) {
+    if (x < 0 || y < 0 || x >= w || y >= h || mark[id(x, y)]) return false;
+    const float a = alphaAt(x, y), lu = lumaAt(x, y);
+    if (a < 40.f / 255.f) return true;
+    if (a < 230.f / 255.f && lu > 70.f / 255.f) return true;
+    if (a < 120.f / 255.f && lu > 40.f / 255.f) return true;
+    return false;
+  };
+  for (size_t i = 0; i < q.size(); ++i) {
+    const int x = q[i] % w, y = q[i] / w;
+    for (int dy = -1; dy <= 1; ++dy)
+      for (int dx = -1; dx <= 1; ++dx)
+        if ((dx || dy) && isGlass(x + dx, y + dy)) {
+          mark[id(x + dx, y + dy)] = 2;
+          q.push_back((int) id(x + dx, y + dy));
+        }
+  }
+  double sx = 0, sy = 0; int nWin = 0, bodyMinY = h, bodyMaxY = -1;
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      if (mark[id(x, y)] == 2) { sx += x + .5; sy += y + .5; ++nWin; }
+      if (mark[id(x, y)] != 1 && alphaAt(x, y) > 16.f / 255.f) {
+        if (y < bodyMinY) bodyMinY = y;
+        if (y > bodyMaxY) bodyMaxY = y;
+      }
+    }
+  if (nWin < 8) { applyPchGeomFromImage(im); return; }
+  PCH_WX = (float) (sx / (double) nWin);
+  PCH_WY = (float) (sy / (double) nWin);
+  std::vector<float> dist;
+  dist.reserve((size_t) nWin);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x)
+      if (mark[id(x, y)] == 2) {
+        const float dx = (x + .5f) - PCH_WX, dy = (y + .5f) - PCH_WY;
+        dist.push_back(std::sqrt(dx * dx + dy * dy));
+      }
+  std::sort(dist.begin(), dist.end());
+  PCH_WR = dist[(size_t) jlimit(0, (int) dist.size() - 1,
+                                (int) std::floor(.95f * (float) dist.size()))];
+  PCH_BODY_H = (float) jmax(1, bodyMaxY - bodyMinY + 1);
+  PCH_UNIT = 133.f / PCH_BODY_H;
+  PCH_SH_PAD = PCH_MASTER_SH_PAD * (PCH_W / PCH_MASTER_W);
+#if defined(HE_TEST_HOOKS) && HE_TEST_HOOKS
+  std::printf("pch geom %gx%g window (%.2f,%.2f) r=%.2f bodyH=%.1f unit=%.4f tipY=%d\n",
+              PCH_W, PCH_H, PCH_WX, PCH_WY, PCH_WR, PCH_BODY_H, PCH_UNIT, bodyMaxY);
+  std::fflush(stdout);
+#endif
+}
+
+// Soft ember mask from light linework: a smooth luma remap (dark body ~0,
+// cream strokes ~1), no hard threshold, alpha kept as an antialiased mask.
+static Image derivePchLines(const Image& art) {
+  if (!art.isValid()) return {};
+  const int w = art.getWidth(), h = art.getHeight();
+  Image out(Image::ARGB, w, h, true);
+  Image::BitmapData bin(art, Image::BitmapData::readOnly);
+  Image::BitmapData bout(out, Image::BitmapData::writeOnly);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const Colour c = bin.getPixelColour(x, y);
+      const float a = c.getFloatAlpha();
+      if (a <= 0.f) continue;
+      const float n = 0.2126f * c.getFloatRed() + 0.7152f * c.getFloatGreen() + 0.0722f * c.getFloatBlue();
+      const float t = jlimit(0.f, 1.f, (n - .12f) / .55f);
+      const float wgt = t * t * (3.f - 2.f * t) * a;
+      if (wgt <= 0.f) continue;
+      bout.setPixelColour(x, y, c.withAlpha(wgt));
+    }
+  return out;
+}
 
 static Image loadPngBin(const char* data, int size) {
   if (data == nullptr || size <= 0) return {};
@@ -138,12 +276,12 @@ static Image tintByAlpha(const Image& src, Colour col) {
 // 1:1 device-pixel blit: each cached pixel maps to one physical pixel, no
 // runtime resampling. (Graphics::drawImage into a dest rect was still
 // filtering, which turned the cream 1-pixel strokes into dim grey.)
-static void blit1to1(Graphics& g, const Image& im, float dx, float dy, float phys) {
+static void blit1to1(Graphics& g, const Image& im, float dx, float dy, float phys, float pulse = 1.f) {
   if (!im.isValid() || phys <= 0.f) return;
-  const float inv = 1.f / phys;
+  const float s = (pulse > 1e-6f ? pulse : 1.f) / phys;
   Graphics::ScopedSaveState st(g);
   g.setImageResamplingQuality(Graphics::lowResamplingQuality);
-  g.addTransform(AffineTransform::scale(inv, inv).followedBy(AffineTransform::translation(dx, dy)));
+  g.addTransform(AffineTransform::scale(s, s).followedBy(AffineTransform::translation(dx, dy)));
   g.drawImageAt(im, 0, 0);
 }
 
@@ -172,6 +310,9 @@ static Image flattenPchBody(const Image& src) {
       const float hole = std::sqrt(dx * dx + dy * dy) / cr;
       Colour c = bin.getPixelColour(x, y);
       float a = c.getFloatAlpha();
+      // Plugin art already has a see-through window and a light glass
+      // highlight; keep those pixels exactly as drawn.
+      if (pchKeepWindowAlpha && hole < 1.02f) { bout.setPixelColour(x, y, c); continue; }
       if (hole < .985f || a < .02f) { bout.setPixelColour(x, y, Colours::transparentBlack); continue; }
       if (a > .5f) a = 1.f;
       if (hole < 1.02f) a *= jlimit(0.f, 1.f, (hole - .985f) / .035f);
@@ -360,37 +501,65 @@ void Board::ensureCaches(float w, float h, float scale, float physScale) {
     ringHaloEmber = radial(dim, rgba(255, 80, 28, 1.f), rgba(255, 80, 28, 0));
   }
   if (!pchSrcArt.isValid()) {
-    pchSrcArt    = loadPngBin(BinaryData::celestial_png,        BinaryData::celestial_pngSize);
-    pchSrcLines  = loadPngBin(BinaryData::celestial_lines_png,  BinaryData::celestial_lines_pngSize);
-    pchSrcShadow = loadPngBin(BinaryData::celestial_shadow_png, BinaryData::celestial_shadow_pngSize);
+    // Prefer a hand-drawn plugin-size PNG if it was compiled into BinaryData.
+    int nPlug = 0;
+    if (const char* plug = BinaryData::getNamedResource("celestial_plugin_png", nPlug))
+      pchSrcArt = loadPngBin(plug, nPlug);
+    if (pchSrcArt.isValid()) {
+      derivePchWindowFromAlpha(pchSrcArt);
+      pchKeepWindowAlpha = true;
+      int nL = 0, nS = 0;
+      if (const char* lines = BinaryData::getNamedResource("celestial_plugin_lines_png", nL))
+        pchSrcLines = loadPngBin(lines, nL);
+      if (const char* sh = BinaryData::getNamedResource("celestial_plugin_shadow_png", nS))
+        pchSrcShadow = loadPngBin(sh, nS);
+      if (!pchSrcLines.isValid()) pchSrcLines = derivePchLines(pchSrcArt);
+    } else {
+      pchSrcArt    = loadPngBin(BinaryData::celestial_png,        BinaryData::celestial_pngSize);
+      pchSrcLines  = loadPngBin(BinaryData::celestial_lines_png,  BinaryData::celestial_lines_pngSize);
+      pchSrcShadow = loadPngBin(BinaryData::celestial_shadow_png, BinaryData::celestial_shadow_pngSize);
+    }
   }
-  // Exact on-screen size, including the current pressure pulse and the real
-  // physical scale (not clamped to 2). Rebuild only when the integer pixel
-  // size changes, then blit 1:1.
+  // Rasterise at layout scale s0 and the real physical scale only. The 6%
+  // pressure pulse is applied as a dest-scale blit in paint, so a click or
+  // drag cannot retrigger a 200 ms Lanczos of the 2x master.
   const float phys = physScale > 0.f ? physScale : scale;
   const float s0 = jmax(.75f, jmin(1.4f, h / 540));
-  const float sNow = s0 * (1.f + (down ? .06f * curP : 0.f));
   if (pchSrcArt.isValid()) {
-    const float unit = PCH_UNIT * sNow;
+    const float unit = PCH_UNIT * s0;
     const int cw = jmax(1, (int) std::round(PCH_W * unit * phys));
     const int ch = jmax(1, (int) std::round(PCH_H * unit * phys));
     const int sw = jmax(1, (int) std::round((PCH_W + 2 * PCH_SH_PAD) * unit * phys));
     const int sh = jmax(1, (int) std::round((PCH_H + 2 * PCH_SH_PAD) * unit * phys));
     if (pchCacheW != cw || pchCacheH != ch || pchCacheScale != phys || !pchArt.isValid()) {
+#if defined(HE_TEST_HOOKS) && HE_TEST_HOOKS
+      const double tRebuild = Time::getMillisecondCounterHiRes();
+#endif
       pchArt    = flattenPchBody(scaleImageLanczos(pchSrcArt, cw, ch));
-      pchLines  = scaleImageLanczos(pchSrcLines,  cw, ch);
+      pchLines  = pchSrcLines.isValid() ? scaleImageLanczos(pchSrcLines, cw, ch) : Image();
       pchEmber  = tintByAlpha(pchLines, Colour((juce::uint8) 244, (juce::uint8) 162, (juce::uint8) 66));
-      pchShadow = scaleImageLanczos(pchSrcShadow, sw, sh);
       pchBodyMask = makePchMask(pchArt);
       pchBodySil  = makePchSilhouette(pchBodyMask);
-      const int radius = jmax(2, (int) std::round(8.f * sNow * phys));
+      if (pchSrcShadow.isValid())
+        pchShadow = scaleImageLanczos(pchSrcShadow, sw, sh);
+      else if (pchBodyMask.isValid()) {
+        const int rad = jmax(4, (int) std::round(14.f * s0 * phys));
+        pchShadow = bakeLineGlow(pchBodyMask, Colour(0x99000000), rad);
+      } else pchShadow = {};
+      const int radius = jmax(2, (int) std::round(8.f * s0 * phys));
       pchGlowPad    = radius + 2;
       pchLinesGlow  = bakeLineGlow(pchLines, Colour((juce::uint8) 233, (juce::uint8) 211, (juce::uint8) 154), radius);
       pchEmberGlow  = bakeLineGlow(pchEmber, Colour((juce::uint8) 255, (juce::uint8) 110, (juce::uint8) 36),  radius);
-      pchCacheS     = sNow;
+      pchCacheS     = s0;
       pchCacheScale = phys;
       pchCacheW     = cw;
       pchCacheH     = ch;
+#if defined(HE_TEST_HOOKS) && HE_TEST_HOOKS
+      std::printf("pch rebuild %dx%d phys=%.3f s=%.3f down=%d p=%.3f  %.2f ms\n",
+                  cw, ch, phys, s0, (int) down, curP,
+                  Time::getMillisecondCounterHiRes() - tRebuild);
+      std::fflush(stdout);
+#endif
     }
   }
   if (rulerPath.isEmpty() || layerW != w || layerH != h) {
@@ -689,9 +858,13 @@ void Board::paint(Graphics& g) {
   // the planchette: cached celestial art, glass lens, play-glow and Dread ember
   {
     he_paint::ScopeT _pplan(he_paint::Planchette);
-    float s = jmax(.75f, jmin(1.4f, h / 540)) * (1 + (live ? .06f * curP : 0)), pr = live ? curP : 0;
+    const float s0 = jmax(.75f, jmin(1.4f, h / 540));
+    // Always blit the s0 cache 1:1. A 6% dest-scale pulse forced JUCE to
+    // rebuild a transformed body-mask clip every frame (7-30 ms). Pressure
+    // still drives glow opacity.
+    const float pulse = 1.f;
+    float s = s0, pr = live ? curP : 0;
     const float unit = PCH_UNIT, wr = PCH_WR * unit, rCss = wr * s;
-    // Blit the cached art 1:1 in physical pixels (dest size is cache / physScale).
     const float invP = 1.f / jmax(1e-6f, physScale);
     const float dw = pchArt.isValid() ? (float) pchArt.getWidth() * invP : PCH_W * unit * s;
     const float dh = pchArt.isValid() ? (float) pchArt.getHeight() * invP : PCH_H * unit * s;
@@ -705,14 +878,38 @@ void Board::paint(Graphics& g) {
     bool ember = look.vis > 0; float ev = ember ? look.vis : 0, eg = ember ? look.glow * look.flick : 0;
     if (ember) gl = jmax(gl, .35f + .65f * eg);
 
-    // Magnify what is already under the window (cached bg, dread, nearby letters).
+    // Magnify a cropped patch of the already-cached board under the window
+    // (not a full-board drawImage every frame), plus nearby letter paths.
+    auto drawCroppedLayer = [&](const Image& im) {
+      if (!im.isValid() || w <= 0.f || h <= 0.f) return;
+      const float pad = rCss * 1.25f;
+      const float x0 = jmax(0.f, X - pad), y0 = jmax(0.f, Y - pad);
+      const float x1 = jmin(w, X + pad), y1 = jmin(h, Y + pad);
+      if (x1 <= x0 || y1 <= y0) return;
+      const float sx = (float) im.getWidth() / w, sy = (float) im.getHeight() / h;
+      const int srcX = jlimit(0, im.getWidth(), (int) std::floor(x0 * sx));
+      const int srcY = jlimit(0, im.getHeight(), (int) std::floor(y0 * sy));
+      const int srcR = jlimit(0, im.getWidth(), (int) std::ceil(x1 * sx));
+      const int srcB = jlimit(0, im.getHeight(), (int) std::ceil(y1 * sy));
+      const int srcW = srcR - srcX, srcH = srcB - srcY;
+      if (srcW <= 0 || srcH <= 0) return;
+      const int dx0 = (int) std::round((float) srcX / sx);
+      const int dy0 = (int) std::round((float) srcY / sy);
+      const int dw0 = jmax(1, (int) std::round((float) srcW / sx));
+      const int dh0 = jmax(1, (int) std::round((float) srcH / sy));
+      // Source-rect blit, no intermediate Image (getClippedImage was ~7 ms/frame).
+      g.drawImage(im, dx0, dy0, dw0, dh0, srcX, srcY, srcW, srcH);
+    };
     if (pchArt.isValid()) {
       Graphics::ScopedSaveState st(g);
       Path hole; hole.addEllipse(X - rCss * .99f, Y - rCss * .99f, 2 * rCss * .99f, 2 * rCss * .99f);
       g.reduceClipRegion(hole);
+      const float pad = rCss * 1.25f;
+      g.reduceClipRegion(Rectangle<int>((int) std::floor(X - pad), (int) std::floor(Y - pad),
+                                        (int) std::ceil(2 * pad), (int) std::ceil(2 * pad)));
       g.addTransform(AffineTransform::scale(1.14f, 1.14f, X, Y));
-      if (bg.isValid()) g.drawImage(bg, Rectangle<float>(0, 0, w, h));
-      if (look.vis && dreadLayer.isValid()) g.drawImage(dreadLayer, Rectangle<float>(0, 0, w, h));
+      drawCroppedLayer(bg);
+      if (look.vis) drawCroppedLayer(dreadLayer);
       float reach = sp * 2.2f;
       for (size_t i = 0; i < L.size(); i++) {
         auto& q = L[i]; float dq = std::hypot(q.x - X, q.y - Y);
@@ -736,7 +933,7 @@ void Board::paint(Graphics& g) {
     g.setOpacity(1.f);
     g.setColour(Colours::white);
     if (pchShadow.isValid())
-      blit1to1(g, pchShadow, dx - shs, dy - shs, physScale);
+      blit1to1(g, pchShadow, dx - shs, dy - shs, physScale, pulse);
 
     auto bodyXform = [&]() {
       if (!pchBodyMask.isValid() || pchBodyMask.getWidth() <= 0) return AffineTransform();
@@ -752,7 +949,7 @@ void Board::paint(Graphics& g) {
     g.setOpacity(1.f);
     g.setColour(Colours::white);
     if (pchArt.isValid())
-      blit1to1(g, pchArt, dx, dy, physScale);
+      blit1to1(g, pchArt, dx, dy, physScale, pulse);
 
     // Glow may sit in the glass and on the rim/linework, but not out on the board.
     auto clipBodyMinusHole = [&](Graphics& gg) {
@@ -775,17 +972,17 @@ void Board::paint(Graphics& g) {
       clipBodySil(g);
       if (ember && ev > 0) {
         float aL = jmin(1.f, ev * (.45f + .7f * (eg > 0 ? eg : ev)));
-        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale);
-        if (pchEmberGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmberGlow, dx - gpad, dy - gpad, physScale); }
+        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale) * pulse;
+        if (pchEmberGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmberGlow, dx - gpad, dy - gpad, physScale, pulse); }
         if (pchEmber.isValid()) {
-          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmber, dx, dy, physScale); }
-          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL * .7f); blit1to1(g, pchEmber, dx, dy, physScale); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchEmber, dx, dy, physScale, pulse); }
+          { Graphics::ScopedSaveState st2(g); g.setOpacity(aL * .7f); blit1to1(g, pchEmber, dx, dy, physScale, pulse); }
         }
       } else if (live) {
         float aL = .35f + .35f * gl;
-        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale);
-        if (pchLinesGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLinesGlow, dx - gpad, dy - gpad, physScale); }
-        if (pchLines.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLines, dx, dy, physScale); }
+        const float gpad = (float) pchGlowPad / jmax(1e-6f, physScale) * pulse;
+        if (pchLinesGlow.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLinesGlow, dx - gpad, dy - gpad, physScale, pulse); }
+        if (pchLines.isValid()) { Graphics::ScopedSaveState st2(g); g.setOpacity(aL); blit1to1(g, pchLines, dx, dy, physScale, pulse); }
       }
     }
 

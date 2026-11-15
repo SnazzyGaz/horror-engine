@@ -3,7 +3,7 @@
 #   cmake -B build -DJUCE_DIR=/path/to/JUCE-8.0.15 -DCJE_DIR=/path/to/clap-juce-extensions
 #   (or leave both out and CMake fetches JUCE 8.0.15 and the pinned clap-juce-extensions)
 cmake_minimum_required(VERSION 3.22)
-project(HorrorEngineSeance VERSION 1.0.11 LANGUAGES C CXX)
+project(HorrorEngineSeance VERSION 1.0.12 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -82,7 +82,7 @@ juce_add_plugin(HorrorEngine
   PLUGIN_CODE HrSe
   PRODUCT_NAME "Horror Engine"
   DESCRIPTION "Nine physical-model horror instruments on a spirit board"
-  VERSION 1.0.11
+  VERSION 1.0.12
   IS_SYNTH TRUE
   NEEDS_MIDI_INPUT TRUE
   EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -91,10 +91,18 @@ juce_add_plugin(HorrorEngine
   COPY_PLUGIN_AFTER_BUILD FALSE
   FORMATS ${HE_FORMATS})
 
+# Planchette: 2x SVG master rasters, plus Gaz's hand-drawn plugin-size PNG
+# (art/celestial_plugin.png, 100x143). Board.cpp prefers the plugin PNG when
+# it is in BinaryData, derives the window centre and tip from its alpha hole
+# (including the drawn glass highlight), and Lanczos-caches it at the exact
+# on-screen size (about 70 px wide in FL at 1x, close to 1:1 at 2x DPI).
+# Optional extras: art/celestial_plugin_lines.png and celestial_plugin_shadow.png.
+# Do not add a filename that is not on disk (CMake will fail).
 juce_add_binary_data(HorrorEngineFonts SOURCES
   fonts/IMFellEnglishSC-Regular.ttf fonts/CrimsonPro-Regular.ttf fonts/CrimsonPro-Medium.ttf fonts/CrimsonPro-SemiBold.ttf
   fonts/CrimsonPro-Italic.ttf fonts/IBMPlexMono-Regular.ttf
-  art/celestial.png art/celestial_lines.png art/celestial_ember.png art/celestial_shadow.png)
+  art/celestial.png art/celestial_lines.png art/celestial_ember.png art/celestial_shadow.png
+  art/celestial_plugin.png)
 set_target_properties(HorrorEngineFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_sources(HorrorEngine PRIVATE src/PluginProcessor.cpp src/Controller.cpp src/Look.cpp src/Widgets.cpp src/Board.cpp src/Panels.cpp src/Drawers.cpp src/PluginEditor.cpp)

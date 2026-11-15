@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.11](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.11) release and unzip it. Use **`HorrorEngine-Seance-1.0.11-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.12](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.12) release and unzip it. Use **`HorrorEngine-Seance-1.0.12-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,11 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.12
+
+- **Dragging on the board no longer locks up the editor.** In 1.0.11, clicking or dragging rebuilt the planchette's Lanczos-3 cache whenever the 6% pressure pulse changed the integer size — about 200 ms of work, which froze the UI until you let go. The cache now rebuilds only when the window or display scale changes. While you play, the already-cached sprite is blitted 1:1, and pressure only drives the glow. The glass lens draws a cropped patch of the board under the window, not the whole image.
+- **The plugin now uses Gaz's hand-drawn small planchette** (`plugin/art/celestial_plugin.png`, 100×143). The window centre and tip are taken from the PNG's alpha (the see-through hole, including the drawn glass highlight), so the window still sits on the letter. The art is Lanczos-resampled once to the exact on-screen size (about 80 px wide at FL Studio's minimum window) and blitted 1:1, with no per-frame scaling. The Dread ember is a soft tint of the cream linework, with no hard threshold. The symbol is kept exactly as drawn. The sound is unchanged.
 
 ## Changes in 1.0.11
 

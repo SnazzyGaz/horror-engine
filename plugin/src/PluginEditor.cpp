@@ -48,7 +48,7 @@ static const char* seanceVersion() {
  #if defined(JucePlugin_VersionString)
   return JucePlugin_VersionString;
  #else
-  return "1.0.11";
+  return "1.0.12";
  #endif
 }
 

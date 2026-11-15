@@ -132,6 +132,19 @@ struct SnapApp : public JUCEApplication {
     dreadHold(1.f, 1.2);
     if (e) { if (!e->testBoardObj().testOnLetter('S', true, .80f)) e->testBoardObj().testSet(.50f, .48f, true, .80f); }
     dreadShot("03_full_dread");
+    // FL Studio's typical minimum editor, where the planchette is ~80 px wide.
+    if (e) {
+      ed->setSize(1100, 680);
+      c.setParam(he::P_MACRO_DREAD, 0); run(.25); c.poll();
+      e->testBoardObj().testSet(.50f, .48f, false);
+      dreadShot("04_flmin_rest");
+      dreadHold(.5f, .8);
+      if (!e->testBoardObj().testOnLetter('S', true, .75f)) e->testBoardObj().testSet(.50f, .48f, true, .75f);
+      dreadShot("05_flmin_playing");
+      dreadHold(1.f, .8);
+      if (!e->testBoardObj().testOnLetter('S', true, .80f)) e->testBoardObj().testSet(.50f, .48f, true, .80f);
+      dreadShot("06_flmin_full_dread");
+    }
     quit();
   }
 
@@ -158,6 +171,7 @@ struct SnapApp : public JUCEApplication {
     static const char* n[] = {"bg","dread","candle","scope","ruler","trail","letters","junk","planchette","inset","over","plaque","paint_total"};
     return (i >= 0 && i < he_paint::NSlots) ? n[i] : "?";
   }
+  bool wobbleP = false;
   void benchCase(const char* label, int ew, int eh, float px, float dread, bool moving) {
     auto* e = dynamic_cast<HorrorEditor*>(ed.get());
     auto& c = p->controller();
@@ -183,7 +197,8 @@ struct SnapApp : public JUCEApplication {
     for (int i = 0; i < N; i++) {
       if (moving) {
         float x = .40f + .22f * std::sin(i * .21f), y = .48f + .12f * std::cos(i * .17f);
-        e->testSet(x, y, true, .6f);
+        float pr = wobbleP ? (.15f + .80f * (.5f + .5f * std::sin(i * .47f))) : .6f;
+        e->testSet(x, y, true, pr);
         AudioBuffer<float> b(2, 64); MidiBuffer m; b.clear(); p->processBlock(b, m);
       }
       img.clear(img.getBounds());
@@ -236,6 +251,13 @@ struct SnapApp : public JUCEApplication {
       for (float d : {0.f, 1.f})
         benchCase(c0.name, c0.w, c0.h, c0.px, d, true);
     benchCase("default", 1280, 760, 1.f, 0.f, false);
+    // Click/drag regression: pressure changes every frame (the 1.0.11 stall).
+    wobbleP = true;
+    benchCase("default-wobble-p", 1280, 760, 1.f, 0.f, true);
+    benchCase("fl-min-wobble-p", 1100, 680, 1.f, 0.f, true);
+    benchCase("default-wobble-p-dread", 1280, 760, 1.f, 1.f, true);
+    benchCase("fl-min-wobble-p-dread", 1100, 680, 1.f, 1.f, true);
+    wobbleP = false;
     std::printf("==== bench done ====\n");
     std::fflush(stdout);
     quit();
