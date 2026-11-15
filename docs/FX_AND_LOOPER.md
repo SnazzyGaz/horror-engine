@@ -121,4 +121,4 @@ With **Your sound in** on, a take with stems also gets an `input` stem. Render c
   - PipeWire or JACK on Linux.
 - **MIDI in:** notes play the selected voice, and CC 20–23 move Dread, Distance, Material and Pitch, in browsers that support Web MIDI, once audio is started. A DAW can drive the macros this way, through a virtual MIDI port (IAC on macOS, loopMIDI on Windows).
 
-The browser app has no in-page plugin and no tempo sync. The [Séance VST3 and CLAP plugin](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.10) for Windows can sync its looper to the host's tempo and bars; see the [`vst-plugin` branch](https://github.com/SnazzyGaz/horror-engine/tree/vst-plugin).
+The browser app has no in-page plugin and no tempo sync. The [Séance VST3 and CLAP plugin](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.11) for Windows can sync its looper to the host's tempo and bars; see the [`vst-plugin` branch](https://github.com/SnazzyGaz/horror-engine/tree/vst-plugin).
