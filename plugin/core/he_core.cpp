@@ -68,6 +68,11 @@ class Engine : public EState {
   struct Walls { bool on = false; double next = 0, jk = 0, gl = 0, jx = .5, jy = .5, jvx = 0, jvy = 0, gx = .5, gdx = 0; } walls;
   struct HB { double t = -1, f0 = 0, f1 = 0, amp = 0, dec = 0; } hb[2]; double hbL1 = 0, hbL2 = 0, hbPh = 0; int hbK = 0; bool hbAct = false;
   double spInPk = 0;
+  // GOODBYE: fade length and position (0: not fading), the silence after it, and every voice as built (copied back over
+  // the playing voices when the fade ends, so nothing is allocated on the audio thread)
+  int byeN = 0, byeK = 0; bool gate = false;
+  struct FreshVoices { Ebow eb; Hurdy hu; Bowed bo; Glass gl; Struck st; Spring sp; Junk ju; Aura au; Moan mo; explicit FreshVoices(EState* e) : eb(e), hu(e), bo(e), gl(e), st(e), sp(e), ju(e), au(e), mo(e) {} };
+  std::unique_ptr<FreshVoices> fresh;
 
   explicit Engine(double sampleRate, uint32_t seed)
       : EState(sampleRate), ebow0(this), hurdy(this), bowed0(this), glass0(this), struck(this), spring(this), junk(this), aura(this), moan(this), rev(this), body(this), harm(this) {
@@ -99,6 +104,7 @@ class Engine : public EState {
     // preallocate what grows during playing, so the audio thread does not allocate in the common case
     // (see NOTES-realtime.md for what still allocates: one-off looper/undo/ghost/moment commands)
     recEv.reserve(16384); act.reserve(256); layers.reserve(64); undo.reserve(52); redo.reserve(52);
+    fresh.reset(new FreshVoices(this));
   }
 
   // first: the constructor's call, made before any parameter is set (the JavaScript reads undefined there)
@@ -702,20 +708,63 @@ class Engine : public EState {
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
     lg = lgv; if (mgr < gr) gr = mgr; if (pL > pkL) pkL = pL; if (pR > pkR) pkR = pR;
+    if (byeN || gate) byeRun(oL, oR);
     frame += BL; lc += lcAdv;
   }
-  void panic() {
-    for (int s = 0; s < NS; s++) { slots[s][0].on = slots[s][1].on = false; for (size_t j = 0; j < inst[s].size(); j++) { if (inst[s][j]) inst[s][j]->reset(); Cv[s][j].own = nullptr; } }
-    spring.reset();
-    for (auto& L : layers) { L->sl.on = false; if (L->gs) L->gs->cur = -1; }
+  // GOODBYE (and Esc): a hard stop, as in engine.js. The master output (and every stem) fades out over 25 ms (raised
+  // cosine), then everything is cleared: voices (rebuilt as new), Hold on every voice (Aura too), Freeze, moments,
+  // custom moments, the looper's playback (layers kept, muted; a take in progress dropped), your sound in, and the hall,
+  // spring, body and harmonizer tails. The output then stays at true zero until something is played (see Host::msg).
+  void panic() { if (!byeN) { byeN = (int)fmax2(1, jsround(.025 * sr)); byeK = 0; } }
+  void byeRun(float* oL, float* oR) {
+    int i = 0, s;
+    if (byeN) {
+      int N = byeN, k = byeK;
+      for (; i < BL && k < N; i++) {
+        k++; double g = .5 + .5 * std::cos(PI * k / N);
+        oL[i] = (float)(oL[i] * g); oR[i] = (float)(oR[i] * g);
+        for (s = 0; s < NST; s++) { stemL[s][i] = (float)(stemL[s][i] * g); stemR[s][i] = (float)(stemR[s][i] * g); }
+      }
+      byeK = k;
+      if (k < N) return;
+      byeN = 0; byeEnd();
+    }
+    for (; i < BL; i++) { oL[i] = 0; oR[i] = 0; for (s = 0; s < NST; s++) { stemL[s][i] = 0; stemR[s][i] = 0; } }
+  }
+  void byeEnd() {
+    int s, c; size_t j; FreshVoices& F = *fresh;
+    ebow0 = F.eb; hurdy = F.hu; bowed0 = F.bo; glass0 = F.gl; struck = F.st; spring = F.sp; junk = F.ju; aura = F.au; moan = F.mo;
+    for (j = 1; j < inst[0].size(); j++) *static_cast<Ebow*>(inst[0][j]) = F.eb;
+    for (j = 1; j < inst[2].size(); j++) *static_cast<Bowed*>(inst[2][j]) = F.bo;
+    for (j = 1; j < inst[3].size(); j++) *static_cast<Glass*>(inst[3][j]) = F.gl;
+    for (s = 0; s < NS; s++) {
+      for (j = 0; j < Cv[s].size(); j++) { Cv[s][j] = Contact(); iq[s][j] = 999; }
+      for (c = 0; c < 2; c++) { Slot& S = slots[s][c]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.autoSpd = -1; S.kick = 0; }
+      Strip& st = strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
+      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
+    }
+    for (auto& L : layers) { L->sl.on = false; L->mute = true; if (L->gs) L->gs->cur = -1; }
+    if (!layers.empty()) lver++;
+    recOn = false; recSync = false; recEv.clear();
     while (!cms.empty()) cmStop(0);
-    riser.on = ret.on = sting.on = drone.on = heart.on = walls.on = false; mPitch = 0; mDread = 0; mAura = 0; duckE = 0; dr2 = 0; swN = 0; autoFreeze = false;
-    rev.clear(); body.reset(); harm.reset();
+    riser.on = ret.on = sting.on = drone.on = heart.on = walls.on = false; mPitch = 0; mDread = 0; mAura = 0; duckE = 0; dr2 = 0; swN = 0; swEnd = -1; autoFreeze = false; revBoost = 0;
+    for (s = 0; s < NS; s++) P[SRC_HOLD[s]] = 0;
+    P[P_AURA_FREEZE] = 0;
+    inOn = false; inAct = false; inE = 0; inG = -1; inTail = 0; inPk = 0; inL.fill0(); inR.fill0();
+    rev.wipe(); body.reset(); harm.reset();
+    hb[0].t = hb[1].t = -1; hbL1 = hbL2 = 0; hbAct = false;
+    std::fill(ring[0].begin(), ring[0].end(), 0.f); std::fill(ring[1].begin(), ring[1].end(), 0.f);
+    for (s = 0; s < NST; s++) { MChain& M = ms[s]; for (c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; } std::memset(M.lk, 0, sizeof M.lk); }
+    lh = 1; for (int q = 0; q < 256; q++) hw[q] = 1; lg = 1;
+    std::memset(eg.z, 0, sizeof eg.z); eg.env = 0; eg.gr = 1;
+    kd.lp = kd.fe = kd.se = kd.cd = 0; symA.fill0(); symBb.fill0(); symPk = 0; spInPk = 0; sl = 0;
+    gate = true;
   }
 };
 
 /* ---------- host: message handling and buffering ---------- */
 Host::Host(double sampleRate) : sr_(sampleRate), e_(new Engine(sampleRate, 1337)) {
+  byeQ_.reserve(512); byeRun_.reserve(512);
   std::memset(bufL_, 0, sizeof bufL_); std::memset(bufR_, 0, sizeof bufR_); std::memset(inAccL_, 0, sizeof inAccL_); std::memset(inAccR_, 0, sizeof inAccR_);
 }
 Host::~Host() = default;
@@ -724,6 +773,14 @@ int Host::paramIndex(const char* id) { for (int i = 0; i < NPARAM; i++) if (std:
 
 void Host::msg(const Msg& m) {
   Engine& e = *e_;
+  // engine messages wait while GOODBYE fades out (applied in order once it is over, in block()); these, and Hold or
+  // Freeze switched on, end the silence after it
+  if (e.byeN && m.t != Msg::INIT) { byeQ_.push_back(m); return; }
+  if (e.gate) {
+    bool wake = m.t == Msg::GESTURE || m.t == Msg::MOMENT || m.t == Msg::CMOMENT || m.t == Msg::LOOP || m.t == Msg::INPUT || m.t == Msg::CMREC;
+    if (m.t == Msg::PARAM && m.v > .5) { if (m.k == P_AURA_FREEZE) wake = true; for (int s = 0; s < NS; s++) if (m.k == SRC_HOLD[s]) wake = true; }
+    if (wake) e.gate = false;
+  }
   switch (m.t) {
     case Msg::INIT: if (m.params) for (int k = 0; k < NPARAM; k++) e.P[k] = m.params[k]; if (m.seed) e.rng = Rng(m.seed); ready_ = true; break;
     case Msg::PARAM: if (m.k >= 0 && m.k < NPARAM) e.setP(m.k, m.v); break;
@@ -743,6 +800,7 @@ void Host::block(float* L, float* R, const float* IL, const float* IR) {
   if (!ready_) { for (i = 0; i < BL; i++) { L[i] = 0; R[i] = 0; } return; }
   if (e.inOn && IL) { const float* ir = IR ? IR : IL; for (i = 0; i < BL; i++) { e.inL[i] = IL[i]; e.inR[i] = ir[i]; } }
   e.process(L, R);
+  if (!byeQ_.empty() && !e.byeN) { byeRun_.swap(byeQ_); for (auto& q : byeRun_) msg(q); byeRun_.clear(); }
 }
 
 void Host::transport(const Transport& t, bool syncOn) { tr_ = t; trSync_ = syncOn; trSet_ = true; trOff_ = 0; }

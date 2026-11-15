@@ -50,16 +50,18 @@ jobs:
         working-directory: ${{ env.PLUGIN_DIR }}
         run: cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLAP --parallel
 
-      - name: Engine tests (Sync to host, MIDI CC hold, 1 kHz to 768 kHz)
+      - name: Engine tests (Sync to host, MIDI CC hold, 1 kHz to 768 kHz, GOODBYE hard stop)
         working-directory: ${{ env.PLUGIN_DIR }}
         run: |
           cmake -S test -B build-test -A x64
-          cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test --parallel
+          cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test goodbye_test --parallel
           ./build-test/Release/sync_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build-test/Release/param_hold_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build-test/Release/samplerate_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build-test/Release/goodbye_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Collect the plugins

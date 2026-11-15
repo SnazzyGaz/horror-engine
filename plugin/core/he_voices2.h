@@ -283,6 +283,8 @@ struct Reverb {
   struct AP { std::vector<float> b; int n; int w = 0; } ap[3]; std::vector<float> pre; int pw = 0; double hp = 0, x[8] = {}, g[8] = {};
   explicit Reverb(EState* e) : E(e), pre(32768, 0.f) { for (auto& q : b) q.assign(N, 0.f); double am[3] = {5.1, 7.7, 11.3}; for (int i = 0; i < 3; i++) { ap[i].b.assign(2048, 0.f); ap[i].n = (int)jsround(am[i] * E->sr / 1000) % 2048; } }
   void clear() { for (auto& q : b) std::fill(q.begin(), q.end(), 0.f); }
+  // GOODBYE: every line, the pre-delay and the diffusers emptied (clear() above is the old partial clear)
+  void wipe() { clear(); for (int k = 0; k < 8; k++) { lp[k] = 0; x[k] = 0; } std::fill(pre.begin(), pre.end(), 0.f); hp = 0; for (auto& a : ap) std::fill(a.b.begin(), a.b.end(), 0.f); }
   void render(const float* inp, float* L, float* R, int n) {
     const double* P = E->P; double sr = E->sr;
     double sz = .45 + P[P_REV_SIZE] * 1.5, rt = P[P_REV_DECAY], dc = 1 - .85 * P[P_REV_DAMP] * (.6 + .4 * (1 - E->matBright * .3));

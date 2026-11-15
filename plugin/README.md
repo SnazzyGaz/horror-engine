@@ -35,6 +35,13 @@ The layout, controls and engine are the same. A few things that belong to the br
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
 
+## Changes in 1.0.3
+
+- **GOODBYE is a hard stop.** GOODBYE and Esc now silence everything at once: every voice (Aura's Hold and Freeze included), moments and custom moments, looper playback, your sound in, and the hall, spring, body and harmonizer tails. The output fades over 25 ms (no click), then stays at true silence until you play again.
+- Hold on every voice (Aura too) and Freeze are switched off, so nothing starts again by itself. The next note or touch plays normally. Notes, knob moves and moments sent during the 25 ms fade wait for it and then play.
+- **The looper keeps its layers, muted** (their Mute buttons light). A take being recorded is dropped. Unmute a layer, or start a new take, to carry on. Nothing is deleted.
+- New engine test `goodbye_test` (in CI): below -90 dBFS within 50 ms with Aura holding, Freeze on, a ghost layer playing and a 30 s hall, at 44.1, 48 and 96 kHz; no click; untouched output up to the press. Everything sounds exactly as in 1.0.2 until GOODBYE is pressed.
+
 ## Changes in 1.0.2
 
 - **Loads on real Windows.** 1.0.0 and 1.0.1 failed to load in FL Studio with "Entry Point Not Found: TaskDialogIndirect". The DLLs imported a function that only exists in Common Controls v6 but had no manifest asking for v6. The VST3 and CLAP now carry a Common Controls v6 manifest, and the message box looks that function up at run time (falling back to a plain message box), so the plugin no longer depends on it to load.

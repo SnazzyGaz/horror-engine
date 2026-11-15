@@ -12,9 +12,13 @@ buffers made when the plugin is prepared. Since 1.0.1 the things that grow while
 | Contact list (`act`) | 256 slots | all voices, layers and moments at once |
 | Layers, undo and redo stacks | 64 layers, 52 snapshots each | the 50-step undo limit |
 | Held MIDI notes (`held_`) | 128 notes | every MIDI note |
+| Messages held back during GOODBYE's 25 ms fade (`byeQ_`), since 1.0.3 | 512 | far more than 25 ms of notes, knobs and drags |
 
 Measured with `tools/rt_harness.cpp` (9 s of playing on all nine voices, two loop layers, ghost, mute, undo and redo):
 heap allocations inside `render()` went from 2 to 0, and in message handling from 110 to 90.
+
+GOODBYE (1.0.3) also allocates nothing: at the end of its fade every voice is copy-assigned from a pristine set built
+with the engine (same buffer sizes, so no reallocation), and the hall, spring, body and harmonizer buffers are zeroed in place.
 
 ## What still allocates, and why it is left
 

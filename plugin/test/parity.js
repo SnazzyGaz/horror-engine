@@ -66,6 +66,18 @@ Object.keys(PRESETS).forEach(function (n) {
   tour(ev, 1, [7, 2]);
   cases.push({ name: 'sound in', P: P, ev: ev, end: F(7), sine: true });
 })();
+(function () { // GOODBYE, the hard stop: Aura holding, Freeze, a ghost layer playing, a long hall; a touch during the fade
+  // silence (checked: exact zeros from 50 ms on), a touch, Hold switched back on, then GOODBYE again with a touch during
+  // its fade (held back until the fade is over, then played)
+  var P = base('Cold Cellar'), ev = [];
+  P['aura.hold'] = 1; P['rev.decay'] = 30; P['rev.mix'] = 1; P['rev.size'] = 1;
+  ev.push([F(.1), { t: 'loop', a: 'rec' }]); tour(ev, .15, [2, 2]); ev.push([F(2), { t: 'loop', a: 'stop' }]); ev.push([F(2.05), { t: 'loop', a: 'ghost', id: 1, v: true }]);
+  tour(ev, 2.1, [0]); ev.push([F(2.4), { t: 'moment', id: 'drone', on: true }]); ev.push([F(3), { t: 'p', k: 'aura.freeze', v: 1 }]);
+  ev.push([F(3.5), { t: 'moment', id: 'stinger', on: true }]); ev.push([F(4), { t: 'panic' }]);
+  ev.push([F(7), { t: 'g', s: 4, k: 'd', x: .4, y: .5, p: .7, hz: 0 }]); ev.push([F(7.2), { t: 'g', s: 4, k: 'u' }]); ev.push([F(8), { t: 'p', k: 'aura.hold', v: 1 }]);
+  ev.push([F(9), { t: 'panic' }]); ev.push([F(9.01), { t: 'g', s: 3, k: 'd', x: .5, y: .5, p: .7, hz: 0 }]); ev.push([F(9.3), { t: 'g', s: 3, k: 'u' }]);
+  cases.push({ name: 'goodbye', P: P, ev: ev, end: F(11), quiet: [F(4.05), F(7)] });
+})();
 function line(f, m) {
   switch (m.t) {
     case 'p': return f + ' P ' + IDX[m.k] + ' ' + m.v;
@@ -104,6 +116,7 @@ cases.forEach(function (c) {
   var N = Math.min(n, cc.length), first = -1, exact = 0, ej = 0, ec = 0, maxd = 0;
   for (i = 0; i < N; i++) { var d = Math.abs(out[i] - cc[i]); if (first < 0 && d > 1e-6) first = i >> 1; if (out[i] === cc[i]) exact++; if (d > maxd) maxd = d; ej += out[i] * out[i]; ec += cc[i] * cc[i]; }
   var dr = Math.abs(10 * Math.log10((ej + 1e-20) / (ec + 1e-20)));
+  if (c.quiet) { var qm = 0; for (i = c.quiet[0] * 2; i < c.quiet[1] * 2; i++) qm = Math.max(qm, Math.abs(cc[i]), Math.abs(out[i])); ok(qm === 0, 'goodbye           true silence from 50 ms after GOODBYE until the next touch (peak ' + qm + ')'); }
   ok(n === cc.length && dr < 1 && (first < 0 || first > SR * .5), (c.name + '                    ').slice(0, 18) + ' level diff ' + dr.toFixed(3) + ' dB, ' + (100 * exact / N).toFixed(2) + '% samples identical, max diff ' + maxd.toExponential(2) + ', first difference ' + (first < 0 ? 'none' : (first / SR).toFixed(3) + ' s') + ', rms ' + (10 * Math.log10(ej / N + 1e-20)).toFixed(1) + ' dB');
 });
 console.log((failed ? failed + ' failed, ' : '') + passed + ' passed');

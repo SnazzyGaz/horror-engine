@@ -117,6 +117,7 @@ class Host {
   float inAccL_[BL], inAccR_[BL]; int inPos_ = 0;
   bool ready_ = false;
   Transport tr_; bool trSync_ = false, trSet_ = false; int64_t trOff_ = 0;
+  std::vector<Msg> byeQ_, byeRun_;                           // messages held back while GOODBYE fades out
 };
 
 }  // namespace he

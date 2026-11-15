@@ -149,7 +149,7 @@ void Controller::toggleHold() { int k = indexOf(String(HE_S[sel_]) + ".hold"); s
 void Controller::toggleFreeze() { setParam(he::P_AURA_FREEZE, P(he::P_AURA_FREEZE) > .5 ? 0 : 1); }
 void Controller::panic() {
   inputStop(); releaseAll();
-  for (int s = 0; s < he::NS; s++) { int k = indexOf(String(HE_S[s]) + ".hold"); if (P(k) > .5 && s != he::AURA) setParam(k, 0); }
+  for (int s = 0; s < he::NS; s++) { int k = indexOf(String(HE_S[s]) + ".hold"); if (P(k) > .5) setParam(k, 0); }   // Aura too: GOODBYE is a hard stop (1.0.3)
   if (P(he::P_AURA_FREEZE) > .5) setParam(he::P_AURA_FREEZE, 0);
   UiEvent e; e.type = UiEvent::PANIC; send(e);
 }
