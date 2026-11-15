@@ -1334,7 +1334,7 @@ function HECoreFactory() {
       for (k = 0; k < 12; k++) { var y = a1[k] * y1[k] - a2[k] * y2[k] + bb[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y * g[k]; }
       // the ball and handle themselves radiate a little of the raw squeal
       dl += .15 * (x - dl);
-      L[i] = (o * 6 + (x - dl) * .5) * out;
+      L[i] = (o * 6 + (x - dl) * .5) * out; R[i] = L[i];
     }
     this.ph = ph; this.pu = pu; this.pl = pl; this.pa = pa; this.amp = amp; this.x1 = x1; this.x2 = x2; this.nz = nz; this.dl = dl + 1e-18; this.jit = jit;
   };
@@ -1972,6 +1972,7 @@ function HECoreFactory() {
       for (k = 0; k < cv.length; k++) if (cv[k].on) wake = true;
       if (wake) st.quiet = 0;
       if (st.quiet > 400) { this.stemL[s].fill(0); this.stemR[s].fill(0); continue; }
+      tL.fill(0); tR.fill(0);
       var stereo = s >= 5;
       if (s === 5) this.src[5].render(tL, tR, BL, C[5], P, this.spIn);
       else if (cv.length === 1) this.src[s].render(tL, tR, BL, C[s], P);
