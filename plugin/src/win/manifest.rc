@@ -1,0 +1,4 @@
+// Horror Engine by Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3.
+// MinGW builds only: windres does not get JUCE's MSVC "/MANIFESTDEPENDENCY" pragma, so embed the Common Controls
+// v6 manifest by hand. 2 = ISOLATIONAWARE_MANIFEST_RESOURCE_ID (the ID a DLL's manifest needs), 24 = RT_MANIFEST.
+2 24 "HorrorEngine.manifest"

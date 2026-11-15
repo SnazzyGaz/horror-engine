@@ -1,0 +1,103 @@
+# Horror Engine · Séance: Windows build and validation of the VST3 and CLAP plugin.
+# Horror Engine by Garyck Arntzen (https://x.com/_mintydoge). GNU AGPLv3.
+#
+# Builds with MSVC (Visual Studio 2022) on windows-latest, runs the engine tests, pluginval (strictness 5 or more)
+# on the VST3 and clap-validator on the CLAP, and uploads the plugins and the validation logs.
+# JUCE 8.0.15 and clap-juce-extensions are fetched at the commits pinned in CMakeLists.txt.
+# If the plugin sources live in a subfolder of the repository, set PLUGIN_DIR to it.
+name: Plugin (Windows)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      strictness:
+        description: pluginval strictness level (5 to 10)
+        default: "5"
+
+env:
+  PLUGIN_DIR: .
+  PLUGINVAL_VERSION: v1.0.4
+  CLAP_VALIDATOR_VERSION: "0.4.1"
+  CLAP_VALIDATOR_ASSET: clap-validator-0.4.1-127-g152b982-windows.zip
+  STRICTNESS: ${{ github.event.inputs.strictness || '5' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the pinned JUCE and clap-juce-extensions
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLUGIN_DIR }}/build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles(format('{0}/CMakeLists.txt', env.PLUGIN_DIR)) }}
+
+      - name: Configure (MSVC, x64)
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3 and CLAP
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: cmake --build build --config Release --target HorrorEngine_VST3 HorrorEngine_CLAP --parallel
+
+      - name: Engine tests (Sync to host, MIDI CC hold, 1 kHz to 768 kHz)
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: |
+          cmake -S test -B build-test -G "Visual Studio 17 2022" -A x64
+          cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test --parallel
+          ./build-test/Release/sync_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build-test/Release/param_hold_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build-test/Release/samplerate_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Collect the plugins
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: |
+          $art = "build/HorrorEngine_artefacts/Release"
+          New-Item -ItemType Directory -Force out/VST3, out/CLAP, logs | Out-Null
+          Copy-Item -Recurse "$art/VST3/Horror Engine.vst3" out/VST3/
+          Copy-Item "$art/CLAP/Horror Engine.clap" out/CLAP/
+          Copy-Item README.md, BUILDING.md, LICENSE, OFL.txt, THIRD_PARTY_NOTICES.txt out/
+          Get-ChildItem -Recurse out | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: pluginval (VST3)
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: |
+          Invoke-WebRequest "https://github.com/Tracktion/pluginval/releases/download/$env:PLUGINVAL_VERSION/pluginval_Windows.zip" -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval -Force
+          $level = [Math]::Max(5, [int]$env:STRICTNESS)
+          ./pluginval/pluginval.exe --strictness-level $level --timeout-ms 300000 --output-dir logs --validate "out/VST3/Horror Engine.vst3" | Tee-Object logs/pluginval-console.txt
+          if ($LASTEXITCODE -ne 0) { Write-Error "pluginval failed (exit $LASTEXITCODE)"; exit 1 }
+
+      - name: clap-validator (CLAP)
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: |
+          Invoke-WebRequest "https://github.com/free-audio/clap-validator/releases/download/$env:CLAP_VALIDATOR_VERSION/$env:CLAP_VALIDATOR_ASSET" -OutFile clap-validator.zip
+          Expand-Archive clap-validator.zip -DestinationPath clap-validator -Force
+          ./clap-validator/clap-validator.exe validate "out/CLAP/Horror Engine.clap" | Tee-Object logs/clap-validator.txt
+          if ($LASTEXITCODE -ne 0) { Write-Error "clap-validator failed (exit $LASTEXITCODE)"; exit 1 }
+
+      - name: Upload the plugins
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HorrorEngine-Seance-Windows-MSVC
+          path: ${{ env.PLUGIN_DIR }}/out
+          if-no-files-found: warn
+
+      - name: Upload the validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-logs
+          path: ${{ env.PLUGIN_DIR }}/logs
+          if-no-files-found: ignore
