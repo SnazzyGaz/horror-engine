@@ -137,6 +137,9 @@ def write_docs(dest):
     shutil.copy2(os.path.join(here, 'README.md'), os.path.join(dest, 'README.md'))
     shutil.copy2(os.path.join(here, 'CREDITS.md'), os.path.join(dest, 'CREDITS.md'))
     shutil.copy2(os.path.join(here, 'LICENSE'), os.path.join(dest, 'LICENSE'))
+    changelog = os.path.join(here, 'CHANGELOG.md')
+    if os.path.isfile(changelog):
+        shutil.copy2(changelog, os.path.join(dest, 'CHANGELOG.md'))
     if os.path.isdir(os.path.join(dest, 'docs')):
         shutil.rmtree(os.path.join(dest, 'docs'))
     shutil.copytree(os.path.join(here, 'docs'), os.path.join(dest, 'docs'))
@@ -144,11 +147,15 @@ def write_docs(dest):
                     'Horror Engine', nav(True))
     render_markdown(os.path.join(here, 'CREDITS.md'), os.path.join(dest, 'CREDITS.html'),
                     'Credits — Horror Engine', nav(True))
+    if os.path.isfile(os.path.join(here, 'CHANGELOG.md')):
+        render_markdown(os.path.join(here, 'CHANGELOG.md'), os.path.join(dest, 'CHANGELOG.html'),
+                        'Changelog — Horror Engine', nav(True))
     titles = {
         'INSTRUMENTS.md': 'Instruments — Horror Engine',
         'FX_AND_LOOPER.md': 'FX and looper — Horror Engine',
         'RECIPES.md': 'Recipes — Horror Engine',
         'UNDER_THE_HOOD.md': 'Under the hood — Horror Engine',
+        'DEVELOPING.md': 'Developing — Horror Engine',
     }
     for name, title in titles.items():
         render_markdown(os.path.join(here, 'docs', name), os.path.join(dest, 'docs', name[:-3] + '.html'),
@@ -162,6 +169,8 @@ def write_docs(dest):
            '<li><a href="FX_AND_LOOPER.html">FX and looper</a></li>\n'
            '<li><a href="RECIPES.html">Recipes</a></li>\n'
            '<li><a href="UNDER_THE_HOOD.html">Under the hood</a></li>\n'
+           '<li><a href="DEVELOPING.html">Developing</a></li>\n'
+           '<li><a href="../CHANGELOG.html">Changelog</a></li>\n'
            '<li><a href="../CREDITS.html">Credits</a></li>\n'
            '</ul>\n<footer>Horror Engine by <a href="https://x.com/_mintydoge">Garyck Arntzen</a>. MIT licence.</footer>\n'
            '</body>\n</html>\n') % (DOC_CSS, nav(False))

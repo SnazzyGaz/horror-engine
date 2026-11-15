@@ -44,3 +44,9 @@ Other altar surfaces reuse the workshop textures above (oak veneer for the timbe
 ## Libraries
 
 - three.js r160, MIT License, Copyright © 2010-2023 three.js authors (`vendor/three.LICENSE`).
+
+## Models and papers
+
+- The bowed-string friction curve follows the bow-table idea published in STK by Perry R. Cook and Gary P. Scavone.
+- The spring tank's dispersion follows the model by Välimäki, Parker and Abel (2010).
+- Inspired by the Apprehension Engine by Mark Korven and Tony Duggan-Smith; not affiliated.

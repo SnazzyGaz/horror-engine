@@ -69,10 +69,12 @@ def main(dest):
 
     for rel in [
         'README.md', 'README.html', 'CREDITS.md', 'CREDITS.html', 'LICENSE', '.nojekyll',
+        'CHANGELOG.md', 'CHANGELOG.html',
         'docs/INSTRUMENTS.md', 'docs/INSTRUMENTS.html',
         'docs/FX_AND_LOOPER.md', 'docs/FX_AND_LOOPER.html',
         'docs/RECIPES.md', 'docs/RECIPES.html',
         'docs/UNDER_THE_HOOD.md', 'docs/UNDER_THE_HOOD.html',
+        'docs/DEVELOPING.md', 'docs/DEVELOPING.html',
         'docs/index.html',
         'docs/media/hero.jpg', 'docs/media/workshop.jpg', 'docs/media/intro_720p.mp4',
         'docs/media/app_machine.jpg', 'docs/media/app_surface.jpg',
