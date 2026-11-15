@@ -35,6 +35,11 @@ The layout, controls and engine are the same. A few things that belong to the br
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
 
+## Changes in 1.0.5
+
+- **Superball no longer leaves a hanging background tone.** Superball (Moan) is mixed as a stereo voice but only wrote the left work buffer, so a leftover 128-sample right buffer was replayed every block as a constant tone at the block rate (sample rate / 128, and its harmonics) — 344.5 Hz at 44.1 kHz, 375 Hz at 48 kHz — until GOODBYE or another stereo voice overwrote it. Superball now writes both sides equally, and both work buffers are cleared before each voice is rendered, so a stale block cannot leak through.
+- New engine test `mono_voice_clear_test` (in CI): after Superball lifts off, no block-rate energy remains at 44.1, 48 and 96 kHz.
+
 ## Changes in 1.0.4
 
 - **Drags pull smoothly at any buffer size.** The board now sends gliding moves: each move walks the hand to its new spot over about 1.5 times the usual gap between moves (one block to 120 ms) instead of jumping there and stopping. Your mouse moves reach the engine in clumps (one per screen frame, all applied at the start of each host buffer), so before this the hand speed that Bowed and Glass hear pulsed at the frame or buffer rate, which sounded steppy. Hand-speed ripple at 512- and 1024-sample buffers drops from 0.12-0.29 to 0.03-0.08 (a hand sampled every block measures about 0.01).

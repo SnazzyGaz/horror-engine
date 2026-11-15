@@ -661,6 +661,7 @@ class Engine : public EState {
       for (auto& c : cv) if (c.on) wake = true;
       if (wake) st.quiet = 0;
       if (st.quiet > 400) { stemL[s].fill0(); stemR[s].fill0(); continue; }
+      tL.fill0(); tR.fill0();
       bool stereo = s >= 5;
       if (s == 5) spring.render(tL.d, tR.d, BL, *C[5], spIn.d);
       else if (cv.size() == 1) inst[s][0]->render(tL.d, tR.d, BL, *C[s]);

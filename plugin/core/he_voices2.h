@@ -324,7 +324,7 @@ struct Moan : Voice_ {
   double f = 0, ph = 0, pu = 0, pl = 4, pa = 0, amp = 0, x1 = 0, x2 = 0, nz = 0, dl = 0, jit = 0, sp = 0;
   explicit Moan(EState* e) : E(e) {}
   void reset() override { for (int k = 0; k < 12; k++) y1[k] = y2[k] = 0; amp = 0; pu = 0; x1 = x2 = dl = 0; }
-  void render(float* L, float*, int n, Contact& C) override {
+  void render(float* L, float* R, int n, Contact& C) override {
     const double* P = E->P; double sr = E->sr; Rng& rng = E->rng; int sf = (int)P[P_MOAN_SURFACE]; double sz = P[P_MOAN_SIZE], grip = P[P_MOAN_GRIP]; int k;
     const MoanSet& S = MOAN_SETS[sf < 0 ? 0 : sf];
     double pr = clamp(P[P_MOAN_PRESS] * (C.on ? .4 + 1.2 * C.p : 1), 0, 1.3), spd = C.on ? (C.autoOn ? .4 : C.spd) : 0;
@@ -354,7 +354,7 @@ struct Moan : Voice_ {
       double xd = x - X2, o = 0; X2 = X1; X1 = x;
       for (k = 0; k < 12; k++) { double y = a1[k] * y1[k] - a2[k] * y2[k] + b[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y * g[k]; }
       dlv += .15 * (x - dlv);
-      L[i] = (float)((o * 6 + (x - dlv) * .5) * out);
+      L[i] = (float)((o * 6 + (x - dlv) * .5) * out); R[i] = L[i];
     }
     ph = p0; pu = puu; pl = pll; pa = paa; amp = am; x1 = X1; x2 = X2; nz = nzv; dl = dlv + 1e-18; jit = jt;
   }
