@@ -1601,6 +1601,7 @@ function HECoreFactory() {
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
     this.lg = lg; if (mgr < this.gr) this.gr = mgr; if (pL > this.pkL) this.pkL = pL; if (pR > this.pkR) this.pkR = pR;
+    if (this.byeN || this.gate) this.byeRun(oL, oR);
     this.frame += BL;
   };
   // your own sound through the machine: dry (its own stem), plus sends into the spring tank, the wooden body, the hall,
@@ -1630,17 +1631,69 @@ function HECoreFactory() {
     on = !!on; if (on === this.inOn) return;
     this.inOn = on; if (on) { this.inAct = true; this.inTail = 0; }
   };
+  // GOODBYE (and Esc): a hard stop. The master output (and every stem) fades out over 25 ms (a raised cosine, so no
+  // click), then everything is cleared: voices, Hold on every voice (Aura too), Freeze, moments, custom moments, the
+  // looper's playback, your sound in, the hall, spring, body and harmonizer tails. From then the output is true zero
+  // until something is played again (a gesture, note, moment, looper or input command, or Hold/Freeze switched on),
+  // so nothing can restart by itself. The looper keeps its layers: they are muted (their Mute buttons light) and play
+  // again only when unmuted; a take being recorded is dropped. Messages that arrive during the 25 ms fade wait for it
+  // (Host.msg) and are applied, in order, as soon as it is over.
   Engine.prototype.panic = function () {
-    for (var s = 0; s < NS; s++) { this.slots[s][0].on = this.slots[s][1].on = false; for (var j = 0; j < this.inst[s].length; j++) { this.inst[s][j].reset(); this.Cv[s][j].own = null; } }
-    for (j = 0; j < this.layers.length; j++) { this.layers[j].sl.on = false; if (this.layers[j].gs) this.layers[j].gs.cur = null; }
+    if (!this.byeN) { this.byeN = Math.max(1, Math.round(.025 * this.sr)); this.byeK = 0; }
+  };
+  Engine.prototype.byeRun = function (oL, oR) {
+    var i = 0, s, NST = this.NST, sL = this.stemL, sR = this.stemR;
+    if (this.byeN) {
+      var N = this.byeN, k = this.byeK;
+      for (; i < BL && k < N; i++) {
+        k++; var g = .5 + .5 * Math.cos(Math.PI * k / N);
+        oL[i] *= g; oR[i] *= g; for (s = 0; s < NST; s++) { sL[s][i] *= g; sR[s][i] *= g; }
+      }
+      this.byeK = k;
+      if (k < N) return;
+      this.byeN = 0; this.byeEnd();
+    }
+    for (; i < BL; i++) { oL[i] = 0; oR[i] = 0; for (s = 0; s < NST; s++) { sL[s][i] = 0; sR[s][i] = 0; } }
+  };
+  var BYE_NEW = null;   // the voice constructors, in voice order (set below, once they are all defined)
+  Engine.prototype.byeEnd = function () {
+    var s, j, k, c, P = this.P;
+    // every voice instance starts over exactly as built (each voice's own reset() is also its choke and NaN path, so
+    // it stays as it is); contacts, slots and channel strips go back to rest
+    for (s = 0; s < NS; s++) {
+      for (j = 0; j < this.inst[s].length; j++) {
+        var v = new BYE_NEW[s](this); this.inst[s][j] = v; if (!j) this.src[s] = v;
+        var C = this.Cv[s][j]; C.on = false; C.x = .5; C.y = .5; C.p = .6; C.spd = 0; C.hz = 0; C.auto = false; C.own = null; C.kick = 0; this.iq[s][j] = 999;
+      }
+      for (j = 0; j < 2; j++) { var S = this.slots[s][j]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.auto = -1; S.kick = 0; }
+      var st = this.strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
+      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
+    }
+    // the looper keeps its layers, muted; a take in progress is dropped
+    for (j = 0; j < this.layers.length; j++) { var L = this.layers[j]; L.sl.on = false; L.mute = true; if (L.gs) L.gs.cur = null; }
+    if (this.layers.length) this.lver++;
+    this.recL = null;
     while (this.cms.length) this.cmStop(this.cms[0]);
-    this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null }; this.mPitch = 0; this.mDread = 0; this.mAura = 0; this.duckE = 0; this.dr2 = 0; this.swN = 0; this.autoFreeze = false;
-    for (var k = 0; k < 8; k++) this.rev.b[k].fill(0);
+    this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null }; this.mPitch = 0; this.mDread = 0; this.mAura = 0; this.duckE = 0; this.dr2 = 0; this.swN = 0; this.swEnd = -1; this.autoFreeze = false; this.revBoost = 0;
+    for (s = 0; s < NS; s++) P[HE_S[s] + '.hold'] = 0;
+    P['aura.freeze'] = 0;
+    // your sound in: off at once, its chain cleared (as after its own off tail)
+    this.inOn = false; this.inAct = false; this.inE = 0; this.inG = -1; this.inTail = 0; this.inPk = 0; this.inL.fill(0); this.inR.fill(0);
+    // tails: hall (lines, pre-delay, diffusers), harmonizer, body, heartbeat thump, swell ring, master chains and limiter
+    var R = this.rev; for (k = 0; k < 8; k++) { R.b[k].fill(0); R.lp[k] = 0; R.x[k] = 0; } R.pre.fill(0); R.hp = 0; for (k = 0; k < 3; k++) R.ap[k].b.fill(0);
     this.body.reset(); this.harm.reset();
+    if (this.hb) { this.hb[0].t = this.hb[1].t = -1; this.hbL1 = this.hbL2 = 0; } this.hbAct = 0;
+    this.ring[0].fill(0); this.ring[1].fill(0);
+    for (s = 0; s < this.NST; s++) { var M = this.ms[s]; for (c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; M.lk[c].fill(0); } }
+    this.lh = 1; this.hw.fill(1); this.lg = 1;
+    this.eg.z.fill(0); this.eg.env = 0; this.eg.gr = 1;
+    this.kd.lp = this.kd.fe = this.kd.se = this.kd.cd = 0; this.symB.fill(0); this.symIn.fill(0); this.symPk = 0; this.spInPk = 0; this.sl = 0;
+    this.gate = true;
   };
 
   /* host: message handling, telemetry and record taps; shared by the AudioWorklet and the fallback node */
   // opt.retro: seconds of rolling master-mix history kept for "Save what I just played" (absent: none, as offline)
+  BYE_NEW = [Ebow, Hurdy, Bowed, Glass, Struck, Spring, Junk, Aura, Moan];
   function Host(sr, post, opt) {
     this.e = new Engine(sr); this.post = post; this.tc = 0; this.rec = null; this.CH = 4096;
     var rs = opt && opt.retro > 0 ? Math.ceil(opt.retro * sr / BL) * BL : 0;
@@ -1650,8 +1703,12 @@ function HECoreFactory() {
     this.ap = new Float64Array(1024); this.apn = 0; this.pool = []; this.tsp = new Float32Array(NS); this.tly = []; this.tjp = new Float32Array(81 * 3 + 3);
     this.oL = new Float32Array(BL); this.oR = new Float32Array(BL);
   }
+  // engine messages wait while GOODBYE fades out; these (and Hold or Freeze switched on) end its silence
+  var BYEQ = { p: 1, cmdef: 1, cmrec: 1, g: 1, moment: 1, loop: 1, panic: 1, input: 1 }, WAKE = { g: 1, moment: 1, loop: 1, input: 1, cmrec: 1 };
   Host.prototype.msg = function (m) {
     var e = this.e;
+    if (e.byeN && BYEQ[m.t]) { (this.byeQ || (this.byeQ = [])).push(m); return; }
+    if (e.gate && (WAKE[m.t] || m.t === 'p' && m.v > .5 && (m.k === 'aura.freeze' || /\.hold$/.test(m.k)))) e.gate = false;
     if (m.q !== undefined) { this.ap[this.apn++] = m.q; this.ap[this.apn++] = e.frame; if (this.apn >= 1022) { this.post({ t: 'ap', ap: this.ap.slice(0, this.apn) }); this.apn = 0; } }
     switch (m.t) {
       case 'init': for (var k in m.params) e.P[k] = m.params[k]; if (m.seed) e.rng = new Rng(m.seed); this.ready = true; break;
@@ -1714,6 +1771,7 @@ function HECoreFactory() {
     if (e.inOn && IL) { var iR = IR || IL; for (i = 0; i < BL; i++) { e.inL[i] = IL[off + i]; e.inR[i] = iR[off + i]; } }
     e.process(oL, oR);
     for (i = 0; i < BL; i++) { L[off + i] = oL[i]; R[off + i] = oR[i]; }
+    if (this.byeQ && this.byeQ.length && !e.byeN) { var Q = this.byeQ; this.byeQ = []; for (i = 0; i < Q.length; i++) this.msg(Q[i]); }
     var T = this.rt;
     if (T) { var w = T.w, N = T.N; for (i = 0; i < BL; i++) { T.L[w] = oL[i]; T.R[w] = oR[i]; if (++w === N) w = 0; } T.w = w; if (T.fill < N) T.fill = Math.min(N, T.fill + BL); if (T.job) this.retroStep(); }
     var r = this.rec;

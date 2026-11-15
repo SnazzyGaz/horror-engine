@@ -542,7 +542,7 @@
   }
 
   /* ---------- transport ---------- */
-  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5 && s !== 'aura') setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
+  function panic() { inputStop(); releaseAll(); HE_SOURCES.forEach(function (s) { if (P[s + '.hold'] > .5) setParam(s + '.hold', 0); }); if (P['aura.freeze'] > .5) setParam('aura.freeze', 0); send({ t: 'panic' }); }
   function loopToggle() { if (!started) return start().then(loopToggle); send({ t: 'loop', a: tm && tm.rec ? 'stop' : 'rec', free: $('free').checked }); }
 
   /* ---------- recording: WAV + zip, all in the browser ---------- */
