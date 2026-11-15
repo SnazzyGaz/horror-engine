@@ -1086,10 +1086,10 @@ function HECoreFactory() {
     // 'n': a move that glides. The hand travelled here since the last move; the engine sees moves only at block
     // boundaries and in clumps (one browser frame, one audio callback or one host buffer at a time), so a plain move
     // jumps and then stops, and the speed the bow and glass voices hear pulses. A glide walks the target there in
-    // straight steps over 1.5 times the usual gap between moves (a running average, one block to 40 ms), so a move
+    // straight steps over 1.5 times the usual gap between moves (a running average, one block to 120 ms), so a move
     // that comes a little late finds the hand still travelling and the pull stays steady.
     else if (k === 'n') {
-      var nb = Math.round((this.frame - S.lm) / BL), mx = Math.max(1, Math.round(.04 * this.sr / BL));
+      var nb = Math.round((this.frame - S.lm) / BL), mx = Math.max(1, Math.round(.12 * this.sr / BL));
       S.lm = this.frame;
       if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }   // another move in the same block: same glide, new end
       else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = Math.min(mx, Math.max(1, Math.round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }

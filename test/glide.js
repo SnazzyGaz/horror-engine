@@ -47,6 +47,28 @@ function run(SR, voice, ts, cb, k) {
     });
   });
 });
+// a slow skate: a mouse dragged at 10-25 px/s across a 700 px board reports a move only when it reaches a new pixel
+// (every one to five frames), so plain moves leave the hand standing still between them and the glass keeps letting go.
+// Glides hold the hand's speed across those gaps (up to 120 ms), so the glass stays in touch.
+function slow(SR, v, k) {
+  var core = M.HECoreFactory(), BL = core.BL, P = {}; M.HE_PARAMS.forEach(function (p) { P[p.id] = p.def; });
+  var h = new core.Host(SR, function () { }); h.msg({ t: 'init', params: P, seed: 1337 });
+  var L = new Float32Array(BL), R = new Float32Array(BL), r = rng(5), last = -1, nf = 1, sp = [];
+  h.msg({ t: 'g', s: 3, k: 'd', x: .15, y: .5, p: .6, hz: 0 });
+  for (var f = 0; f < 4 * SR; f += BL) {
+    if (f % 512 === 0) while (nf / 60 <= (f + 512) / SR) { var px = Math.floor(.15 * 700 + v * nf / 60 + (r() - .5) * .6); if (px !== last) { last = px; h.msg({ t: 'g', s: 3, k: k, x: px / 700, y: .5, p: .6, hz: 0 }); } nf++; }
+    h.block(L, R, 0); if (f > .5 * SR) sp.push(h.e.slots[3][0].spd);
+  }
+  var m = sp.reduce(function (a, b) { return a + b; }, 0) / sp.length, sd = Math.sqrt(sp.reduce(function (a, b) { return a + (b - m) * (b - m); }, 0) / sp.length);
+  return { off: sp.filter(function (x) { return x < .004; }).length / sp.length, cv: sd / m };
+}
+[44100, 48000].forEach(function (SR) {
+  [10, 25].forEach(function (v) {
+    var om = slow(SR, v, 'm'), on = slow(SR, v, 'n'), tag = 'Glass ' + SR + ' Hz, a slow skate at ' + v + ' px/s';
+    if (V) console.log('  ' + tag + ': plain moves let go ' + (100 * om.off).toFixed(0) + '% of the time (speed cv ' + om.cv.toFixed(2) + ') | glides ' + (100 * on.off).toFixed(0) + '% (cv ' + on.cv.toFixed(2) + ')');
+    ok(on.off < .1 && on.cv < .3 && on.cv < om.cv * .6, tag + ': glides keep the glass in touch (let go ' + (100 * on.off).toFixed(0) + '% vs ' + (100 * om.off).toFixed(0) + '%, speed cv ' + on.cv.toFixed(2) + ' vs ' + om.cv.toFixed(2) + ')');
+  });
+});
 // glides survive the files: a custom moment with 'n' moves validates, and a performance file keeps them as glides
 var IO = require(path.join(__dirname, '..', 'src', 'io.js'));
 var mo = { id: 'g1', name: 'Glide', voice: -1, len: 1, ev: [[0, 3, 'd', .2, .5, .6, 0], [.1, 3, 'n', .4, .5, .6, 0], [.5, 3, 'u']], lanes: [] };
