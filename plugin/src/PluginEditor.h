@@ -41,8 +41,13 @@ class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
   juce::TooltipWindow tips{this, 600};
   int open = -1, popOpen = 0, lastVersion = -1; bool keysShown = false;
   void takeKeys(); void syncKeys();
-  void attachGL(); void detachGL();
-  std::unique_ptr<juce::OpenGLContext> gl_; bool glTried = false, glOk = false;
+  void tryAttachGL(); void detachGL(); void preferGdiOnPeer();
+  void queryGLInfo(); void writeGLLog();
+  void restorePeerEngine();
+  std::unique_ptr<juce::OpenGLContext> gl_;
+  bool glOk = false, glSettled = false, glDisabled = false;
+  int glAttempts = 0, peerEngineBefore = -1;
+  juce::String glReason, glVendor, glRendererName, glVersion;
   juce::Rectangle<int> grid;
   struct KeyNote { int code; int tag; };
   std::vector<KeyNote> keysDown;

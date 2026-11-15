@@ -18,15 +18,123 @@ static bool seanceWantGL() {
   return true;   // try OpenGL; fall back to software if the context never attaches
 }
 
-void HorrorEditor::attachGL() {
-  if (glTried) return;
-  glTried = true;
-  if (!seanceWantGL()) return;
-  gl_ = std::make_unique<OpenGLContext>();
-  gl_->setComponentPaintingEnabled(true);
-  gl_->setContinuousRepainting(false);
-  gl_->setMultisamplingEnabled(false);
-  gl_->attachTo(*this);
+static File seanceLogFile() {
+  auto dir = File::getSpecialLocation(File::userApplicationDataDirectory).getChildFile("HorrorEngine");
+  dir.createDirectory();
+  return dir.getChildFile("seance.log");
+}
+
+void HorrorEditor::preferGdiOnPeer() {
+  auto* topComp = getTopLevelComponent();
+  auto* peer = topComp != nullptr ? topComp->getPeer() : nullptr;
+  if (peer == nullptr) return;
+  auto names = peer->getAvailableRenderingEngines();
+  int gdi = names.indexOf("Software Renderer");
+  if (gdi < 0) return;
+  int cur = peer->getCurrentRenderingEngine();
+  if (peerEngineBefore < 0) peerEngineBefore = cur;
+  if (cur != gdi) peer->setCurrentRenderingEngine(gdi);
+}
+
+void HorrorEditor::restorePeerEngine() {
+  auto* topComp = getTopLevelComponent();
+  auto* peer = topComp != nullptr ? topComp->getPeer() : nullptr;
+  if (peer == nullptr || peerEngineBefore < 0) return;
+  if (peer->getCurrentRenderingEngine() != peerEngineBefore)
+    peer->setCurrentRenderingEngine(peerEngineBefore);
+}
+
+static const char* seanceVersion() {
+ #if defined(JucePlugin_VersionString)
+  return JucePlugin_VersionString;
+ #else
+  return "1.0.8";
+ #endif
+}
+
+void HorrorEditor::writeGLLog() {
+  auto f = seanceLogFile();
+  f.deleteFile();
+  auto text = String("Horror Engine Seance ") + seanceVersion() + " editor\n"
+            + "opened  " + Time::getCurrentTime().toString(true, true, true, true) + "\n";
+  if (glOk && gl_ && gl_->isAttached()) {
+    text += "renderer  OpenGL\n";
+    text += "GL_VENDOR    " + (glVendor.isEmpty() ? String("(pending)") : glVendor) + "\n";
+    text += "GL_RENDERER  " + (glRendererName.isEmpty() ? String("(pending)") : glRendererName) + "\n";
+    text += "GL_VERSION   " + (glVersion.isEmpty() ? String("(pending)") : glVersion) + "\n";
+    if (glReason.isNotEmpty()) text += "note        " + glReason + "\n";
+  } else {
+    text += "renderer  software\n";
+    text += "reason    " + (glReason.isNotEmpty() ? glReason : String("OpenGL not attached")) + "\n";
+  }
+  f.replaceWithText(text);
+}
+
+void HorrorEditor::queryGLInfo() {
+  if (!gl_ || !gl_->isAttached()) return;
+  gl_->executeOnGLThread([this](OpenGLContext&) {
+    auto str = [](GLenum n) -> String {
+      const auto* s = juce::gl::glGetString(n);
+      return s != nullptr ? String(CharPointer_UTF8(reinterpret_cast<const char*>(s))) : String("(null)");
+    };
+    glVendor = str(juce::gl::GL_VENDOR);
+    glRendererName = str(juce::gl::GL_RENDERER);
+    glVersion = str(juce::gl::GL_VERSION);
+  }, true);
+  glReason = {};
+  writeGLLog();
+}
+
+void HorrorEditor::tryAttachGL() {
+  if (glSettled) return;
+  if (glDisabled || !seanceWantGL()) {
+    glDisabled = true;
+    glSettled = true;
+    glOk = false;
+    glReason = "disabled (HE_SEANCE_OPENGL or HorrorEngine.ini opengl=0)";
+    writeGLLog();
+    return;
+  }
+  if (!isShowing() || getPeer() == nullptr || getWidth() <= 0 || getHeight() <= 0)
+    return;
+
+  // JUCE 8's plugin HWND uses a Direct2D/DXGI swap chain. A child WGL window of that
+  // HWND never gets a hardware pixel format, so the NVIDIA ICD (nvoglv64.dll) never
+  // loads. Switch the top-level peer to the Software/GDI renderer first — JUCE's own
+  // comment in createNonRepaintingEmbeddedWindowsPeer says to do this, but it doesn't.
+  preferGdiOnPeer();
+
+  if (gl_ && !gl_->isAttached() && OpenGLContext::getContextAttachedTo(*this) != nullptr) {
+    // a CachedImage was left behind after a failed context; drop it and try again
+    gl_->detach();
+    gl_.reset();
+  }
+
+  if (!gl_) {
+    gl_ = std::make_unique<OpenGLContext>();
+    gl_->setComponentPaintingEnabled(true);
+    gl_->setContinuousRepainting(false);
+    gl_->setMultisamplingEnabled(false);
+    gl_->attachTo(*this);
+  }
+
+  if (gl_->isAttached()) {
+    glOk = true;
+    glSettled = true;
+    queryGLInfo();
+    return;
+  }
+
+  if (++glAttempts >= 45) {   // ~1.5 s at the editor's 30 Hz timer
+    glOk = false;
+    glSettled = true;
+    glReason = "OpenGLContext did not create an HGLRC after the editor was showing. "
+               "Fell back to software painting. The wrapper was on JUCE Direct2D; "
+               "a child WGL context often cannot take a hardware pixel format on that HWND.";
+    restorePeerEngine();
+    if (gl_) { gl_->detach(); gl_.reset(); }
+    writeGLLog();
+  }
 }
 
 void HorrorEditor::detachGL() {
@@ -53,13 +161,13 @@ HorrorEditor::HorrorEditor(HorrorProcessor& p)
   menu.onKeys = [this] { ctl.keysOn = !ctl.keysOn; syncKeys(); ctl.toast(ctl.keysOn ? "Computer keyboard on: the plugin takes Space, letters and digits while its window has focus." : "Computer keyboard off: keys go to the host."); };
   syncKeys(); addMouseListener(this, true);
   setResizable(true, true); setResizeLimits(1100, 680, 2560, 1600);
+  setOpaque(true);
   setSize(1280, 760);
   startTimerHz(30);
-  attachGL();
 }
 HorrorEditor::~HorrorEditor() { removeMouseListener(this); detachGL(); setLookAndFeel(nullptr); }
-void HorrorEditor::parentHierarchyChanged() { takeKeys(); if (gl_ && isShowing()) glOk = gl_->isAttached(); }
-void HorrorEditor::visibilityChanged() { if (gl_ && isShowing()) glOk = gl_->isAttached(); }
+void HorrorEditor::parentHierarchyChanged() { takeKeys(); tryAttachGL(); }
+void HorrorEditor::visibilityChanged() { tryAttachGL(); }
 // the editor only asks for keyboard focus while computer-keyboard playing is on; otherwise keys go to the host
 void HorrorEditor::takeKeys() { if (ctl.keysOn && isShowing()) grabKeyboardFocus(); }
 void HorrorEditor::syncKeys() {
@@ -124,6 +232,7 @@ void HorrorEditor::mouseDown(const MouseEvent& e) {
 }
 
 void HorrorEditor::timerCallback() {
+  tryAttachGL();
   top.refresh(); tokens.refresh(); board.refresh(); side.refresh(); rail.refresh(); chain.refresh();
   if (open >= 0) {
     drawers[open]->refresh();
