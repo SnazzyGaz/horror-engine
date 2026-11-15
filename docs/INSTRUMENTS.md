@@ -12,7 +12,7 @@ Every voice reads the same four things from your hand: **where** you touch (x an
 
 **The Machine.** Drag a part of the cabinet to play it. When the pointer is over a part, a hint at the top of the view says what that part does. Drag empty space or the room to look around, use the wheel to zoom, and right-drag to orbit from anywhere. `Shift+F6` `Shift+F7` `Shift+F8` `Shift+F9` move the camera to the left, middle, right and the panel, and `Home` shows the whole machine. `K` makes the camera follow the part you play. `D` is demo mode, with the hints hidden and a slow drift.
 
-The Machine has two skins, Workshop and Altar. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address. The parts are listed under [Skins](../README.md#skins) in the README.
+The Machine has two skins, Workshop and Altar. They share every hit zone, gesture and voice; only the look changes. Switch with the **Skin** button above the view, or add `?skin=altar` (or `?skin=workshop`) to the address.
 
 **The Surface.** A flat pad for the selected voice (choose it with `1`–`9` or the rack). It fills the space the window leaves it, with one line of key hints underneath. The labels on the pad edges say what x and y do for that voice.
 
