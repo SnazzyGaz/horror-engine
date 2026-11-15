@@ -167,9 +167,10 @@ class MenuPop : public Popover {
   explicit MenuPop(Controller& c);
   void resized() override;
   void paintOverChildren(juce::Graphics&) override;
-  std::function<void()> onGuide, onDone;
+  std::function<void()> onGuide, onDone, onKeys;
+  void showKeys(bool on);
  private:
-  Controller& ctl; Pill retro{"Save the last minute", Pill::MI}, share{"Copy share link", Pill::MI}, guide{"Guide & keys", Pill::MI};
+  Controller& ctl; Pill retro{"Save the last minute", Pill::MI}, share{"Copy share link", Pill::MI}, keys{"Computer keyboard: off", Pill::MI}, guide{"Guide & keys", Pill::MI};
 };
 
 class Guide : public juce::Component {

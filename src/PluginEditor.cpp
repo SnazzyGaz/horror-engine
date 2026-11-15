@@ -19,13 +19,21 @@ HorrorEditor::HorrorEditor(HorrorProcessor& p)
   guide.onClose = [this] { guide.setVisible(false); };
   rail.onTab = [this](int i) { drawer(i); };
   chain.onOpen = [this](int i) { drawer(i, 1); };
-  setWantsKeyboardFocus(true); addMouseListener(this, true);
+  menu.onKeys = [this] { ctl.keysOn = !ctl.keysOn; syncKeys(); ctl.toast(ctl.keysOn ? "Computer keyboard on: the plugin takes Space, letters and digits while its window has focus." : "Computer keyboard off: keys go to the host."); };
+  syncKeys(); addMouseListener(this, true);
   setResizable(true, true); setResizeLimits(1100, 680, 2560, 1600);
   setSize(1280, 760);
   startTimerHz(30);
 }
 HorrorEditor::~HorrorEditor() { removeMouseListener(this); setLookAndFeel(nullptr); }
-void HorrorEditor::parentHierarchyChanged() { if (isShowing()) grabKeyboardFocus(); }
+void HorrorEditor::parentHierarchyChanged() { takeKeys(); }
+// the editor only asks for keyboard focus while computer-keyboard playing is on; otherwise keys go to the host
+void HorrorEditor::takeKeys() { if (ctl.keysOn && isShowing()) grabKeyboardFocus(); }
+void HorrorEditor::syncKeys() {
+  keysShown = ctl.keysOn; setWantsKeyboardFocus(keysShown); menu.showKeys(keysShown);
+  if (keysShown) takeKeys();
+  else { for (auto& k : keysDown) ctl.noteOff(k.tag); keysDown.clear(); if (hasKeyboardFocus(true)) giveAwayKeyboardFocus(); }
+}
 
 void HorrorEditor::paint(Graphics& g) {
   ColourGradient bg(Colour(0xff1a1310), getWidth() * .4f, getHeight() * .45f, ground, getWidth() * .4f + jmax(getWidth(), getHeight()) * .7f * .9f, getHeight() * .45f, true);
@@ -60,14 +68,14 @@ void HorrorEditor::drawer(int i, int force) {
   if (open >= 0) drawers[open]->setVisible(false);
   open = want && i >= 0 ? i : -1; rail.open = open;
   if (open >= 0) { drawers[open]->refresh(); placeDrawer(); drawers[open]->setVisible(true); drawers[open]->toFront(false); toast.toFront(false); }
-  rail.refresh(); grabKeyboardFocus();
+  rail.refresh(); takeKeys();
 }
 void HorrorEditor::pop(int which) {
   popOpen = which; browse.setVisible(which == 1); menu.setVisible(which == 2);
   top.browse.set(which == 1); top.menu.set(which == 2);
   if (which == 1) { browse.focus(); }
   placePop();
-  if (which == 1) browse.toFront(true); else if (which == 2) menu.toFront(true); else grabKeyboardFocus();
+  if (which == 1) browse.toFront(true); else if (which == 2) menu.toFront(true); else takeKeys();
 }
 void HorrorEditor::placePop() {
   if (popOpen == 1) { auto a = top.browse.getBounds(); int w = browse.getWidth(), x = jlimit(0, getWidth() - w, a.getCentreX() - w / 2); browse.setTopLeftPosition(x, a.getBottom()); }
@@ -90,6 +98,7 @@ void HorrorEditor::timerCallback() {
   }
   if (ctl.version != lastVersion) { lastVersion = ctl.version; if (popOpen == 1) browse.rebuild(); placePop(); }
   if (ctl.picking || ctl.learning() >= 0) repaint();
+  if (ctl.keysOn != keysShown) syncKeys();   // a project load can change it
 }
 
 /* ---------- keys (ui.js): voices, notes, octave, looper, moments, Hold, Freeze, Silence, undo ---------- */
@@ -98,6 +107,13 @@ static const char* ROW2 = "qwetyuiop";
 bool HorrorEditor::keyPressed(const KeyPress& key) {
   if (guide.isVisible()) { if (key == KeyPress::escapeKey) { guide.setVisible(false); return true; } return false; }
   int code = key.getKeyCode(); auto mods = key.getModifiers(); juce_wchar ch = CharacterFunctions::toLowerCase(key.getTextCharacter());
+  if (!ctl.keysOn) {   // keys off: only Esc, to close what is open; everything else goes back to the host
+    if (code != KeyPress::escapeKey) return false;
+    if (popOpen) { pop(0); return true; }
+    if (ctl.picking) { ctl.pick(false); ctl.toast("MIDI learn cancelled."); return true; }
+    if (ctl.learning() >= 0) { ctl.learnStop(); ctl.toast("MIDI learn cancelled."); return true; }
+    return false;
+  }
   if (code == KeyPress::escapeKey) {
     if (popOpen) { pop(0); return true; }
     if (ctl.picking) { ctl.pick(false); ctl.toast("MIDI learn cancelled."); return true; }

@@ -32,7 +32,8 @@ class HorrorEditor : public juce::AudioProcessorEditor, private juce::Timer {
   VoiceDrawer dVoice; FxDrawer dFx; LoopDrawer dLoop; InDrawer dIn; Drawer* drawers[4];
   BrowsePop browse; MenuPop menu; Guide guide; Toast toast;
   juce::TooltipWindow tips{this, 600};
-  int open = -1, popOpen = 0, lastVersion = -1;
+  int open = -1, popOpen = 0, lastVersion = -1; bool keysShown = false;
+  void takeKeys(); void syncKeys();
   juce::Rectangle<int> grid;
   struct KeyNote { int code; int tag; };
   std::vector<KeyNote> keysDown;

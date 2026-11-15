@@ -29,7 +29,7 @@ void Learnable::drawLearn(Graphics& g, Rectangle<float> r, Point<float> dot) {
 
 /* ---------- knobs (ui.js knob(): drag up and down, Shift for fine, wheel, double-click resets) ---------- */
 Knob::Knob(Controller& c, int k, bool big, const String& sub) : Learnable(c, k), big(big), sub(sub) {
-  setWantsKeyboardFocus(true); setMouseCursor(MouseCursor::UpDownResizeCursor);
+  setWantsKeyboardFocus(true); setMouseClickGrabsKeyboardFocus(false); setMouseCursor(MouseCursor::UpDownResizeCursor);
   const auto& d = he::PARAMS[k];
   setTooltip(String(CharPointer_UTF8(d.label)) + ": " + Controller::fmt(k, d.min) + " to " + Controller::fmt(k, d.max) + ", default " + Controller::fmt(k, d.def) + ". Double-click to reset. Right-click for MIDI learn.");
 }
@@ -79,7 +79,7 @@ void Knob::refresh() {
 }
 void Knob::mouseDown(const MouseEvent& e) {
   if (pickOrMenu(e, this)) return;
-  sy = e.position.y; sn = Controller::norm(k, ctl.P(k)); grabKeyboardFocus(); dragging = true;
+  sy = e.position.y; sn = Controller::norm(k, ctl.P(k)); if (ctl.keysOn) grabKeyboardFocus(); dragging = true;   // arrow keys only with the computer keyboard on
   ctl.hBegin(String(CharPointer_UTF8(he::PARAMS[k].label))); ctl.beginGesture(k);
 }
 void Knob::mouseDrag(const MouseEvent& e) {

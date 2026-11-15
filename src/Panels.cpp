@@ -397,16 +397,19 @@ void BrowsePop::resized() {
 void BrowsePop::paintOverChildren(Graphics& g) { g.setColour(line); g.fillRect(16.f, footY, getWidth() - 32.f, 1.f); }
 
 MenuPop::MenuPop(Controller& c) : ctl(c) {
-  for (auto* p : {&retro, &share, &guide}) addAndMakeVisible(p);
+  for (auto* p : {&retro, &share, &keys, &guide}) addAndMakeVisible(p);
   retro.kbd = "Shift+R"; retro.setTooltip("The last minute of the plugin's output as a WAV file");
   share.setTooltip("Copy a short link that rebuilds these settings in the web app");
   retro.onClick = [this] { if (onDone) onDone(); ctl.retroSave(); }; share.onClick = [this] { if (onDone) onDone(); ctl.shareLink(); };
+  keys.setTooltip("Play the plugin from the computer keyboard (Space looper, letters notes, digits voices). Off by default so the host keeps its shortcuts. Saved with the project.");
+  keys.onClick = [this] { if (onKeys) onKeys(); };
   guide.onClick = [this] { if (onDone) onDone(); if (onGuide) onGuide(); };
-  setSize(280 + 12, 6 + 10 + 3 * 32 + 4 + 8 + 34 + 10 + 6);
+  setSize(280 + 12, 6 + 10 + 4 * 32 + 4 + 8 + 34 + 10 + 6);
 }
-void MenuPop::resized() { int y = 16; for (auto* p : {&retro, &share, &guide}) { p->setBounds(16, y, getWidth() - 32, 30); y += 32; } }
+void MenuPop::showKeys(bool on) { keys.setText(on ? "Computer keyboard: on" : "Computer keyboard: off"); keys.set(on); }
+void MenuPop::resized() { int y = 16; for (auto* p : {&retro, &share, &keys, &guide}) { p->setBounds(16, y, getWidth() - 32, 30); y += 32; } }
 void MenuPop::paintOverChildren(Graphics& g) {
-  float y = 16 + 3 * 32 + 4; g.setColour(line); g.fillRect(16.f, y, getWidth() - 32.f, 1.f);
+  float y = 16 + 4 * 32 + 4; g.setColour(line); g.fillRect(16.f, y, getWidth() - 32.f, 1.f);
   para(g, ctl.status(), Rectangle<float>(26, y + 6, getWidth() - 52.f, 40), font(MONO, 12), dim, 16);
 }
 
@@ -431,6 +434,7 @@ static const char* GUIDE[] = {
   "-Looper, Sync to host (on by default): while the host plays at a known tempo, the first layer rounds to whole bars, layers start on the next bar line and stay locked to the host's bars through tempo changes, jumps and loops. With the host stopped, or the box off, loops run free as in the web app.",
   "-Your sound in: Track input runs the audio coming into the plugin on its track (a mic, a line, another track) through the machine; File plays an audio file through it.",
   "=Keys",
+  "Off by default, so the host keeps Space, letters and digits. Turn them on in the menu: Computer keyboard (saved with the project); they work while the plugin window has keyboard focus.",
   "|1\xe2\x80\x93" "9|Select a voice",
   "|Z\xe2\x80\xa6/, Q W E T\xe2\x80\xa6P|Chromatic notes, two rows an octave apart",
   "|[ ]|Octave down, up",

@@ -18,7 +18,7 @@ Then rescan plugins in your DAW. It is an instrument (synth) with MIDI input. Ea
 - **MIDI:** CC 20–23 move Dread, Distance, Material and Pitch. Notes on channel 16 from C2 (36) and CC 24–43 fire the Moments. Right-click any knob, switch or selector for MIDI learn.
 - **Looper, Sync to host** (on by default, saved with the project): while the host plays at a known tempo, the first layer rounds to whole bars, recording and playback start on the next bar line, and layers stay locked to the host's bars, following tempo changes, jumps and loop wraps. With the host stopped or giving no tempo, or the box off, the looper runs free like the web app.
 - **Your sound in:** *Track input* runs the audio coming into the plugin on its track (route a mic, a line or another track to it in your DAW) through the spring, body, hall, harmonizer and Aura. *File* plays an audio file through it instead.
-- **Keys** work when the plugin window has keyboard focus: 1–9 voices, Z…/ and Q…P notes, [ ] octave, Space looper, F1–F12 moments, H Hold, F Freeze, Esc Silence, Ctrl+Z / Ctrl+Y undo and redo, Shift+R save the last minute.
+- **Keys** are off by default so the host (FL Studio and others) keeps Space, letters and digits. Turn them on in the menu (*Computer keyboard*, saved with the project); they then work while the plugin window has keyboard focus: 1–9 voices, Z…/ and Q…P notes, [ ] octave, Space looper, F1–F12 moments, H Hold, F Freeze, Esc Silence, Ctrl+Z / Ctrl+Y undo and redo, Shift+R save the last minute.
 - **Saved with the project:** every setting, the selected voice, your own moments and your MIDI map. Starred presets are kept for your user account.
 
 ## What differs from the web page

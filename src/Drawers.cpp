@@ -196,6 +196,7 @@ void FxDrawer::refresh() {
 LoopDrawer::LoopDrawer(Controller& c) : Drawer(c, "Gesture looper", "Loops store what your hand did, not audio, so each pass is performed again by the models. Hand a layer to a Ghost and it keeps improvising with your strokes.") {
   painter.d = this; body.addAndMakeVisible(painter); painter.setInterceptsMouseClicks(false, false);
   body.addAndMakeVisible(rec); body.addAndMakeVisible(freeLen); body.addAndMakeVisible(syncBox); body.addAndMakeVisible(clear);
+  for (Component* c : std::initializer_list<Component*>{&freeLen, &syncBox}) c->setWantsKeyboardFocus(false);   // Space stays with the host
   rec.setTooltip("Start or stop a loop layer (Space)"); rec.onClick = [this] { ctl.loopToggle(); };
   clear.onClick = [this] { ctl.loopCmd(LA_CLEAR); };
   freeLen.setTooltip("Off (default): new layers lock to the first layer's cycle, so overdubs stay in time. On: the new layer keeps its own length and drifts against the others.");
@@ -247,6 +248,7 @@ void LoopDrawer::refresh() {
       r->ghost.setTooltip("Let a ghost player improvise with the strokes in this layer"); r->mute.setTooltip("Mute this layer");
       r->ghost.onClick = [this, lid, gh] { ctl.loopCmd(LA_GHOST, lid, gh ? 0 : 1); }; r->mute.onClick = [this, lid, mu] { ctl.loopCmd(LA_MUTE, lid, mu ? 0 : 1); };
       r->del.onClick = [this, lid] { ctl.loopCmd(LA_DEL, lid); };
+      r->voice.setWantsKeyboardFocus(false);
       for (Component* c : std::initializer_list<Component*>{&r->voice, &r->ghost, &r->mute, &r->del}) body.addAndMakeVisible(c);
     }
     if (auto* p = getParentComponent()) p->resized();
@@ -263,7 +265,7 @@ InDrawer::InDrawer(Controller& c) : Drawer(c, "Your sound in", "The audio coming
   painter.d = this; body.addAndMakeVisible(painter); painter.setInterceptsMouseClicks(false, false);
   for (Component* x : std::initializer_list<Component*>{&track, &file, &loop, &stop}) body.addAndMakeVisible(x);
   track.setTooltip("Run the audio coming into this plugin on its track through the machine (route a mic, a line or another track to it in your DAW)");
-  file.setTooltip("Play an audio file through the machine"); loop.setTooltip("Loop the file"); loop.setToggleState(true, dontSendNotification);
+  file.setTooltip("Play an audio file through the machine"); loop.setTooltip("Loop the file"); loop.setToggleState(true, dontSendNotification); loop.setWantsKeyboardFocus(false);
   track.onClick = [this] { ctl.inputTrack(); }; file.onClick = [this] { ctl.inputFile(); }; stop.onClick = [this] { ctl.inputStop(); };
   loop.onClick = [this] { ctl.inputLoop = loop.getToggleState(); };
   for (auto id : {"input.level", "input.spr", "input.body", "input.rev", "input.hsend", "input.aura"}) body.addAndMakeVisible(knobs.add(new Knob(c, Controller::indexOf(id))));

@@ -579,7 +579,7 @@ ValueTree Controller::saveState() const { const ScopedLock stateGuard(stateLock)
   v.setProperty("sel", sel_, nullptr); v.setProperty("octave", octave_, nullptr); v.setProperty("preset", presetName(), nullptr); v.setProperty("basePr", basePr, nullptr);
   var a = Array<var>(); for (auto& c : CMS) a.append(c.toVar()); v.setProperty("moments", hejson::stringify(a), nullptr);
   var m = hejson::obj(); for (auto& kv : mmap_) hejson::set(m, kv.first.toRawUTF8(), he::PARAMS[kv.second].id); v.setProperty("midimap", hejson::stringify(m), nullptr);
-  v.setProperty("sync", p_.syncToHost.load(), nullptr);
+  v.setProperty("sync", p_.syncToHost.load(), nullptr); v.setProperty("keys", keysOn, nullptr);
   return v;
 }
 void Controller::loadState(const ValueTree& v) { const ScopedLock stateGuard(stateLock);
@@ -592,7 +592,7 @@ void Controller::loadState(const ValueTree& v) { const ScopedLock stateGuard(sta
   cmSync();
   mmap_.clear(); var m = JSON::parse(v.getProperty("midimap", "{}").toString());
   if (auto* o = m.getDynamicObject()) for (auto& kv : o->getProperties()) { int k = indexOf(kv.value.toString()); if (k >= 0 && kv.name.toString().startsWith("cc:")) mmap_[kv.name.toString()] = k; }
-  p_.syncToHost = (bool)v.getProperty("sync", true);
+  p_.syncToHost = (bool)v.getProperty("sync", true); keysOn = (bool)v.getProperty("keys", false);
   mmSync(); hist_.clear(); hpos_ = 0; version++; paramVersion++;
 }
 

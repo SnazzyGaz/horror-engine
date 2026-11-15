@@ -124,6 +124,9 @@ class Controller : private juce::Timer {
 
   // ---- looper ----
   bool freeLength = false;
+  // computer-keyboard playing: off by default so Space, letters and digits stay with the host (FL Studio and others);
+  // saved with the project
+  bool keysOn = false;
   bool syncToHost() const;            // looper Sync to host (default on; saved with the project)
   void setSyncToHost(bool on);
   float hostTempo() const;            // 0 when the host gives no tempo
