@@ -428,6 +428,7 @@ static const char* GUIDE[] = {
   "-Bottom: Voice, Effects, Looper and Your sound in open a drawer over the board. The strip under them is the signal flow; click a part of it to open its drawer.",
   "-Knobs: drag up and down (Shift for fine), wheel, double-click to reset, right-click for MIDI learn. Or press MIDI learn at the top, then click a knob.",
   "-Presets: \xe2\x80\xb9 \xe2\x80\xba step through them, Browse lists and stars them. Undo and redo cover knobs, presets and the looper.",
+  "-Looper, Sync to host (on by default): while the host plays at a known tempo, the first layer rounds to whole bars, layers start on the next bar line and stay locked to the host's bars through tempo changes, jumps and loops. With the host stopped, or the box off, loops run free as in the web app.",
   "-Your sound in: Track input runs the audio coming into the plugin on its track (a mic, a line, another track) through the machine; File plays an audio file through it.",
   "=Keys",
   "|1\xe2\x80\x93" "9|Select a voice",

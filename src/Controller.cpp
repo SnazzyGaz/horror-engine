@@ -499,6 +499,9 @@ void Controller::cmImportFile() {
 }
 
 /* ---------- looper ---------- */
+bool Controller::syncToHost() const { return p_.syncToHost.load(); }
+void Controller::setSyncToHost(bool on) { p_.syncToHost = on; }
+float Controller::hostTempo() const { return p_.hostTempo.load(); }
 void Controller::loopToggle() { UiEvent e; e.type = UiEvent::LOOP; e.loopAction = LA_REC; e.free = freeLength; send(e); }
 void Controller::loopCmd(int action, int layer, double v) { UiEvent e; e.type = UiEvent::LOOP; e.loopAction = action; e.layer = layer; e.lv = (float)v; e.free = freeLength; send(e); }
 
@@ -576,6 +579,7 @@ ValueTree Controller::saveState() const { const ScopedLock stateGuard(stateLock)
   v.setProperty("sel", sel_, nullptr); v.setProperty("octave", octave_, nullptr); v.setProperty("preset", presetName(), nullptr); v.setProperty("basePr", basePr, nullptr);
   var a = Array<var>(); for (auto& c : CMS) a.append(c.toVar()); v.setProperty("moments", hejson::stringify(a), nullptr);
   var m = hejson::obj(); for (auto& kv : mmap_) hejson::set(m, kv.first.toRawUTF8(), he::PARAMS[kv.second].id); v.setProperty("midimap", hejson::stringify(m), nullptr);
+  v.setProperty("sync", p_.syncToHost.load(), nullptr);
   return v;
 }
 void Controller::loadState(const ValueTree& v) { const ScopedLock stateGuard(stateLock);
@@ -588,6 +592,7 @@ void Controller::loadState(const ValueTree& v) { const ScopedLock stateGuard(sta
   cmSync();
   mmap_.clear(); var m = JSON::parse(v.getProperty("midimap", "{}").toString());
   if (auto* o = m.getDynamicObject()) for (auto& kv : o->getProperties()) { int k = indexOf(kv.value.toString()); if (k >= 0 && kv.name.toString().startsWith("cc:")) mmap_[kv.name.toString()] = k; }
+  p_.syncToHost = (bool)v.getProperty("sync", true);
   mmSync(); hist_.clear(); hpos_ = 0; version++; paramVersion++;
 }
 

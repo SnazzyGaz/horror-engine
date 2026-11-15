@@ -173,6 +173,19 @@ void HorrorProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midi)
   if (!host_) prepareToPlay(getSampleRate() > 0 ? getSampleRate() : 48000, n);
   applyParams(false);
   host_->wantJunk = wantJunk.load();
+  // Sync to host: the host's tempo, position and play state for the looper (CLAP's transport arrives here too, through
+  // clap-juce-extensions). Without a tempo or while stopped the looper runs free, as in the web app.
+  { he::Transport tr;
+    if (auto* ph = getPlayHead()) if (auto pos = ph->getPosition()) {
+      auto bpm = pos->getBpm(); auto ppq = pos->getPpqPosition();
+      if (bpm && ppq && *bpm > 0) {
+        tr.valid = true; tr.bpm = *bpm; tr.ppq = *ppq; tr.playing = pos->getIsPlaying();
+        if (auto bar = pos->getPpqPositionOfLastBarStart()) tr.barPpq = *bar;
+        if (auto ts = pos->getTimeSignature()) { tr.num = ts->numerator; tr.den = ts->denominator; }
+      }
+    }
+    hostTempo = tr.valid ? (float)tr.bpm : 0.f;
+    host_->transport(tr, syncToHost.load()); }
   { int s1, n1, s2, n2; fifo_.prepareToRead(fifo_.getNumReady(), s1, n1, s2, n2);
     for (int i = 0; i < n1; i++) { runEvent(events_[s1 + i]); events_[s1 + i].def.reset(); }
     for (int i = 0; i < n2; i++) { runEvent(events_[s2 + i]); events_[s2 + i].def.reset(); }

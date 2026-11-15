@@ -20,7 +20,7 @@ struct LEv { double f; int j; char k; double x, y, p, hz; };
 struct REv { double t; int s; char k; double x, y, p, hz; };
 struct Stroke { double t0; std::vector<LEv> ev; double len; };
 struct Ghost { std::vector<Stroke> st; std::vector<double> gaps; double wait = 0; int cur = -1; double pos = 0; size_t i = 0; double str = 1, xo = 0, pm = 1; bool mir = false; int lastK = -1; };
-struct Layer { int id, src; Slot sl; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; size_t i = 0; double pos = 0; bool mute = false, ghost = false; std::unique_ptr<Ghost> gs; uint32_t seed; Rng rng; };
+struct Layer { int id, src; Slot sl; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; size_t i = 0; double pos = 0; bool mute = false, ghost = false; std::unique_ptr<Ghost> gs; uint32_t seed; Rng rng; double startAt = -1; };
 struct LayerSnap { int id, src; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; bool mute, ghost; uint32_t seed; };
 struct Snap { double frame; bool hasLane; double laneStart, laneLen; std::vector<LayerSnap> L; };
 
@@ -59,6 +59,9 @@ class Engine : public EState {
   int lkw = 0; double lh = 1, hw[256]; int hp2 = 0; double lg = 1, gr = 1, pkL = 0, pkR = 0;
   double frame = 0; std::vector<std::unique_ptr<Layer>> layers; bool recOn = false; double recStart = 0; std::vector<REv> recEv; int lid = 1; bool hasLane = false; double laneStart = 0, laneLen = 0; int lver = 0;
   std::vector<Snap> undo, redo;
+  // looper clock: lc is the looper's time at the start of the next block (== frame while running free, as in the web app);
+  // with Sync to host it is the host's position in quarter notes times spqRef (samples per quarter when the lane was made)
+  double lc = 0, lcAdv = BL; bool syncAct = false, syncWant = false, recSync = false; double spqRef = 0, barLen = 0, barLc = 0, recOrigin = 0; Transport tr;
   struct Riser { bool on = false; double t = 0, dur = 0; } riser; struct Ret { bool on = false; double t = 0, dur = 0, p0 = 0, d0 = 0, a0 = 0; } ret;
   struct Sting { bool on = false; double t = 0; bool hit = false; double lead = .8; } sting; struct Drone { bool on = false; double t = 0, next = 0, tgt = 0; } drone;
   struct Heart { bool on = false; double next = 0, dub = -1, drift = 0; } heart;
@@ -136,7 +139,7 @@ class Engine : public EState {
   }
   void user(int s, char k, double x, double y, double p, double hz) {
     gesture2(slots[s][0], s, k, x, y, p, hz);
-    if (recOn) recEv.push_back({frame, s, k, x, y, p, hz});
+    if (recOn) recEv.push_back({lc, s, k, x, y, p, hz});
     if (recMOn) recM.ev.push_back({frame - recMStart, s, k, x, y, p, hz});
   }
   void smooth(Slot& S, double dt) {
@@ -178,7 +181,7 @@ class Engine : public EState {
 
   /* looper: gestures are re-performed, not replayed audio (see engine.js for the lane clock) */
   double phaseOf(const Layer& L, double f) { double d = std::fmod(f - L.origin, L.len); return d < 0 ? d + L.len : d; }
-  void seekLayer(Layer& L) { double ph = phaseOf(L, frame); size_t i = 0; while (i < L.ev->size() && (*L.ev)[i].f < ph) i++; L.i = i; L.pos = ph; }
+  void seekLayer(Layer& L) { double ph = phaseOf(L, lc); size_t i = 0; while (i < L.ev->size() && (*L.ev)[i].f < ph) i++; L.i = i; L.pos = ph; }
   Snap snap() { Snap S{frame, hasLane, laneStart, laneLen, {}}; for (auto& L : layers) S.L.push_back({L->id, L->src, L->len, L->origin, L->ev, L->mute, L->ghost, L->seed}); return S; }
   // a layer is going away: nothing may keep pointing at its slot (in the JavaScript the old object simply goes quiet)
   void forget(Layer& L) { L.sl.on = false; for (int s = 0; s < NS; s++) for (auto& c : Cv[s]) if (c.own == &L.sl) c.own = nullptr; for (auto& a : act) if (a == &L.sl) a = nullptr; }
@@ -197,25 +200,39 @@ class Engine : public EState {
   void loopCmd(const Msg& m) {
     const std::string& a = m.a;
     if (a == "undo" || a == "redo") { auto& from = a == "undo" ? undo : redo; auto& to = a == "undo" ? redo : undo; if (from.empty()) return; to.push_back(snap()); Snap S = from.back(); from.pop_back(); restore(S); return; }
-    if (a == "rec") { if (recOn) { Msg s2 = m; s2.a = "stop"; return loopCmd(s2); } recOn = true; recStart = frame; recEv.clear(); }
+    if (a == "rec") {
+      if (recOn) { Msg s2 = m; s2.a = "stop"; return loopCmd(s2); }
+      recOn = true; recStart = lc; recEv.clear(); recSync = syncAct && barLen > 0;
+      // synced: the layer starts on a bar line (the one just passed if we are less than an eighth of a bar late, else the next)
+      if (recSync) { double pb = prevBar(lc); recOrigin = lc - pb < .125 * barLen ? pb : pb + barLen; }
+    }
     else if (a == "stop" && recOn) {
-      double R0 = recStart, dur = frame - R0; std::vector<REv> ev = recEv; recOn = false; recEv.clear();
-      if (dur < sr * .25 || ev.empty()) return;
+      double R0 = recStart, dur = lc - R0; std::vector<REv> ev = recEv; recOn = false; recEv.clear();
+      bool synced = recSync && syncAct && barLen > 0; recSync = false;
+      if (synced) { if (ev.empty()) return; }
+      else if (dur < sr * .25 || ev.empty()) return;
       int cnt[NS] = {}; int best = ev[0].s; for (auto& e : ev) { cnt[e.s]++; if (cnt[e.s] > cnt[best]) best = e.s; }
       std::vector<REv> evb; for (auto& e : ev) if (e.s == best) evb.push_back(e);
       double origin, len;
-      if (!hasLane) { hasLane = true; laneStart = R0; laneLen = dur; origin = R0; len = dur; }
+      if (synced) {   // whole bars from the bar line the recording started on
+        origin = recOrigin; double bars = fmax2(1, jsround((lc - origin) / barLen));
+        if (!hasLane) { hasLane = true; laneStart = origin; laneLen = len = bars * barLen; }
+        else if (m.free) len = bars * barLen;
+        else { len = fmax2(1, jsround((lc - origin) / laneLen)) * laneLen; origin = laneStart; }
+      }
+      else if (!hasLane) { hasLane = true; laneStart = R0; laneLen = dur; origin = R0; len = dur; }
       else if (m.free) { origin = R0; len = dur; }
       else { len = fmax2(1, jsround(dur / laneLen)) * laneLen; origin = laneStart; }
       bool down = false; for (auto& e : evb) { if (e.k == 'd') down = true; else if (e.k == 'u') down = false; }
-      if (down) evb.push_back({frame - BL, best, 'u', 0, 0, 0, 0});
+      if (down) evb.push_back({lc - lcAdv, best, 'u', 0, 0, 0, 0});
       auto out = std::make_shared<std::vector<LEv>>(); int j = 0;
       for (auto& e : evb) { double d = std::fmod(e.t - origin, len); if (d < 0) d += len; out->push_back({d, j++, e.k, e.x, e.y, e.p, e.hz}); }
       std::stable_sort(out->begin(), out->end(), [](const LEv& p, const LEv& q) { return p.f < q.f || (p.f == q.f && p.j < q.j); });
       pushUndo();
       uint32_t seed = rng.s ^ (uint32_t)((uint64_t)lid * 2654435761ULL);
       std::unique_ptr<Layer> L(new Layer{lid++, best, Slot(best), len, origin, out, 0, 0, false, false, nullptr, seed, Rng(seed)});
-      seekLayer(*L); layers.push_back(std::move(L)); lver++;
+      seekLayer(*L); if (synced) L->startAt = nextBar(lc);   // playback starts on the next bar line
+      layers.push_back(std::move(L)); lver++;
     }
     else if (a == "clear") { if (layers.empty()) return; pushUndo(); for (auto& L : layers) forget(*L); layers.clear(); hasLane = false; lver++; }
     else {
@@ -243,6 +260,27 @@ class Engine : public EState {
     const auto& ev = *L.ev;
     while (L.i < ev.size() && ev[L.i].f < upTo) { const LEv& e = ev[L.i++]; if (!L.mute) gesture2(L.sl, L.src, e.k, e.x, e.y, e.p, e.hz); }
   }
+  double prevBar(double x) const { return barLc + std::floor((x - barLc) / barLen + 1e-9) * barLen; }
+  double nextBar(double x) const { return barLc + std::ceil((x - barLc) / barLen - 1e-9) * barLen; }
+  // once per block, before the looper runs: follow the host when synced, else keep counting like the web app
+  void clockStep() {
+    bool act = syncWant && tr.valid && tr.playing && tr.bpm > 0 && tr.num > 0 && tr.den > 0;
+    if (!act) { syncAct = false; lcAdv = BL; return; }
+    double spq = 60.0 / tr.bpm * sr;
+    if (spqRef <= 0 || (!hasLane && !recOn)) spqRef = spq;   // the lane keeps the tempo it was made at; host tempo changes scale it
+    double qpb = tr.num * 4.0 / tr.den, ppq = tr.ppq;
+    double bp = tr.barPpq >= 0 && tr.barPpq <= ppq + 1e-9 ? tr.barPpq : std::floor(ppq / qpb + 1e-9) * qpb;
+    while (bp + qpb <= ppq + 1e-9) bp += qpb;
+    barLen = qpb * spqRef; barLc = bp * spqRef;
+    double target = ppq * spqRef; bool jump = !syncAct || std::fabs(target - lc) > BL;
+    double delta = target - lc; lc = target; lcAdv = BL * spqRef / spq; syncAct = true;
+    if (jump) relock(delta);
+  }
+  // the host started, looped or jumped: every layer picks up at the host's position
+  void relock(double delta) {
+    for (auto& L : layers) { L->sl.on = false; L->startAt = -1; if (L->gs) L->gs->cur = -1; else seekLayer(*L); }
+    if (recOn) { recStart += delta; recOrigin += delta; for (auto& e : recEv) e.t += delta; }
+  }
   void loopRun() {
     for (auto& LP : layers) {
       Layer& L = *LP;
@@ -268,10 +306,20 @@ class Engine : public EState {
             G.wait = G.gaps[(size_t)(gi * G.gaps.size())] * (.4 + gw * 1.5) / (.7 + .9 * dread) + sr * .05;
           }
         }
-        L.pos = phaseOf(L, frame + BL);
+        L.pos = phaseOf(L, lc + lcAdv);
         continue;
       }
-      double ph = phaseOf(L, frame), end = ph + BL;
+      if (L.startAt >= 0) {   // synced layer waiting for its first bar line
+        double e0 = lc + lcAdv;
+        if (e0 <= L.startAt) { L.pos = phaseOf(L, e0); continue; }
+        double ps = phaseOf(L, fmax2(L.startAt, lc)), pe = phaseOf(L, e0); const auto& ev = *L.ev;
+        size_t i = 0; while (i < ev.size() && ev[i].f < ps) i++; L.i = i;
+        if (ps <= pe) fireLayer(L, pe); else { fireLayer(L, L.len); L.i = 0; fireLayer(L, pe); }
+        L.pos = pe; L.startAt = -1; continue;
+      }
+      double ph = phaseOf(L, lc), end = ph + lcAdv;
+      // synced: the host clock is not an exact sum of block lengths, so notice a wrap that fell between two blocks
+      if (syncAct && ph < L.pos - .5 * L.len) { fireLayer(L, L.len); L.i = 0; }
       if (end < L.len) fireLayer(L, end);
       else { fireLayer(L, L.len); L.i = 0; fireLayer(L, end - L.len); }
       L.pos = end >= L.len ? end - L.len : end;
@@ -574,7 +622,7 @@ class Engine : public EState {
   void input(bool on) { if (on == inOn) return; inOn = on; if (on) { inAct = true; inTail = 0; } }
   void process(float* oL, float* oR) {
     int i, s;
-    momRun(); cmRun(); loopRun(); contacts(); macros(); voiceMacros();
+    clockStep(); momRun(); cmRun(); loopRun(); contacts(); macros(); voiceMacros();
     dL.fill0(); dR.fill0(); dpL.fill0(); dpR.fill0(); rvIn.fill0(); spIn.fill0(); bdIn.fill0(); hmIn.fill0();
     double wl = P[P_WATER_LEVEL], wt = P[P_WATER_TILT]; wLevel += (wl - wLevel) * .2; wTilt += (wt - wTilt) * .2;
     double tv = std::fabs(wTilt - wTilt0) * sr / BL; wTilt0 = wTilt; sl = fmax2(sl * std::exp(-6.91 * BL / (1.5 * sr)), fmin2(1, tv * .35)); if (sl < 1e-6) sl = 0;
@@ -650,7 +698,7 @@ class Engine : public EState {
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
     lg = lgv; if (mgr < gr) gr = mgr; if (pL > pkL) pkL = pL; if (pR > pkR) pkR = pR;
-    frame += BL;
+    frame += BL; lc += lcAdv;
   }
   void panic() {
     for (int s = 0; s < NS; s++) { slots[s][0].on = slots[s][1].on = false; for (size_t j = 0; j < inst[s].size(); j++) { if (inst[s][j]) inst[s][j]->reset(); Cv[s][j].own = nullptr; } }
@@ -693,9 +741,18 @@ void Host::block(float* L, float* R, const float* IL, const float* IR) {
   e.process(L, R);
 }
 
+void Host::transport(const Transport& t, bool syncOn) { tr_ = t; trSync_ = syncOn; trSet_ = true; trOff_ = 0; }
+
 void Host::render(float* L, float* R, int n, const float* IL, const float* IR) {
   for (int i = 0; i < n; i++) {
-    if (bufPos_ >= BL) { block(bufL_, bufR_, inAccL_, inAccR_); bufPos_ = 0; }
+    if (bufPos_ >= BL) {
+      if (trSet_) {   // the transport at this engine block's first sample
+        Engine& e = *e_; e.syncWant = trSync_; e.tr = tr_;
+        if (tr_.playing && tr_.bpm > 0) e.tr.ppq = tr_.ppq + trOff_ * tr_.bpm / (60.0 * sr_);
+      }
+      block(bufL_, bufR_, inAccL_, inAccR_); bufPos_ = 0;
+    }
+    trOff_++;
     if (IL) { inAccL_[inPos_] = IL[i]; inAccR_[inPos_] = IR ? IR[i] : IL[i]; inPos_ = (inPos_ + 1) % BL; }
     L[i] = bufL_[bufPos_]; R[i] = bufR_[bufPos_]; bufPos_++;
   }
@@ -725,6 +782,8 @@ void Host::telemetry(Telemetry& t) {
   t.inPeak = (float)e.inPk; t.frozen = e.aura.frozen; t.bodyPeak = (float)e.body.pk; t.harmPeak = (float)e.harm.pk; e.body.pk = 0; e.harm.pk = 0;
   if (wantJunk) { Junk& J = e.junk; int jn = J.count; for (int i = 0; i < jn; i++) { t.junk[i * 3] = J.px[i]; t.junk[i * 3 + 1] = J.py[i]; t.junk[i * 3 + 2] = J.rr[i]; } t.junk[jn * 3] = (float)J.mx; t.junk[jn * 3 + 1] = (float)J.my; t.junk[jn * 3 + 2] = J.mon ? 1.f : 0.f; t.junkN = jn; } else t.junkN = -1;
   t.frame = (int64_t)e.frame;
+  t.synced = e.syncAct; t.bpm = e.syncAct ? (float)e.tr.bpm : 0; t.recWaiting = e.recOn && e.recSync && e.lc < e.recOrigin;
+  t.laneBars = e.hasLane && e.syncAct && e.barLen > 0 ? (int)jsround(e.laneLen / e.barLen) : 0;
   e.pkL = e.pkR = 0; e.gr = 1;
 }
 

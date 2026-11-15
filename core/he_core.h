@@ -53,6 +53,9 @@ struct Msg {
   const double* params = nullptr; uint32_t seed = 1337;
 };
 
+// the host's transport, for the looper's Sync to host (plugin only; the web app has no host clock)
+struct Transport { bool valid = false, playing = false; double bpm = 0, ppq = 0, barPpq = -1; int num = 4, den = 4; };
+
 struct LayerInfo { int id = 0, src = 0; float len = 0, pos = 0; bool mute = false, ghost = false; };
 constexpr int MAXLAYERTM = 32, MAXCMTM = 32, JUNKTM = 81 * 3 + 3;
 // the JavaScript host's "tm" message
@@ -65,6 +68,7 @@ struct Telemetry {
   float inPeak = 0; bool frozen = false; float bodyPeak = 0, harmPeak = 0;
   int junkN = -1; float junk[JUNKTM] = {};
   int64_t frame = 0;
+  bool synced = false, recWaiting = false; float bpm = 0; int laneBars = 0;   // Sync to host
 };
 
 class Engine;
@@ -90,6 +94,10 @@ class Host {
   void loop(const char* action, int layer = 0, double v = 0, bool free = false);
   void panic();
   void inputOn(bool on);
+  // Sync to host: call once per host buffer, before render(), with the transport at the buffer's first sample. With sync on
+  // and the host playing at a known tempo the looper follows the host's position (bars, loop points, jumps); otherwise it
+  // runs free, exactly as in the web app. Never calling this keeps the engine identical to the web one.
+  void transport(const Transport& t, bool syncOn);
 
   bool wantJunk = false;                                     // telemetry carries the junk tray's pieces
   bool ready() const { return ready_; }
@@ -108,6 +116,7 @@ class Host {
   float bufL_[BL], bufR_[BL]; int bufPos_ = BL;
   float inAccL_[BL], inAccR_[BL]; int inPos_ = 0;
   bool ready_ = false;
+  Transport tr_; bool trSync_ = false, trSet_ = false; int64_t trOff_ = 0;
 };
 
 }  // namespace he

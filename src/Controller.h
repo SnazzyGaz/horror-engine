@@ -124,6 +124,9 @@ class Controller : private juce::Timer {
 
   // ---- looper ----
   bool freeLength = false;
+  bool syncToHost() const;            // looper Sync to host (default on; saved with the project)
+  void setSyncToHost(bool on);
+  float hostTempo() const;            // 0 when the host gives no tempo
   void loopToggle();
   void loopCmd(int action, int layer = 0, double v = 0);
 

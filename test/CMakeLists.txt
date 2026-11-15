@@ -7,3 +7,6 @@ target_include_directories(he_core PUBLIC ../core)
 target_compile_options(he_core PRIVATE -O2 -fno-fast-math -ffp-contract=off)
 add_executable(he_render ../tools/he_render.cpp)
 target_link_libraries(he_render he_core)
+# Sync to host with a fake playhead
+add_executable(sync_test ../test/sync_test.cpp)
+target_link_libraries(sync_test he_core)

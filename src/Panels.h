@@ -124,7 +124,7 @@ class LoopDrawer : public Drawer {
   int contentHeight(int width) override;
   void paintBody(juce::Graphics& g);
  private:
-  Pill rec{juce::String::fromUTF8("\xe2\x97\x8f Loop a gesture"), Pill::TB}, clear{"Clear all", Pill::TB_SM}; juce::ToggleButton freeLen{"Free length"};
+  Pill rec{juce::String::fromUTF8("\xe2\x97\x8f Loop a gesture"), Pill::TB}, clear{"Clear all", Pill::TB_SM}; juce::ToggleButton freeLen{"Free length"}, syncBox{"Sync to host"};
   struct Row { int id; juce::ComboBox voice; Pill ghost{"Ghost", Pill::BTN_SM}, mute{"Mute", Pill::BTN_SM}, del{"Remove", Pill::BTN_SM}; juce::Rectangle<float> r, prog; float pos = 0, len = 0; };
   juce::OwnedArray<Row> rows; juce::String ids; int width = 600;
   struct Painter : juce::Component { LoopDrawer* d = nullptr; void paint(juce::Graphics& g) override { d->paintBody(g); } } painter;

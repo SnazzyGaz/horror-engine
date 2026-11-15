@@ -67,6 +67,8 @@ class HorrorProcessor : public juce::AudioProcessor {
   std::atomic<int> mmap[16][120];                    // learned CC -> parameter index, -1 none
   std::atomic<int> cmOrder[64]; std::atomic<int> cmCount{0};   // your own moments in panel order (engine handles)
   std::atomic<bool> wantJunk{false};
+  std::atomic<bool> syncToHost{true};
+  std::atomic<float> hostTempo{0};                  // the host's tempo, 0 if it gives none (for the looper drawer)                // looper Sync to host (used while the host plays at a known tempo)
   // the scope (mono, last 2048 samples) and the last minute of output
   float scope[2048] = {}; std::atomic<int> scopeW{0};
   bool copyLastSeconds(double seconds, juce::AudioBuffer<float>& out, double& sampleRate);
