@@ -6,10 +6,20 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
+Download the [plugin-v1.0.5](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.5) release and unzip it. Use **`HorrorEngine-Seance-1.0.5-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
-- **CLAP:** copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\`.
+- **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
 
 Then rescan plugins in your DAW. It is an instrument (synth) with MIDI input. Each format is one self-contained 64-bit DLL; nothing else needs installing.
+
+**FL Studio:** **Options > Manage plugins** (also under **Options > File settings**). Turn on **Verify plugins** and **Rescan previously verified plugins**, then click **Find installed plugins**. Add it from the Browser under **Plugin database > Installed > Generators > New**, or from the Channel Rack **+** button / **Add** menu (use **More plugins…** if it is not in the list yet).
+
+In other DAWs, rescan plugins and add it as an instrument on a MIDI track.
+
+**Uninstall:** delete the copied `Horror Engine.vst3` folder and, if you installed it, `Horror Engine.clap`, then rescan (or remove the entry from FL Studio's Plugin database).
+
+**Limits.** Windows only (64-bit). Tested in FL Studio. Other DAWs should work after a rescan, but have not been load-tested yet.
 
 ## Using it in a DAW
 
