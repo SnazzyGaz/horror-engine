@@ -26,7 +26,7 @@ Use a current desktop **Chrome** or **Edge** (Firefox should work; Safari is unt
 
 **Horror Engine · Séance** is the same engine as a VST3 and CLAP instrument: the spirit-board Surface, the nine voices, macros, Moments and a looper that can sync to the host's tempo and bars. There is no 3D machine. Every knob is a host parameter.
 
-**Download** the [plugin-v1.0.10](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.10) release. Use **`HorrorEngine-Seance-1.0.10-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+**Download** the [plugin-v1.0.11](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.11) release. Use **`HorrorEngine-Seance-1.0.11-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 ### Install
 
