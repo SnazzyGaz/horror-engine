@@ -122,6 +122,14 @@ function HECoreFactory() {
   function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
   function db(x) { return Math.pow(10, x / 20); }
   function pw(d, a, b, c) { return d < .5 ? a + (b - a) * d * 2 : b + (c - b) * (d - .5) * 2; }
+  function nextPow2(n) { var p = 1; while (p < n) p <<= 1; return p; }
+  function srAlpha(a48, sr) { return 1 - Math.pow(1 - a48, 48000 / sr); }
+  function softClip(x, ceil) {
+    var a = x < 0 ? -x : x, k0 = ceil * .95;
+    if (a <= k0) return x;
+    var span = ceil - k0, u = (a - k0) / span, y = k0 + span * (u / (1 + u));
+    return x < 0 ? -y : y;
+  }
   function Rng(seed) { this.s = (seed >>> 0) || 1; }
   Rng.prototype.u = function () { var s = this.s; s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; this.s = s; return s / 4294967296; };
   Rng.prototype.b = function () { return this.u() * 2 - 1; };
@@ -129,17 +137,19 @@ function HECoreFactory() {
   // harmonic generator: Chebyshev terms on the level-normalised signal add 2nd-5th harmonics at fixed levels relative
   // to the fundamental (c2 = 0.1 puts the 2nd harmonic about 20 dB down); the even part is DC-blocked
   // rm: normalise by RMS (for near-sinusoids such as a singing glass) instead of by the peak (for spiky waveforms)
-  function HG() { this.pk = 0; this.ms = 0; this.d1 = 0; this.d2 = 0; }
-  HG.prototype.run = function (x, n, c2, c3, c4, c5, k, rm) {
-    var pk = this.pk, ms = this.ms, d1 = this.d1, d2 = this.d2, rel = 1 - k;
+  function HG() { this.pk = 0; this.ms = 0; this.d1 = 0; this.d2 = 0; this.ulp = 0; }
+  HG.prototype.run = function (x, n, c2, c3, c4, c5, k, sr, rm) {
+    var pk = this.pk, ms = this.ms, d1 = this.d1, d2 = this.d2, rel = 1 - k, ul = this.ulp;
+    var fc = Math.min(3800, .08 * sr), lpc = 1 - Math.exp(-TAU * fc / sr), dcR = Math.exp(-TAU * 38 / sr);
     for (var i = 0; i < n; i++) {
       var v = x[i], av = v < 0 ? -v : v, a; pk = av > pk ? av : pk * rel;
       if (rm) { ms += k * (v * v - ms); a = Math.sqrt(2 * ms) + 1e-9; } else a = pk + 1e-9;
       var u = v / a; if (u > 1.3) u = 1.3; else if (u < -1.3) u = -1.3;
-      var u2 = u * u, ev = a * (c2 * (2 * u2 - 1) + c4 * (8 * u2 * u2 - 8 * u2 + 1)), od = a * u * (c3 * (4 * u2 - 3) + c5 * (16 * u2 * u2 - 20 * u2 + 5));
-      d2 = ev - d1 + .995 * d2; d1 = ev; x[i] = v + d2 + od;
+      ul += lpc * (u - ul);
+      var u2 = ul * ul, ev = a * (c2 * (2 * u2 - 1) + c4 * (8 * u2 * u2 - 8 * u2 + 1)), od = a * ul * (c3 * (4 * u2 - 3) + c5 * (16 * u2 * u2 - 20 * u2 + 5));
+      d2 = ev - d1 + dcR * d2; d1 = ev; x[i] = v + d2 + od;
     }
-    this.pk = pk + 1e-18; this.ms = ms + 1e-18; this.d1 = d1; this.d2 = d2 + 1e-18;
+    this.pk = pk + 1e-18; this.ms = ms + 1e-18; this.d1 = d1; this.d2 = d2 + 1e-18; this.ulp = ul + 1e-18;
   };
   // first (clamped-free) mode of a 0.8 mm steel ruler with overhang Lcm: f1 = 0.652 / L^2 (L in metres); 10 cm -> 65 Hz, 20 cm -> 16 Hz
   function rulerHz(Lcm) { var L = Lcm / 100; return .652 / (L * L); }
@@ -162,12 +172,12 @@ function HECoreFactory() {
     this.b = [new Float32Array(this.N), new Float32Array(this.N)];
     this.ih = [new Float32Array(this.N), new Float32Array(this.N)];
     this.w = 0; this.lp = [0, 0]; this.env = [0, 0]; this.agc = [0, 0];
-    this.bx1 = [0, 0]; this.bx2 = [0, 0]; this.by1 = [0, 0]; this.by2 = [0, 0];
+    this.bx1 = [0, 0]; this.bx2 = [0, 0]; this.by1 = [0, 0]; this.by2 = [0, 0]; this.apX = [0, 0]; this.apY = [0, 0];
     this.f = 0; this.dr = 0; this.drift = 0; this.h = 1; this.hT = 0; this.sph = 0; this.dc1 = 0; this.dc2 = 0; this.hg = new HG(); this.hm = 1;
     var w0 = TAU * 250 / E.sr, al = Math.sin(w0) / (2 * .8), a0 = 1 + al;
     this.pz = { b0: (1 + Math.cos(w0)) / 2 / a0, a1: -2 * Math.cos(w0) / a0, a2: (1 - al) / a0, x1: 0, x2: 0, y1: 0, y2: 0, env: 0 };
   }
-  Ebow.prototype.reset = function () { this.b[0].fill(0); this.b[1].fill(0); this.ih[0].fill(0); this.ih[1].fill(0); this.lp = [0, 0]; this.env = [0, 0]; this.agc = [0, 0]; this.bx1 = [0, 0]; this.bx2 = [0, 0]; this.by1 = [0, 0]; this.by2 = [0, 0]; this.dr = 0; this.pz.x1 = this.pz.x2 = this.pz.y1 = this.pz.y2 = this.pz.env = 0; };
+  Ebow.prototype.reset = function () { this.b[0].fill(0); this.b[1].fill(0); this.ih[0].fill(0); this.ih[1].fill(0); this.lp = [0, 0]; this.env = [0, 0]; this.agc = [0, 0]; this.bx1 = [0, 0]; this.bx2 = [0, 0]; this.by1 = [0, 0]; this.by2 = [0, 0]; this.apX = [0, 0]; this.apY = [0, 0]; this.dr = 0; this.pz.x1 = this.pz.x2 = this.pz.y1 = this.pz.y2 = this.pz.env = 0; };
   Ebow.prototype.render = function (L, R, n, C, P) {
     // sympathy: the first string instance picks up the hurdy and the body (never itself) when the driver is off
     var sym = this === this.E.src[0] && this.E.symG > 0 ? this.E.symIn : null, symG = this.E.symG;
@@ -176,10 +186,10 @@ function HECoreFactory() {
     // a bar along it, the Blaster Beam boom). Slide range sets how far x reaches either side.
     var exm = P['ebow.excite'] | 0, slideR = P['ebow.slide'] || 1;
     var base = C.hz > 0 ? C.hz : P['ebow.pitch'] * Math.pow(2, (C.x - .5) * 2 * slideR);
-    this.drift = this.drift * .995 + rng.b() * .1;
+    this.drift = this.drift * Math.pow(.995, 48000 / sr) + rng.b() * .1 * Math.sqrt(48000 / sr);
     var fT = clamp(base * E.pitchMul * Math.pow(2, this.drift * slack * 4 * E.instab / 1200), sr / 7000, 2500);
     if (this.f === 0) this.f = fT;
-    this.f += (fT - this.f) * .3;
+    this.f += (fT - this.f) * srAlpha(.3, sr);
     var f = this.f;
     var dT = C.on && !exm ? clamp(P['ebow.sustain'] * (.3 + .7 * C.p) + C.spd * .5, 0, 1.3) : 0;
     var hp = P['ebow.harm'] | 0, h = hp + 1;
@@ -190,21 +200,23 @@ function HECoreFactory() {
     }
     var T60 = .5 + 9 * (1 - damp) * (1 - damp) * (.5 + E.matT * .5);
     var g = Math.pow(10, -3 / (T60 * f));
-    var c = clamp(.5 + .48 * (1 - damp) * (.6 + .4 * E.material), .05, .98);
+    var c48 = clamp(.5 + .48 * (1 - damp) * (.6 + .4 * E.material), .05, .98);
+    var c = srAlpha(c48, sr);
     // tension modulation: a slack string goes sharp as it swings wider (pitch rise ~ amplitude squared), so pressing
     // harder bends it up steadily, up to about a semitone at slack 1. Tuned so a medium drive sits on the written pitch.
     var kT = slack * .06, eR = 1 / .25, kN = 1 + kT * .6, buzz = P['ebow.buzz'], thr = 1.1 - buzz * .9;
     var pos = clamp(P['ebow.pos'] + (C.on && C.hz <= 0 ? (C.y - .5) * .2 : 0), .03, .5);
     var det = Math.pow(2, (3 + E.detune) / 1200), sub = E.subAmt;
     var fh = Math.min(f * h, sr * .4), w0 = TAU * fh / sr, al = Math.sin(w0) / 8, a0 = 1 / (1 + al), b0 = al * a0, a1 = -2 * Math.cos(w0) * a0, a2 = (1 - al) * a0;
+    var drUp = srAlpha(.0008, sr), drDn = srAlpha(.001, sr), envC = srAlpha(.0006, sr), agcC = srAlpha(.003, sr);
     var mask = this.mask, w = this.w, dr = this.dr, dinc = TAU * f * .5 / sr;
     for (var i = 0; i < n; i++) L[i] = 0;
     for (var k = 0; k < 2; k++) {
       var b = this.b[k], ih = this.ih[k], lp = this.lp[k], env = this.env[k], agc = this.agc[k];
-      var x1 = this.bx1[k], x2 = this.bx2[k], y1 = this.by1[k], y2 = this.by2[k];
+      var x1 = this.bx1[k], x2 = this.bx2[k], y1 = this.by1[k], y2 = this.by2[k], ax = this.apX[k], ay0 = this.apY[k];
       // loop length: period minus the loss filter's delay, plus a measured correction table for the driver phase
       // (calibrated at slack 0 over loop lengths 32-4096 samples and the whole damping/material range)
-      var Pp = sr / (k ? f * det : f), t0 = ebowTune(32, c), Lb = Pp - (1 - c) / c + 1.3 + t0 + (ebowTune(Pp * 48000 / sr, c) - t0) * sr / 48000, amp = k ? .6 : 1;
+      var Pp = sr / (k ? f * det : f), t0 = ebowTune(32, c48), Lb = Pp - (1 - c) / c + 1.3 + t0 + (ebowTune(Pp * 48000 / sr, c48) - t0) * sr / 48000, amp = k ? .6 : 1;
       w = this.w; dr = this.dr;
       if (C.kick > 0) {
         // strike: a narrow bump near the end of the string (bright boom); pluck: a triangle peaked at 1/5 (rounder)
@@ -213,13 +225,14 @@ function HECoreFactory() {
         env = Math.max(env, .02);
       }
       for (i = 0; i < n; i++) {
-        dr += (dT - dr) * (dT > dr ? .0008 : .001);
-        var A = env * eR, Le = Lb * kN / (1 + kT * Math.min(A * A, 4)), rp = w - Le, i0 = Math.floor(rp), fr = rp - i0;
-        var y = b[i0 & mask] * (1 - fr) + b[(i0 + 1) & mask] * fr;
+        dr += (dT - dr) * (dT > dr ? drUp : drDn);
+        var A = env * eR, Le = Math.max(2, Lb * kN / (1 + kT * Math.min(A * A, 4)));
+        var D0 = Math.floor(Le - .5), fd = Le - D0, eta = (1 - fd) / (1 + fd);
+        var xs = b[(w - D0) & mask], y = eta * (xs - ay0) + ax; ax = xs; ay0 = y + 1e-18;
         lp += c * (y - lp);
-        var ay = y < 0 ? -y : y; env += .0006 * (ay - env);
+        var ay = y < 0 ? -y : y; env += envC * (ay - env);
         var bp = b0 * (y - x2) - a1 * y1 - a2 * y2; x2 = x1; x1 = y; y2 = y1; y1 = bp;
-        var ab = bp < 0 ? -bp : bp; agc += .003 * (ab - agc);
+        var ab = bp < 0 ? -bp : bp; agc += agcC * (ab - agc);
         var q2 = 1.5 * bp / (agc + .01); q2 = q2 / (1 + (q2 < 0 ? -q2 : q2));
         var inj = dr * (.05 * q2 + .004 * rng.b());
         ih[w & mask] = inj;
@@ -230,21 +243,21 @@ function HECoreFactory() {
         L[i] += amp * (y - .6 * b[(w - ((Le * .13) | 0)) & mask]);
         w++;
       }
-      this.lp[k] = lp; this.env[k] = env; this.agc[k] = agc; this.bx1[k] = x1; this.bx2[k] = x2; this.by1[k] = y1; this.by2[k] = y2;
+      this.lp[k] = lp; this.env[k] = env; this.agc[k] = agc; this.bx1[k] = x1; this.bx2[k] = x2; this.by1[k] = y1; this.by2[k] = y2; this.apX[k] = ax; this.apY[k] = ay0;
     }
     this.w = w & mask; this.dr = dr; C.kick = 0;
     // harmonic modes come out of the loop hotter than the fundamental: level-match them
-    var hmT = h > 1 ? .55 : 1; this.hm += (hmT - this.hm) * .05; if (this.hm !== 1) for (i = 0; i < n; i++) L[i] *= this.hm;
+    var hmT = h > 1 ? .55 : 1; this.hm += (hmT - this.hm) * srAlpha(.05, sr); if (this.hm !== 1) for (i = 0; i < n; i++) L[i] *= this.hm;
     // the string sits off-centre over the pickup: an asymmetric (even-order) term, 2nd harmonic about 20 dB down
-    this.hg.run(L, n, .16, 0, .03, 0, 1 - Math.exp(-1 / (.03 * sr)));
+    this.hg.run(L, n, .16, 0, .03, 0, 1 - Math.exp(-1 / (.03 * sr)), sr);
     // piezo pickup blend: a level-normalised soft clip of the string (rich in harmonics), high-passed at 250 Hz, adds the
     // upper harmonics that let a 50 Hz drone read on laptop and phone speakers without adding more sub
-    var e0 = this.env[0], sph = this.sph, d1 = this.dc1, d2 = this.dc2, og = 1.3, pz = P['ebow.pickup'] * 8, Z = this.pz;
+    var e0 = this.env[0], sph = this.sph, d1 = this.dc1, d2 = this.dc2, og = 1.3, pz = P['ebow.pickup'] * 8, Z = this.pz, dcR = Math.exp(-TAU * 15 / sr), pzEnvC = srAlpha(.002, sr);
     for (i = 0; i < n; i++) {
       sph += dinc; if (sph > TAU) sph -= TAU;
       var o = L[i] * og + Math.sin(sph) * sub * e0 * 3;
-      if (pz > 0) { var aL = L[i] < 0 ? -L[i] : L[i]; Z.env += .002 * (aL - Z.env); var en = Z.env * 1.5 + 1e-6, qz = L[i] * 6 / en; qz = qz / (1 + (qz < 0 ? -qz : qz)) * en * .5; var hpv = Z.b0 * (qz - 2 * Z.x1 + Z.x2) - Z.a1 * Z.y1 - Z.a2 * Z.y2; Z.x2 = Z.x1; Z.x1 = qz; Z.y2 = Z.y1; Z.y1 = hpv + 1e-18; o += hpv * pz; }
-      d2 = o - d1 + .998 * d2; d1 = o; L[i] = d2;
+      if (pz > 0) { var aL = L[i] < 0 ? -L[i] : L[i]; Z.env += pzEnvC * (aL - Z.env); var en = Z.env * 1.5 + 1e-6, qz = L[i] * 6 / en; qz = qz / (1 + (qz < 0 ? -qz : qz)) * en * .5; var hpv = Z.b0 * (qz - 2 * Z.x1 + Z.x2) - Z.a1 * Z.y1 - Z.a2 * Z.y2; Z.x2 = Z.x1; Z.x1 = qz; Z.y2 = Z.y1; Z.y1 = hpv + 1e-18; o += hpv * pz; }
+      d2 = o - d1 + dcR * d2; d1 = o; L[i] = d2;
     }
     this.sph = sph; this.dc1 = d1; this.dc2 = d2;
   };
@@ -252,21 +265,21 @@ function HECoreFactory() {
   /* ---------- 2. Hurdy-gurdy: three bowed waveguide strings on a rosined wheel ---------- */
   function Hurdy(E) {
     this.E = E; this.N = 8192; this.mask = this.N - 1; this.st = [];
-    for (var i = 0; i < 3; i++) this.st.push({ nd: new Float32Array(this.N), bd: new Float32Array(this.N), sf: 0, f: 0 });
+    for (var i = 0; i < 3; i++) this.st.push({ nd: new Float32Array(this.N), bd: new Float32Array(this.N), sf: 0, f: 0, apBx: 0, apBy: 0, apNx: 0, apNy: 0 });
     this.w = 0; this.bv = 0; this.nz = 0; this.crank = 0; this.pc = 0; this.bz = 0; this.bzl = 0;
     this.mf = [182, 287, 405, 540, 790, 1210]; this.mq = [.07, .06, .05, .05, .04, .03];
     this.y1 = new Float64Array(6); this.y2 = new Float64Array(6); this.x1 = 0; this.x2 = 0; this.sph = 0; this.env = 0;
     this.ma1 = new Float64Array(6); this.ma2 = new Float64Array(6); this.mb = new Float64Array(6); this.lens = new Float64Array(3); this.fr = new Float64Array(3); this.gains = [1, .75, .65];
   }
-  Hurdy.prototype.reset = function () { for (var i = 0; i < 3; i++) { this.st[i].nd.fill(0); this.st[i].bd.fill(0); this.st[i].sf = 0; } this.bv = 0; this.y1.fill(0); this.y2.fill(0); };
+  Hurdy.prototype.reset = function () { for (var i = 0; i < 3; i++) { this.st[i].nd.fill(0); this.st[i].bd.fill(0); this.st[i].sf = this.st[i].apBx = this.st[i].apBy = this.st[i].apNx = this.st[i].apNy = 0; } this.bv = 0; this.y1.fill(0); this.y2.fill(0); };
   Hurdy.prototype.render = function (L, R, n, C, P) {
     var E = this.E, sr = E.sr, D = E.dread, rng = E.rng, mask = this.mask;
     var crT = C.on ? P['hurdy.crank'] * (C.auto ? Math.min(1, C.spd / .4) : .45 + 1.6 * C.spd) : 0;
-    this.crank += (crT - this.crank) * .04;
+    this.crank += (crT - this.crank) * srAlpha(.04, sr);
     var cr = this.crank, acc = (cr - this.pc) / (n / sr); this.pc = cr;
     var buzzP = P['hurdy.buzz'];
     if (acc > 6 - buzzP * 4.5) this.bz = Math.min(1, this.bz + .5);
-    this.bz *= .93;
+    this.bz *= Math.pow(.93, 48000 / sr);
     var bzAmt = buzzP * Math.min(1, this.bz + Math.max(0, cr - (3.6 - buzzP * 2.4)) * .6);
     var pr = clamp(P['hurdy.press'] * (C.on ? .55 + .75 * C.p : 1), 0, 1), cn = Math.min(1, cr / 3);
     var bvT = cr > .02 ? .035 * Math.min(1, cn * 10) + .19 * cn : 0, slope = 5 - 4 * pr, rosin = P['hurdy.rosin'] * E.instab;
@@ -278,18 +291,19 @@ function HECoreFactory() {
     var gains = this.gains, bv = this.bv, nz = this.nz, w = this.w;
     var ma1 = this.ma1, ma2 = this.ma2, mb = this.mb;
     for (var k = 0; k < 6; k++) { var Rr = Math.exp(-6.91 / (this.mq[k] * (.5 + E.matT) * sr)), th = TAU * this.mf[k] / sr; ma1[k] = 2 * Rr * Math.cos(th); ma2[k] = Rr * Rr; mb[k] = (1 - Rr * Rr) / 2; }
+    var fC = srAlpha(.2, sr), nzC = srAlpha(.02, sr), bvC = srAlpha(.0008, sr), bzlC = srAlpha(.25, sr), envC = srAlpha(.0005, sr);
     var lens = this.lens;
-    for (k = 0; k < 3; k++) { var s = this.st[k]; if (s.f === 0) s.f = fr[k]; s.f += (fr[k] - s.f) * .2; lens[k] = clamp(sr / s.f - 3.3, 8, 8000); }
+    for (k = 0; k < 3; k++) { var s = this.st[k]; if (s.f === 0) s.f = fr[k]; s.f += (fr[k] - s.f) * fC; lens[k] = clamp(sr / s.f - 3.3, 8, 8000); }
     var st = this.st, bzl = this.bzl, x1 = this.x1, x2 = this.x2, y1 = this.y1, y2 = this.y2, sph = this.sph, env = this.env, sub = E.subAmt, dinc = TAU * st[0].f * .5 / sr;
     for (var i = 0; i < n; i++) {
-      nz += .02 * (rng.b() - nz);
-      bv += (bvT - bv) * .0008;
+      nz += nzC * (rng.b() - nz);
+      bv += (bvT - bv) * bvC;
       var vb = bv * (1 + rosin * 6 * nz), sum = 0, z2 = 0;
       for (k = 0; k < 3; k++) {
         s = st[k];
-        var lb = lens[k] * .127, ln = lens[k] - lb;
-        var rp = w - lb, i0 = Math.floor(rp), f0 = rp - i0, rb = s.bd[i0 & mask] * (1 - f0) + s.bd[(i0 + 1) & mask] * f0;
-        rp = w - ln; i0 = Math.floor(rp); f0 = rp - i0; var rn = s.nd[i0 & mask] * (1 - f0) + s.nd[(i0 + 1) & mask] * f0;
+        var lb = Math.max(1, lens[k] * .127), ln = Math.max(1, lens[k] - lb);
+        var dB = Math.floor(lb - .5), fB = lb - dB, eB = (1 - fB) / (1 + fB), xB = s.bd[(w - dB) & mask], rb = eB * (xB - s.apBy) + s.apBx; s.apBx = xB; s.apBy = rb + 1e-18;
+        var dN = Math.floor(ln - .5), fN = ln - dN, eN = (1 - fN) / (1 + fN), xN = s.nd[(w - dN) & mask], rn = eN * (xN - s.apNy) + s.apNx; s.apNx = xN; s.apNy = rn + 1e-18;
         s.sf = fg * ((1 - pole) * rb + pole * s.sf) + 1e-18;
         var br = -s.sf, nr = -rn, dv = vb - (br + nr), q = dv * slope; if (q < 0) q = -q; q += .75; q = 1 / (q * q); q *= q; if (q > 1) q = 1;
         var nv = dv * q;
@@ -297,11 +311,11 @@ function HECoreFactory() {
         sum += rb * gains[k]; if (k === 1) z2 = rb;
       }
       w++;
-      var bzs = clamp(z2 * 14, -1, 1); bzl += .25 * (bzs - bzl);
+      var bzs = clamp(z2 * 14, -1, 1); bzl += bzlC * (bzs - bzl);
       var x = sum + (bzs - bzl) * bzAmt * .22, body = 0;
       for (k = 0; k < 6; k++) { var y = ma1[k] * y1[k] - ma2[k] * y2[k] + mb[k] * (x - x2); y2[k] = y1[k]; y1[k] = y; body += y; }
       x2 = x1; x1 = x;
-      var ax = x < 0 ? -x : x; env += .0005 * (ax - env);
+      var ax = x < 0 ? -x : x; env += envC * (ax - env);
       sph += dinc; if (sph > TAU) sph -= TAU;
       L[i] = x * 1.1 + body * 2.2 + Math.sin(sph) * sub * env * 3;
     }
@@ -339,21 +353,22 @@ function HECoreFactory() {
     // cymbal: a thin circular plate (Bessel-like ratios, crowded and inharmonic); bowed at the edge it screams and shimmers
     { r: [1, 1.59, 2.14, 2.3, 2.65, 2.92, 3.16, 3.5, 3.6, 4.06, 4.6, 5.13, 5.65, 6.25], g: [.8, 1, .9, .7, .8, .6, .7, .55, .5, .5, .45, .4, .35, .3], t: 4.5 }
   ];
-  function Bowed(E) { this.E = E; this.m = new Fric(14); this.vb = new Float32Array(BL); this.nz = new Float32Array(BL); this.pg = new Float32Array(BL); this.v = 0; this.bend = .5; this.wob = 0; this.hg = new HG(); this.lpr = -1; this.kk = 0; }
-  Bowed.prototype.reset = function () { this.m.reset(); this.v = 0; this.lpr = -1; };
+  function Bowed(E) { this.E = E; this.m = new Fric(14); this.vb = new Float32Array(BL); this.nz = new Float32Array(BL); this.pg = new Float32Array(BL); this.v = 0; this.bend = .5; this.wob = 0; this.hg = new HG(); this.lpr = -1; this.kk = 0; this.jmp = 0; }
+  Bowed.prototype.reset = function () { this.m.reset(); this.v = 0; this.lpr = -1; this.kk = 0; this.jmp = 0; };
   Bowed.prototype.render = function (L, R, n, C, P) {
-    var E = this.E, sr = E.sr, m = this.m, ob = P['bowed.object'] | 0, S = BOW_SETS[ob], N = S.r.length; m.cnt = N;
+    var E = this.E, sr = E.sr, m = this.m, ob = clamp(P['bowed.object'] | 0, 0, 4), S = BOW_SETS[ob], N = S.r.length; m.cnt = N;
     var pr = clamp(P['bowed.press'] * (C.on ? .4 + C.p : 1), 0, 1.4);
-    var bT = clamp(P['bowed.bend'] + (C.on && C.hz <= 0 ? (C.y - .5) * .7 : 0), 0, 1); this.bend += (bT - this.bend) * .15;
+    var bT = clamp(P['bowed.bend'] + (C.on && C.hz <= 0 ? (C.y - .5) * .7 : 0), 0, 1); this.bend += (bT - this.bend) * srAlpha(.15, sr);
     // a ruler's pitch is set by how far it hangs over the edge: Ruler length (cm), with Bend / overhang moving it +/-30%
     var bend = this.bend, Lr = P['bowed.length'] * (.7 + .6 * bend), damp = P['bowed.damp'];
     var f0 = (C.hz > 0 ? C.hz : ob === 0 ? rulerHz(Lr) : P['bowed.size']) * E.pitchMul;
     // pressure picks the mode: light bow pressure favours high modes, heavy pressure the low ones. A pressure change of
-    // more than 0.15 knocks the contact loose for a moment so the bow can lock onto the newly preferred mode (the jump).
-    if (C.on) { if (this.lpr < 0) this.lpr = pr; if (Math.abs(pr - this.lpr) > .15) { this.lpr = pr; this.kk = 1; for (var q = 0; q < N; q++) { m.y1[q] *= .2; m.y2[q] *= .2; } } } else this.lpr = -1;
+    // more than 0.15 triggers a smooth damping burst + bow-hair noise so the bow can jump modes without clicking.
+    if (C.on) { if (this.lpr < 0) this.lpr = pr; if (Math.abs(pr - this.lpr) > .15) { this.lpr = pr; this.kk = 1; this.jmp = 1; } } else this.lpr = -1;
     var prf = clamp(pr / 1.1, 0, 1), rt = Math.pow(ob === 0 ? 30 : 10, .85 * (1 - prf)), wd = E.water * .04, wv = E.wv;
     this.wob += n / sr * 5.3; var vib = 1 + Math.sin(this.wob) * .002 * E.instab;
-    var pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E.matT, st = 1 + E.matStretch;
+    var pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E.matT * (1 - .85 * this.jmp), st = 1 + E.matStretch;
+    if (this.jmp > 0) { this.jmp *= Math.exp(-n / (.015 * sr)); if (this.jmp < .01) this.jmp = 0; }
     if (ob === 1) { if (C.on) this.rx = C.x; } var imm = ob === 1 ? immerse(E, this.rx === undefined ? .5 : this.rx) : 1;
     for (var k = 0; k < N; k++) {
       var r = S.r[k], f;
@@ -369,14 +384,14 @@ function HECoreFactory() {
     }
     var vT = C.on ? (C.auto ? P['bowed.speed'] * (.5 + C.p * .7) : C.spd * (.4 + 1.6 * P['bowed.speed'])) : 0;
     vT = Math.min(vT, 1.2) * .5;
-    var v = this.v, vb = this.vb, nz = this.nz, sa = (1.6 + .5 * Math.min(pr, 1)) / Math.max(vT, .04), pg = this.pg, pgv = (1 + 4 * pr) * Math.max(vT, .04), rng = E.rng, nzG = (.02 + .1 * pr * pr) * (.5 + E.matBright);
-    for (var i = 0; i < n; i++) { v += (vT - v) * .0015; vb[i] = v; nz[i] = v * nzG * rng.b(); pg[i] = pgv; }
+    var v = this.v, vC = srAlpha(.0015, sr), vb = this.vb, nz = this.nz, sa = (1.6 + .5 * Math.min(pr, 1)) / Math.max(vT, .04), pg = this.pg, pgv = (1 + 4 * pr) * Math.max(vT, .04), rng = E.rng, nzG = (.02 + .1 * pr * pr) * (.5 + E.matBright);
+    for (var i = 0; i < n; i++) { v += (vT - v) * vC; vb[i] = v; nz[i] = v * nzG * rng.b(); pg[i] = pgv; }
     this.v = v;
-    if (this.kk > 0) { for (i = 0; i < n; i++) nz[i] += this.kk * .02 * rng.b(); this.kk *= .5; if (this.kk < .01) this.kk = 0; }
-    m.run(L, n, vb, pg, sa, nz, .5 + .4 * E.matBright, E.rng);
+    if (this.kk > 0) { for (i = 0; i < n; i++) nz[i] += this.kk * .02 * rng.b(); this.kk *= Math.pow(.5, 48000 / sr); if (this.kk < .01) this.kk = 0; }
+    m.run(L, n, vb, pg, sa, nz, srAlpha(.5 + .4 * E.matBright, sr), E.rng);
     for (i = 0; i < n; i++) L[i] *= 2.6;
     // stick-slip is not sinusoidal: the bow's sawtooth-like contact force puts harmonics on whichever mode is singing
-    var hq = .5 + .5 * Math.min(pr, 1); this.hg.run(L, n, .06 * hq, .1 * hq, .03 * hq, .04 * hq, 1 - Math.exp(-1 / (.02 * sr)));
+    var hq = .5 + .5 * Math.min(pr, 1); this.hg.run(L, n, .06 * hq, .1 * hq, .03 * hq, .04 * hq, 1 - Math.exp(-1 / (.02 * sr)), sr);
   };
 
   /* ---------- 4. Glass & friction ---------- */
@@ -403,13 +418,13 @@ function HECoreFactory() {
     if (this.pv - spd > .12) this.sq = Math.min(1, (this.pv - spd) * 3);
     this.pv = spd; this.sq *= .9;
     spd = Math.min(1, spd + this.sq * .5);
-    this.sp += (spd - this.sp) * .2; spd = this.sp;
+    this.sp += (spd - this.sp) * srAlpha(.2, sr); spd = this.sp;
     var vSlip = spd > .004 ? .06 + .5 * spd : 0, duty = clamp(.22 + .8 * wet, 0, 1), fS = 3 + 42 * spd * (1.2 - pr * .5);
-    var nzG = ct === 2 ? .5 : ct === 1 ? .04 : .14, sa = (ct === 1 ? 1.6 : 1.7 + .4 * pr) / Math.max(vSlip, .06), lpc = ct === 1 ? .28 : ct === 2 ? .6 : .95;
+    var nzG = ct === 2 ? .5 : ct === 1 ? .04 : .14, sa = (ct === 1 ? 1.6 : 1.7 + .4 * pr) / Math.max(vSlip, .06), lpc = srAlpha(ct === 1 ? .28 : ct === 2 ? .6 : .95, sr);
     // finger contact: once the finger is lifted (and any squeak tail has run out) the friction no longer touches the glass.
     // Left coupled, the idle contact could pump the modes and the glass would sing on by itself (heard after the Walls moment).
-    this.cg = (this.cg === undefined ? 1 : this.cg) + ((C.on || vSlip > 0 ? 1 : 0) - (this.cg === undefined ? 1 : this.cg)) * .05;
-    var v = this.v, vb = this.vb, nz = this.nz, pg = this.pg, cnt = this.cnt, stuck = this.stuck, sm = ct === 1 ? .01 : .12;
+    this.cg = (this.cg === undefined ? 1 : this.cg) + ((C.on || vSlip > 0 ? 1 : 0) - (this.cg === undefined ? 1 : this.cg)) * srAlpha(.05, sr);
+    var v = this.v, vb = this.vb, nz = this.nz, pg = this.pg, cnt = this.cnt, stuck = this.stuck, sm = srAlpha(ct === 1 ? .01 : .12, sr);
     var pgv = (1 + 4 * pr) * Math.max(vSlip, .06) * this.cg, bs = 0, pu = this.pu, pa = this.pa, PL = Math.max(4, (sr * (ct === 1 ? .0025 : .00018)) | 0);
     for (var k2 = 0; k2 < N; k2++) bs += m.bb[k2] * m.wi[k2];
     var kx = .02 * N / (bs + 1e-9) * (ct === 1 ? .5 : 1);
@@ -433,9 +448,9 @@ function HECoreFactory() {
     if (ct === 1) {
       // a wet finger: the (2,0) mode with its harmonics 20-40 dB down (the rubbing force is not a sine), and the
       // 4-8 Hz beat of the finger circling the rim past the vibration's nodes, faster as the finger speeds up
-      var hm = P['glass.harm'] === undefined ? 1 : P['glass.harm']; if (hm > 0) this.hg.run(L, n, .05 * hm, .06 * hm, .02 * hm, 0, 1 - Math.exp(-1 / (.03 * sr)), true);
-      var fr = TAU * (4 + 4 * Math.min(1, spd * 1.6)) / sr, fp = this.fp, fa = this.fa, faT = spd > .01 ? .42 * (P['glass.beat'] === undefined ? 1 : P['glass.beat']) : 0;
-      for (i = 0; i < n; i++) { fp += fr; if (fp > TAU) fp -= TAU; fa += (faT - fa) * .0005; L[i] *= 1 - fa * .5 * Math.cos(fp); }
+      var hm = P['glass.harm'] === undefined ? 1 : P['glass.harm']; if (hm > 0) this.hg.run(L, n, .05 * hm, .06 * hm, .02 * hm, 0, 1 - Math.exp(-1 / (.03 * sr)), sr, true);
+      var fr = TAU * (4 + 4 * Math.min(1, spd * 1.6)) / sr, fp = this.fp, fa = this.fa, faT = spd > .01 ? .42 * (P['glass.beat'] === undefined ? 1 : P['glass.beat']) : 0, faC = srAlpha(.0005, sr);
+      for (i = 0; i < n; i++) { fp += fr; if (fp > TAU) fp -= TAU; fa += (faT - fa) * faC; L[i] *= 1 - fa * .5 * Math.cos(fp); }
       this.fp = fp; this.fa = fa;
     }
   };
@@ -526,9 +541,13 @@ function HECoreFactory() {
   function Spring(E) {
     // three springs of different length and dispersion (a real tank has two or three), so no single falling tone dominates
     this.E = E; this.s = [];
+    this.bufN = nextPow2(Math.max(16384, Math.ceil(.1 * E.sr))); this.bufMask = this.bufN - 1;
     var M = [64, 52, 44], td = [.0546, .0631, .0712], AP = [347, 419, 491];
-    for (var i = 0; i < 3; i++) this.s.push({ M: M[i], d: new Float32Array(M[i] * 16), buf: new Float32Array(16384), w: 0, td: td[i], am: [1, .86, .74][i], lp1: 0, lp2: 0, hp: 0, hx: 0, eq1: 0, eq2: 0, ex1: 0, ex2: 0,
-      ap: new Float32Array(AP[i]), apN: AP[i], apw: 0, t1: 0, t2: 0 });
+    for (var i = 0; i < 3; i++) {
+      var apLen = Math.max(16, Math.round(AP[i] * E.sr / 48000));
+      this.s.push({ M: M[i], d: new Float32Array(M[i] * 16), buf: new Float32Array(this.bufN), w: 0, td: td[i], am: [1, .86, .74][i], lp1: 0, lp2: 0, hp: 0, hx: 0, eq1: 0, eq2: 0, ex1: 0, ex2: 0,
+        ap: new Float32Array(apLen), apN: apLen, apw: 0, t1: 0, t2: 0 });
+    }
     this.p = 0; this.K = 6; this.exc = 0; this.exAt = 0; this.bWait = 0; this.burst = 0; this.bLen = 1; this.bAmp = 0; this.bLc = .1; this.bz = 0; this.bz2 = 0; this.pd = 0; this.shT = 0; this.nl = 0; this.quiet = 0;
     this.eb = 0; this.last = 0; this.ebe = 0; this.dr = 0; this.rat = 0;
   }
@@ -552,7 +571,8 @@ function HECoreFactory() {
     var fT = Math.min(sr / (2 * K) * .9, 900 + 1900 * Math.pow(this.dr, 1.5), sr * .45), lc = 1 - Math.exp(-TAU * fT / sr), p = this.p;
     // e-bow driver: senses the tank output, band-limits and soft-clips it, and feeds it back in (sustain without a bow)
     var ebT = mode === 3 && C.on ? (.35 + .65 * C.p) * (C.auto ? 1 : .6 + .8 * Math.min(1, C.spd * 3 + .3)) : 0;
-    this.eb += (ebT - this.eb) * .02; var eb = this.eb, ebe = this.ebe, last = this.last, rat = this.rat, rD = Math.exp(-1 / (.07 * sr));
+    this.eb += (ebT - this.eb) * srAlpha(.02, sr); var eb = this.eb, ebe = this.ebe, last = this.last, rat = this.rat, rD = Math.exp(-1 / (.07 * sr));
+    var ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = Math.exp(-TAU * 38 / sr), bufN = this.bufN, bufMask = this.bufMask;
     this.exc = 0;
     // low-mid body around 180 Hz (the tank's measured low chirp peak): one resonant band-pass added back in
     var w0 = TAU * 180 / sr, al = Math.sin(w0) / (2 * 1.2), a0 = 1 + al, eb0 = al / a0, ea1 = -2 * Math.cos(w0) / a0, ea2 = (1 - al) / a0;
@@ -561,23 +581,23 @@ function HECoreFactory() {
       var x = inp ? inp[i] : 0;
       if (this.bWait > 0) this.bWait--; else if (this.burst > 0) { var bu = this.burst / this.bLen; bz += bLc * (rng.b() - bz); bz2 += bLc * (bz - bz2); x += this.bAmp * bz2 * 6 * bu * Math.sqrt(1 - bu + .02); this.burst--; }
       if (shake > .02) { if (--this.shT <= 0) { this.shT = sr / (4 + 60 * shake) * (.3 + rng.u() * 1.4); x += shake * (shake > .6 ? 1.6 : 1) * rng.b() * 40; } }
-      if (scr > 0) { this.nl += .3 * (rng.b() - this.nl); x += this.nl * scr * 4.5; }   // was 48: a scrape ran 20 dB over every other voice (peaks above 0 dBFS)
-      if (eb > .001) { var av = last < 0 ? -last : last; ebe += .001 * (av - ebe); var qd = last * 3 / (ebe + .02); qd = qd / (1 + (qd < 0 ? -qd : qd)); x += eb * (qd * .09 + .002 * rng.b()); }
+      if (scr > 0) { this.nl += nlC * (rng.b() - this.nl); x += this.nl * scr * 4.5; }   // was 48: a scrape ran 20 dB over every other voice (peaks above 0 dBFS)
+      if (eb > .001) { var av = last < 0 ? -last : last; ebe += ebeC * (av - ebe); var qd = last * 3 / (ebe + .02); qd = qd / (1 + (qd < 0 ? -qd : qd)); x += eb * (qd * .09 + .002 * rng.b()); }
       // coil rattle: after a hard knock the coils clash against each other for a moment (sparse ticks, dying away)
       if (rat > .002) { rat *= rD; if (rng.u() < .08) x += rat * rng.b(); }
       var o3 = 0, oL = 0, oR = 0, pk = 0;
       for (var j = 0; j < 3; j++) {
         var s = this.s[j], M = s.M, d = s.d, aj = a * s.am, aaj = aa * s.am;
-        var dcj = K * (1 + aaj) / (1 - aaj), D = Math.max(sr * .003, s.td * sr - M * dcj);
+        var dcj = K * (1 + aaj) / (1 - aaj), D = Math.min(bufN - 4, Math.max(sr * .003, s.td * sr - M * dcj));
         var g = Math.pow(10, -3 * s.td / T60);
-        var rp = s.w - D, i0 = Math.floor(rp), fr = rp - i0, fb = s.buf[i0 & 16383] * (1 - fr) + s.buf[(i0 + 1) & 16383] * fr;
+        var rp = s.w - D, i0 = Math.floor(rp), fr = rp - i0, fb = s.buf[i0 & bufMask] * (1 - fr) + s.buf[(i0 + 1) & bufMask] * fr;
         var v = x * (j === 2 ? .7 : 1) + fb * g;
         for (var k = 0, q = p; k < M; k++, q += 16) { var z = d[q], t = v - aj * z; d[q] = t; v = aj * t + z; }
         // diffusion inside the loop (a Schroeder allpass): the echoes smear into a splash instead of a clean repeat
         var apz = s.ap[s.apw], apw0 = v + apz * .55, apy = apz - .55 * apw0; s.ap[s.apw] = apw0; s.apw = s.apw + 1 === s.apN ? 0 : s.apw + 1; v = apy;
         s.lp1 += lc * (v - s.lp1); s.lp2 += lc * (s.lp1 - s.lp2) + 1e-18;
-        var o = s.lp2; s.hp = o - s.hx + .995 * s.hp; s.hx = o; o = s.hp;
-        s.buf[s.w & 16383] = -o; s.w = (s.w + 1) & 16383;
+        var o = s.lp2; s.hp = o - s.hx + hpR * s.hp; s.hx = o; o = s.hp;
+        s.buf[s.w & bufMask] = -o; s.w = (s.w + 1) & bufMask;
         var bp = eb0 * (o - s.ex2) - ea1 * s.eq1 - ea2 * s.eq2; s.ex2 = s.ex1; s.ex1 = o; s.eq2 = s.eq1; s.eq1 = bp + 1e-18; o += bp * .8;
         var ao = o < 0 ? -o : o; if (ao > pk) pk = ao;
         if (j === 0) oL = o; else if (j === 1) oR = o; else o3 = o;
@@ -759,7 +779,7 @@ function HECoreFactory() {
 
   /* ---------- 8. Aura pad: granular cloud over a capture of the instrument's own dry bus ---------- */
   function Aura(E) {
-    this.E = E; this.N = 1 << 19; this.mask = this.N - 1; this.buf = new Float32Array(this.N); this.w = 0;
+    this.E = E; this.N = nextPow2(Math.max(1 << 19, Math.ceil(11 * E.sr))); this.mask = this.N - 1; this.buf = new Float32Array(this.N); this.w = 0;
     var G = this.G = 32; this.pos = new Float64Array(G); this.rate = new Float32Array(G); this.len = new Int32Array(G); this.age = new Int32Array(G); this.gl = new Float32Array(G); this.gr = new Float32Array(G); this.act = new Uint8Array(G);
     this.hann = new Float32Array(2050); for (var i = 0; i < 2050; i++) this.hann[i] = .5 - .5 * Math.cos(TAU * i / 2048);
     this.acc = 0; this.lpL = 0; this.lpR = 0; this.ph = 0; this.lv = 0; this.frozen = false; this.n = 0; this.e1 = 0; this.ref = 0; this.ag = 1;
@@ -788,7 +808,8 @@ function HECoreFactory() {
         rate *= Math.pow(2, rng.b() * E.detune * 1.5 / 1200);
         var len = Math.max(256, (size * (.6 + .8 * rng.u())) | 0);
         var back = (C.auto ? .05 + rng.u() * (.15 + blur * 4) : C.x * 8 + rng.u() * (.05 + blur * 1.5)) * sr + len * Math.max(1, rate) + 64;
-        if (back > this.N - 4096) back = this.N - 4096;
+        var maxBack = this.N - Math.max(4096, len * Math.max(0, 1 - rate) + 2048);
+        if (back > maxBack) back = maxBack;
         this.pos[g] = this.w - back; this.rate[g] = rate; this.len[g] = len; this.age[g] = 0; this.act[g] = 1;
         var pan = .5 + rng.b() * .45; this.gl[g] = Math.cos(pan * 1.5708); this.gr[g] = Math.sin(pan * 1.5708);
       }
@@ -811,14 +832,15 @@ function HECoreFactory() {
     // the intended "breathe" movement is applied after it, so it survives.
     var e1 = this.e1, ref = this.ref, ag = this.ag, k1 = 1 - Math.exp(-1 / (.15 * sr)), k2 = 1 - Math.exp(-1 / (2 * sr)), fz = this.frozen;
     var lc = 1 - Math.exp(-TAU * 500 * Math.pow(36, 1 - P['aura.dark']) / sr), lpL = this.lpL, lpR = this.lpR, lv = this.lv;
+    var lvC = srAlpha(.0003, sr), agC = srAlpha(.0002, sr);
     for (i = 0; i < n; i++) {
-      lv += (lvT - lv) * .0003; var gg = norm * lv;
+      lv += (lvT - lv) * lvC; var gg = norm * lv;
       lpL += lc * (L[i] * gg - lpL); lpR += lc * (R[i] * gg - lpR);
       var pw = lpL * lpL + lpR * lpR;
       e1 += k1 * (pw - e1);
       if (!fz) ref += k2 * (pw - ref);
       var gt = fz && e1 > 1e-12 && ref > 1e-12 ? clamp(Math.sqrt(ref / e1), .5, 2) : 1;
-      ag += (gt - ag) * .0002;
+      ag += (gt - ag) * agC;
       L[i] = lpL * ag * br; R[i] = lpR * ag * br;
     }
     this.e1 = e1 + 1e-30; this.ref = ref + 1e-30; this.ag = ag;
@@ -828,30 +850,36 @@ function HECoreFactory() {
 
   /* ---------- Huge reverb: 8-line Householder FDN with modulated lines ---------- */
   function Reverb(E) {
-    this.E = E; this.N = 16384; this.mask = this.N - 1; this.b = []; this.lp = new Float64Array(8); this.d = new Float64Array(8);
+    this.E = E;
+    this.N = nextPow2(Math.max(16384, Math.ceil(.2 * E.sr))); this.mask = this.N - 1;
+    this.preN = nextPow2(Math.max(32768, Math.ceil(.3 * E.sr))); this.preMask = this.preN - 1;
+    this.apN = nextPow2(Math.max(2048, Math.ceil(.015 * E.sr))); this.apMask = this.apN - 1;
+    this.b = []; this.lp = new Float64Array(8); this.d = new Float64Array(8);
     for (var i = 0; i < 8; i++) this.b.push(new Float32Array(this.N));
     this.ms = [31.7, 37.1, 41.3, 47.9, 53.3, 61.1, 67.3, 73.9]; this.w = 0; this.ph = new Float64Array(8);
     this.ap = []; var am = [5.1, 7.7, 11.3];
-    for (i = 0; i < 3; i++) this.ap.push({ b: new Float32Array(2048), n: Math.round(am[i] * E.sr / 1000) % 2048, w: 0 });
-    this.pre = new Float32Array(32768); this.pw = 0; this.hp = 0; this.x = new Float64Array(8); this.g = new Float64Array(8);
+    for (i = 0; i < 3; i++) this.ap.push({ b: new Float32Array(this.apN), n: Math.min(this.apN - 2, Math.max(1, Math.round(am[i] * E.sr / 1000))), w: 0 });
+    this.pre = new Float32Array(this.preN); this.pw = 0; this.hp = 0; this.x = new Float64Array(8); this.g = new Float64Array(8);
   }
   Reverb.prototype.render = function (inp, L, R, n, P) {
-    var E = this.E, sr = E.sr, mask = this.mask, x = this.x, lp = this.lp, d = this.d, b = this.b;
-    var sz = .45 + P['rev.size'] * 1.5, rt = P['rev.decay'], dc = 1 - .85 * P['rev.damp'] * (.6 + .4 * (1 - E.matBright * .3));
-    var pre = Math.min(32000, ((P['rev.pre'] + 60 * E.distance) * .001 * sr) | 0), g = this.g, k;
-    for (k = 0; k < 8; k++) { var dt = Math.min(this.ms[k] * sz * .001 * sr, this.N - 64); if (d[k] === 0) d[k] = dt; d[k] += (dt - d[k]) * .05; g[k] = Math.pow(10, -3 * d[k] / (sr * rt)); }
+    var E = this.E, sr = E.sr, mask = this.mask, preMask = this.preMask, apMask = this.apMask, x = this.x, lp = this.lp, d = this.d, b = this.b;
+    var sz = .45 + P['rev.size'] * 1.5, rt = P['rev.decay'];
+    var dc48 = 1 - .85 * P['rev.damp'] * (.6 + .4 * (1 - E.matBright * .3));
+    var dc = srAlpha(dc48, sr), hpC = 1 - Math.exp(-TAU * 60 / sr), modD = 14 * sr / 48000, dC = srAlpha(.05, sr);
+    var pre = Math.min(this.preN - 64, ((P['rev.pre'] + 60 * E.distance) * .001 * sr) | 0), g = this.g, k;
+    for (k = 0; k < 8; k++) { var dt = Math.min(this.ms[k] * sz * .001 * sr, this.N - 64 - 2 * modD); if (d[k] === 0) d[k] = dt; d[k] += (dt - d[k]) * dC; g[k] = Math.pow(10, -3 * d[k] / (sr * rt)); }
     // each modulated line keeps its own LFO phase and wraps it on its own: one shared phase scaled by (1 + k * .13) jumped
     // when it wrapped, so every 3.2 s the read taps leapt up to 28 samples and the hall ticked
     var w = this.w, ph = this.ph, pinc = TAU * .31 / sr;
     for (var i = 0; i < n; i++) {
-      this.hp += .008 * (inp[i] - this.hp);
+      this.hp += hpC * (inp[i] - this.hp);
       var s = inp[i] - this.hp;
-      this.pre[this.pw] = s; s = this.pre[(this.pw - pre) & 32767]; this.pw = (this.pw + 1) & 32767;
-      for (k = 0; k < 3; k++) { var a = this.ap[k], z = a.b[(a.w - a.n) & 2047], t = s + .6 * z; a.b[a.w] = t; a.w = (a.w + 1) & 2047; s = z - .6 * t; }
+      this.pre[this.pw] = s; s = this.pre[(this.pw - pre) & preMask]; this.pw = (this.pw + 1) & preMask;
+      for (k = 0; k < 3; k++) { var a = this.ap[k], z = a.b[(a.w - a.n) & apMask], t = s + .6 * z; a.b[a.w] = t; a.w = (a.w + 1) & apMask; s = z - .6 * t; }
       var sum = 0;
       for (k = 0; k < 8; k++) {
         if (!(k & 1)) { ph[k] += pinc * (1 + k * .13); if (ph[k] > TAU) ph[k] -= TAU; }
-        var rp = w - d[k] - (k & 1 ? 0 : 14 * (1 + Math.sin(ph[k] + k))), i0 = Math.floor(rp), f = rp - i0, bk = b[k];
+        var rp = w - d[k] - (k & 1 ? 0 : modD * (1 + Math.sin(ph[k] + k))), i0 = Math.floor(rp), f = rp - i0, bk = b[k];
         var v = bk[i0 & mask] * (1 - f) + bk[(i0 + 1) & mask] * f;
         lp[k] += dc * (v - lp[k]); v = lp[k] * g[k] + 1e-18; x[k] = v; sum += v;
       }
@@ -880,9 +908,9 @@ function HECoreFactory() {
   }
   Moan.prototype.reset = function () { this.y1.fill(0); this.y2.fill(0); this.amp = 0; this.pu = 0; this.x1 = this.x2 = this.dl = 0; };
   Moan.prototype.render = function (L, R, n, C, P) {
-    var E = this.E, sr = E.sr, rng = E.rng, sf = P['moan.surface'] | 0, S = MOAN_SETS[sf], sz = P['moan.size'], grip = P['moan.grip'], i, k;
+    var E = this.E, sr = E.sr, rng = E.rng, sf = clamp(P['moan.surface'] | 0, 0, 3), S = MOAN_SETS[sf], sz = P['moan.size'], grip = P['moan.grip'], i, k;
     var pr = clamp(P['moan.press'] * (C.on ? .4 + 1.2 * C.p : 1), 0, 1.3), spd = C.on ? (C.auto ? .4 : C.spd) : 0;
-    this.sp += (spd - this.sp) * .15; spd = this.sp;
+    this.sp += (spd - this.sp) * srAlpha(.15, sr); spd = this.sp;
     // surface modes (water wobbles the metal sheet)
     var wd = sf >= 2 ? E.water * .04 : 0, wv = E.wv, pos = C.x, st = 1 + (sf === 0 ? 0 : E.matStretch), mt = sf === 0 ? 1 : E.matT, im = sf === 3 ? immerse(E, pos) : 1;
     for (k = 0; k < 12; k++) {
@@ -898,20 +926,21 @@ function HECoreFactory() {
     // mode lock: within 7% of a surface mode the slip rate is pulled onto it (the moan "catches" and swells)
     var best = 1, lk = 0; for (k = 0; k < 12; k++) { var d = Math.log(this.fk[k] / fT); if (d < 0) d = -d; if (d < best) { best = d; lk = k; } }
     var lock = best < .07 ? (1 - best / .07) * (.3 + .5 * grip) : 0; if (lock > 0) fT += (this.fk[lk] - fT) * lock;
-    if (this.f === 0) this.f = fT; this.f += (fT - this.f) * .08;
+    if (this.f === 0) this.f = fT; this.f += (fT - this.f) * srAlpha(.08, sr);
     var aT = spd > .01 ? Math.min(1, spd * 2.5) * (.25 + .75 * Math.min(pr, 1)) * (1 + lock * .6) : 0;
     var f0 = this.f, ph = this.ph, pu = this.pu, pl = this.pl, pa = this.pa, amp = this.amp, x1 = this.x1, x2 = this.x2, nz = this.nz, dl = this.dl, jit = this.jit;
     var a1 = this.a1, a2 = this.a2, bb = this.b, g = this.g, y1 = this.y1, y2 = this.y2, rough = (.004 + .025 * grip) * E.instab, out = S.g * 1.5;
+    var amUp = srAlpha(.002, sr), amDn = srAlpha(.0008, sr), nzC = srAlpha(.2, sr), dlC = srAlpha(.15, sr);
     for (i = 0; i < n; i++) {
-      amp += (aT - amp) * (aT > amp ? .002 : .0008);
+      amp += (aT - amp) * (aT > amp ? amUp : amDn);
       ph += f0 / sr * (1 + jit);
       if (ph >= 1) { ph -= 1; jit = rng.b() * rough; pl = Math.max(3, Math.round(sr / (f0 * 2.8))); pu = pl; pa = amp * (1 + rng.b() * .15 * grip); }
       var x = 0; if (pu > 0) { x = pa * (.5 - .5 * Math.cos(TAU * pu / pl)); pu--; }
-      nz += .2 * (rng.b() - nz); x += nz * amp * .06;
+      nz += nzC * (rng.b() - nz); x += nz * amp * .06;
       var xd = x - x2, o = 0; x2 = x1; x1 = x;
       for (k = 0; k < 12; k++) { var y = a1[k] * y1[k] - a2[k] * y2[k] + bb[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y * g[k]; }
       // the ball and handle themselves radiate a little of the raw squeal
-      dl += .15 * (x - dl);
+      dl += dlC * (x - dl);
       L[i] = (o * 6 + (x - dl) * .5) * out; R[i] = L[i];
     }
     this.ph = ph; this.pu = pu; this.pl = pl; this.pa = pa; this.amp = amp; this.x1 = x1; this.x2 = x2; this.nz = nz; this.dl = dl + 1e-18; this.jit = jit;
@@ -936,7 +965,7 @@ function HECoreFactory() {
     var pz = P['body.piezo'], a1 = this.a1, a2 = this.a2, b = this.b, y1 = this.y1, y2 = this.y2, x1 = this.x1, x2 = this.x2;
     // piezo: 2nd-order high-pass at 300 Hz and a 2.6 kHz presence peak
     var w0 = TAU * 300 / sr, al = Math.sin(w0) / 1.4, c0 = Math.cos(w0), a0 = 1 + al, hb0 = (1 + c0) / 2 / a0, ha1 = -2 * c0 / a0, ha2 = (1 - al) / a0;
-    var w1 = TAU * 2600 / sr, al1 = Math.sin(w1) / 3, a01 = 1 + al1, pb0 = al1 / a01, pa1 = -2 * Math.cos(w1) / a01, pa2 = (1 - al1) / a01, pk = 0;
+    var w1 = TAU * Math.min(2600, .45 * sr) / sr, al1 = Math.sin(w1) / 3, a01 = 1 + al1, pb0 = al1 / a01, pa1 = -2 * Math.cos(w1) / a01, pa2 = (1 - al1) / a01, pk = 0;
     for (i = 0; i < n; i++) {
       var x = inp[i], xd = x - x2, o = 0, od = 0; x2 = x1; x1 = x;
       for (k = 0; k < 12; k++) { var y = a1[k] * y1[k] - a2[k] * y2[k] + b[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y; if (k & 1) od += y; }
@@ -952,29 +981,29 @@ function HECoreFactory() {
   /* ---------- harmonizer: two-voice granular pitch shifter (octave down by default), detuned left/right, with feedback ----------
      Korven runs the machine through pitch shifters; an octave down turns a string into a sub drone, feedback stacks the
      shifts into a falling spiral. Each voice is a pair of 70 ms read heads crossfaded with a sin^2 window. */
-  function Harmz(E) { this.E = E; this.buf = new Float32Array(16384); this.w = 0; this.ph = [0, .5, 0, .5]; this.fbv = 0; this.lp = 0; this.dc1 = 0; this.dc2 = 0; this.q = 999; this.pk = 0; this.lpL = 0; this.lpR = 0; }
+  function Harmz(E) { this.E = E; this.N = nextPow2(Math.max(16384, Math.ceil(.1 * E.sr))); this.mask = this.N - 1; this.buf = new Float32Array(this.N); this.w = 0; this.ph = [0, .5, 0, .5]; this.fbv = 0; this.lp = 0; this.dc1 = 0; this.dc2 = 0; this.q = 999; this.pk = 0; this.lpL = 0; this.lpR = 0; }
   Harmz.prototype.reset = function () { this.buf.fill(0); this.fbv = this.lp = this.dc1 = this.dc2 = this.lpL = this.lpR = 0; };
   Harmz.prototype.render = function (inp, L, R, n, P) {
     var sr = this.E.sr, i, mx = 0;
     for (i = 0; i < n; i++) { var a = inp[i] < 0 ? -inp[i] : inp[i]; if (a > mx) mx = a; }
     if (mx < 1e-7 && this.fbv * this.fbv < 1e-14) { if (++this.q > 200) { if (this.q === 201) this.reset(); L.fill(0); R.fill(0); return; } } else this.q = 0;
-    var W = Math.round(sr * .07), sh = P['harm.shift'], dt = P['harm.detune'] / 100, fb = P['harm.fb'], mix = P['harm.mix'] * 1.4;
+    var W = Math.min(this.N - 8, Math.max(16, Math.round(sr * .07))), sh = P['harm.shift'], dt = P['harm.detune'] / 100, fb = P['harm.fb'], mix = P['harm.mix'] * 1.4, mask = this.mask;
     var rA = Math.pow(2, (sh - dt / 2) / 12), rB = Math.pow(2, (sh + dt / 2) / 12), dA = (1 - rA) / W, dB = (1 - rB) / W;
-    var buf = this.buf, w = this.w, ph = this.ph, fbv = this.fbv, lp = this.lp, lc = 1 - Math.exp(-TAU * 3500 / sr), pk = 0, d1 = this.dc1, d2 = this.dc2;
+    var buf = this.buf, w = this.w, ph = this.ph, fbv = this.fbv, lp = this.lp, lc = 1 - Math.exp(-TAU * 3500 / sr), dcR = Math.exp(-TAU * 38 / sr), pk = 0, d1 = this.dc1, d2 = this.dc2;
     for (i = 0; i < n; i++) {
       lp += lc * (fbv - lp);
-      buf[w & 16383] = inp[i] + lp * fb; 
-      var o = [0, 0];
+      buf[w & mask] = inp[i] + lp * fb;
+      var o0 = 0, o1 = 0;
       for (var v = 0; v < 4; v++) {
         var p = ph[v] + (v < 2 ? dA : dB); if (p >= 1) p -= 1; else if (p < 0) p += 1; ph[v] = p;
-        var rp = w - 2 - p * W, i0 = Math.floor(rp), fr = rp - i0, x = buf[i0 & 16383] * (1 - fr) + buf[(i0 + 1) & 16383] * fr, s = Math.sin(Math.PI * p);
-        o[v >> 1] += x * s * s;
+        var rp = w - 2 - p * W, i0 = Math.floor(rp), fr = rp - i0, x = buf[i0 & mask] * (1 - fr) + buf[(i0 + 1) & mask] * fr, s = Math.sin(Math.PI * p);
+        if (v < 2) o0 += x * s * s; else o1 += x * s * s;
       }
-      var l = o[0], r = o[1]; fbv = (l + r) * .5; d2 = fbv - d1 + .995 * d2; d1 = fbv; fbv = d2;
+      var l = o0, r = o1; fbv = (l + r) * .5; d2 = fbv - d1 + dcR * d2; d1 = fbv; fbv = d2;
       l *= mix; r *= mix; L[i] = l; R[i] = r; var al = l < 0 ? -l : l; if (al > pk) pk = al;
       w++;
     }
-    this.w = w & 16383; this.fbv = fbv + 1e-18; this.lp = lp + 1e-18; this.dc1 = d1; this.dc2 = d2; if (pk > this.pk) this.pk = pk;
+    this.w = w & mask; this.fbv = fbv + 1e-18; this.lp = lp + 1e-18; this.dc1 = d1; this.dc2 = d2; if (pk > this.pk) this.pk = pk;
   };
 
   /* ---------- the engine ---------- */
@@ -993,11 +1022,12 @@ function HECoreFactory() {
     }
     this.act = []; this.pbuf = new Float32Array(BL);
     this.rev = new Reverb(this);
-    this.slots = []; this.C = []; this.strip = [];
+    this.slots = []; this.midiSlots = []; this.C = []; this.strip = [];
     for (var i = 0; i < NS; i++) {
       this.slots.push([new Slot(i), new Slot(i)]);
+      this.midiSlots.push([new Slot(i), new Slot(i), new Slot(i)]);
       this.C.push(this.Cv[i][0]);
-      this.strip.push({ g: 0, quiet: 999, pk: 0, choke: 0, d1: [0, 0], d2: [0, 0], dl: [0, 0], am: 0, lo: [0, 0], md: [0, 0, 0, 0] });
+      this.strip.push({ g: 0, quiet: 999, pk: 0, choke: 0, d1: [0, 0], d2: [0, 0], dl: [0, 0], prevX: [0, 0], am: 0, lo: [0, 0], md: [0, 0, 0, 0] });
     }
     function fa() { return new Float32Array(BL); }
     this.tL = fa(); this.tR = fa(); this.dL = fa(); this.dR = fa(); this.rvIn = fa(); this.spIn = fa(); this.rL = fa(); this.rR = fa();
@@ -1005,7 +1035,7 @@ function HECoreFactory() {
     // HPF) and the limiter look-ahead delay, so the stems sum to the pre-limiter mix sample for sample and line up with it.
     // stem NS + 4 is the audio input (mic, line or a file). While the input is off it is skipped entirely (no master
     // chain, no denormal guard), so a session or render without input is bit-identical to an engine without one.
-    this.NST = NS + 5; this.LA = Math.round(.002 * sr);
+    this.NST = NS + 5; this.LA = Math.min(248, Math.round(.002 * sr));
     this.inL = fa(); this.inR = fa(); this.inOn = false; this.inAct = false; this.inE = 0; this.inTail = 0; this.inPk = 0; this.inG = -1;
     this.body = new Body(this); this.harm = new Harmz(this); this.bdIn = fa(); this.hmIn = fa();
     // water: 16 slow wobble signals (two incommensurate sines each), one per mode, shared by everything in the "bowl"
@@ -1031,34 +1061,35 @@ function HECoreFactory() {
     for (i = 0; i < NS; i++) this.vOff.push({ pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7, distance: .15, dist: { lc: 1, dg: 1, wd: 1, bass: 0, bc: 0, aS: 0, rg: 1 } });
     this.gMac = { pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7 };
     this.ring = [new Float32Array(65536), new Float32Array(65536)]; this.rw = 0; this.sw = [new Float32Array(60000), new Float32Array(60000)]; this.swN = 0; this.swP = 0; this.swEnd = -1; this.mAura = 0; this.duckE = 0; this.dr2 = 0;
-    this.lkw = 0; this.lh = 1; this.hw = new Float64Array(256).fill(1); this.hp2 = 0; this.lg = 1; this.gr = 1; this.pkL = 0; this.pkR = 0;
+    this.lkw = 0; this.dqVal = new Float64Array(256); this.dqIdx = new Float64Array(256); this.dqHead = 0; this.dqTail = 0; this.dqPos = 0; this.lg = 1; this.gr = 1; this.pkL = 0; this.pkR = 0;
     this.frame = 0; this.layers = []; this.recL = null; this.lid = 1; this.lane = null; this.lver = 0; this.undo = []; this.redo = []; this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null };
     // custom moments: definitions, the ones playing, the live knob values they ride on, and the capture in progress
     this.cmDefs = {}; this.cms = []; this.cmBase = {}; this.cmSl = []; this.recM = null; this.cmN = 0;
     this.macros(); this.voiceMacros();
   }
   Engine.prototype.macros = function () {
-    var P = this.P, D = clamp((P['macro.dread'] || 0) + this.mDread, 0, 1), M = P['macro.material']; if (M === undefined) M = .5;
-    this.dread += (D - this.dread) * .2; D = this.dread; this.material += (M - this.material) * .2; M = this.material;
-    this.distance += ((this.mom.stinger ? 0 : P['macro.distance'] || 0) - this.distance) * .1;
-    this.pitchSt += ((P['macro.pitch'] || 0) + this.mPitch - this.pitchSt) * .25; this.pitchMul = Math.pow(2, this.pitchSt / 12);
+    var P = this.P, sr = this.sr, a20 = srAlpha(.2, sr), a10 = srAlpha(.1, sr), a25 = srAlpha(.25, sr);
+    var D = clamp((P['macro.dread'] || 0) + this.mDread, 0, 1), M = P['macro.material']; if (M === undefined) M = .5;
+    this.dread += (D - this.dread) * a20; D = this.dread; this.material += (M - this.material) * a20; M = this.material;
+    this.distance += ((this.mom.stinger ? 0 : P['macro.distance'] || 0) - this.distance) * a10;
+    this.pitchSt += ((P['macro.pitch'] || 0) + this.mPitch - this.pitchSt) * a25; this.pitchMul = Math.pow(2, this.pitchSt / 12);
     this.detune = pw(D, 2, 15, 60); this.instab = pw(D, .5, 1, 2.5); this.rough = pw(D, 0, .15, .5); this.subAmt = pw(D, 0, .2, .6) + (this.pitchSt < -12 ? .3 : 0); this.driveOff = pw(D, 0, .15, .4);
     this.matT = pw(M, .3, 1, 1.6); this.matSlope = pw(M, 3, .7, .3); this.matStretch = pw(M, 0, .02, .05); this.matBright = pw(M, .15, .7, 1);
     var g = this.gMac; g.pitchSt = this.pitchSt; g.pitchMul = this.pitchMul; g.material = this.material; g.matT = this.matT; g.matSlope = this.matSlope; g.matStretch = this.matStretch; g.matBright = this.matBright;
   };
   // per-voice Tune, Material and Distance offsets add on top of the macros (they never replace them)
   Engine.prototype.voiceMacros = function () {
-    var P = this.P, sr = this.sr, i;
+    var P = this.P, sr = this.sr, a20 = srAlpha(.2, sr), a10 = srAlpha(.1, sr), a25 = srAlpha(.25, sr), i;
     for (i = 0; i < NS; i++) {
       var nm = HE_S[i], o = this.vOff[i];
       var pT = (P['macro.pitch'] || 0) + this.mPitch + (P[nm + '.tune'] || 0) + (P[nm + '.cents'] || 0) / 100;
-      o.pitchSt += (pT - o.pitchSt) * .25; o.pitchMul = Math.pow(2, o.pitchSt / 12);
+      o.pitchSt += (pT - o.pitchSt) * a25; o.pitchMul = Math.pow(2, o.pitchSt / 12);
       var Mt = P['macro.material']; if (Mt === undefined) Mt = .5;
       var M = clamp(Mt + (P[nm + '.matOff'] || 0), 0, 1);
-      o.material += (M - o.material) * .2; M = o.material;
+      o.material += (M - o.material) * a20; M = o.material;
       o.matT = pw(M, .3, 1, 1.6); o.matSlope = pw(M, 3, .7, .3); o.matStretch = pw(M, 0, .02, .05); o.matBright = pw(M, .15, .7, 1);
       var Dt = clamp((this.mom.stinger ? 0 : (P['macro.distance'] || 0)) + (P[nm + '.distOff'] || 0), 0, 1);
-      o.distance += (Dt - o.distance) * .1;
+      o.distance += (Dt - o.distance) * a10;
       var D = o.distance, Dd = o.dist;
       Dd.lc = Math.min(1, 1 - Math.exp(-TAU * 20000 * Math.pow(.06, D) / sr)); Dd.dg = db(-15 * D); Dd.wd = 1 - .6 * D; Dd.bass = (db(4) - 1) * (1 - D); Dd.bc = 1 - Math.exp(-TAU * 150 / sr); Dd.aS = D * .3; Dd.rg = db(-5 * D);
     }
@@ -1082,7 +1113,7 @@ function HECoreFactory() {
       if (s === 5 && (this.P['spring.mode'] | 0) === 0) this.src[5].hit(p);
       this.strip[s].quiet = 0;
       S.lm = this.frame; S.ra = S.rk = 0; S.gi = 0;
-    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; S.ra = S.rk = 0; }
+    } else if (k === 'm') { S.tx = x; S.ty = y; S.p = p; if (hz > 0) S.hz = hz; S.ra = S.rk = 0; }
     // 'n': a move that glides. The hand travelled here since the last move; the engine sees moves only at block
     // boundaries and in clumps (one browser frame, one audio callback or one host buffer at a time), so a plain move
     // jumps and then stops, and the speed the bow and glass voices hear pulses. A glide walks the target there in
@@ -1091,32 +1122,36 @@ function HECoreFactory() {
     else if (k === 'n') {
       var nb = Math.round((this.frame - S.lm) / BL), mx = Math.max(1, Math.round(.12 * this.sr / BL));
       S.lm = this.frame;
+      if (hz > 0) S.hz = hz;
       if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }   // another move in the same block: same glide, new end
       else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = Math.min(mx, Math.max(1, Math.round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }
     }
     else S.on = false;
   };
-  Engine.prototype.user = function (s, k, x, y, p, hz) {
-    this.gesture(0, s, k, x, y, p, hz);
+  Engine.prototype.user = function (s, k, x, y, p, hz, slot) {
+    var S = slot >= 1 && slot <= 3 ? this.midiSlots[s][slot - 1] : this.slots[s][0];
+    this.gesture2(S, s, k, x, y, p, hz);
     if (this.recL) this.recL.ev.push({ t: this.frame, s: s, k: k, x: x, y: y, p: p, hz: hz || 0 });
     if (this.recM) this.recM.ev.push({ t: this.frame - this.recM.start, s: s, k: k, x: x, y: y, p: p, hz: hz || 0 });
   };
   // contact priority per source: live touch, then moments/auto, then loop layers (oldest first), then hold.
   // Each active contact keeps the instance it got (sticky); a new contact takes a free instance or steals the lowest-priority one.
   Engine.prototype.smooth = function (S, dt) {
-    if (!S.on) { S.spd *= .8; return; }
+    if (!S.on) { S.spd *= Math.pow(.8, 48000 / this.sr); return; }
     if (S.rk > 0) { S.rk--; var gf = 1 - S.rk / S.ra; S.tx = S.rsx + (S.rx - S.rsx) * gf; S.ty = S.rsy + (S.ry - S.rsy) * gf; S.p = S.rsp + (S.rp - S.rsp) * gf; }
-    var nx = S.x + (S.tx - S.x) * .35, ny = S.y + (S.ty - S.y) * .35, d = Math.sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
-    S.x = nx; S.y = ny; S.spd += (Math.min(1, d / dt / 2.5) - S.spd) * .1;
+    var a35 = srAlpha(.35, this.sr), a10 = srAlpha(.1, this.sr);
+    var nx = S.x + (S.tx - S.x) * a35, ny = S.y + (S.ty - S.y) * a35, d = Math.sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
+    S.x = nx; S.y = ny; S.spd += (Math.min(1, d / dt / 2.5) - S.spd) * a10;
   };
   Engine.prototype.contacts = function () {
     var dt = BL / this.sr, act = this.act, s, j, k;
-    for (s = 0; s < NS; s++) { this.smooth(this.slots[s][0], dt); this.smooth(this.slots[s][1], dt); }
+    for (s = 0; s < NS; s++) { this.smooth(this.slots[s][0], dt); this.smooth(this.slots[s][1], dt); for (j = 0; j < 3; j++) this.smooth(this.midiSlots[s][j], dt); }
     for (j = 0; j < this.layers.length; j++) this.smooth(this.layers[j].sl, dt);
     for (j = 0; j < this.cmSl.length; j++) this.smooth(this.cmSl[j], dt);
     for (s = 0; s < NS; s++) {
-      var sl = this.slots[s], cv = this.Cv[s], nv = cv.length, n = 0;
+      var sl = this.slots[s], ms = this.midiSlots[s], cv = this.Cv[s], nv = cv.length, n = 0;
       if (sl[0].on) act[n++] = sl[0];
+      for (j = 0; j < 3; j++) if (ms[j].on) act[n++] = ms[j];
       if (sl[1].on) act[n++] = sl[1];
       for (j = 0; j < this.layers.length; j++) { var Ly = this.layers[j]; if (Ly.src === s && Ly.sl.on) act[n++] = Ly.sl; }
       for (j = 0; j < this.cmSl.length; j++) { var Cs = this.cmSl[j]; if (Cs.src === s && Cs.on) act[n++] = Cs; }
@@ -1472,14 +1507,17 @@ function HECoreFactory() {
     var hs = P[nm + '.hsend'] || 0, bw = BODY_W[s] * (P['body.amt'] || 0), hb = this.hmIn, bb = this.bdIn, kn = this.kn, kw = s === 5 ? 0 : bw, sy = this.symB, sw = s === 1 ? 1 + bw : s === 0 || s === 5 ? 0 : bw;
     var Dd = this.vOff[s].dist, lc = Dd.lc, dg = Dd.dg, wd = Dd.wd, bass = Dd.bass, bc = Dd.bc, aS = Dd.aS, rg = Dd.rg, lo = st.lo, md = st.md, dpL = this.dpL, dpR = this.dpR;
     if (drv > .005) {
-      var pre = 1 + drv * drv * 40, mk = 1 / Math.pow(pre, .55), tc = 1 - Math.exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / this.sr);
+      var pre = 1 + drv * drv * 40, mk = 1 / Math.pow(pre, .55), tc = 1 - Math.exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / this.sr), dcR = Math.exp(-TAU * 23 / this.sr);
       for (var c = 0; c < (stereo ? 2 : 1); c++) {
-        var b = c ? tR : tL, d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c];
+        var b = c ? tR : tL, d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c], px = st.prevX[c];
         for (i = 0; i < BL; i++) {
-          var x = b[i] * pre + .08, y = x / (1 + (x < 0 ? -x * .8 : x));
-          y = y > 1 ? 1 : y; d2 = y - d1 + .997 * d2; d1 = y; dl += tc * (d2 - dl); b[i] = b[i] * (1 - drv) * (1 - drv) + dl * mk * 2.2 * Math.min(1, drv * 3);
+          var xc = b[i], xm = .5 * (px + xc); px = xc;
+          var x0 = xm * pre + .08, y0 = x0 / (1 + (x0 < 0 ? -x0 * .8 : x0));
+          var x1 = xc * pre + .08, y1 = x1 / (1 + (x1 < 0 ? -x1 * .8 : x1));
+          var y = .5 * (y0 + y1);
+          d2 = y - d1 + dcR * d2; d1 = y; dl += tc * (d2 - dl); b[i] = xc * (1 - drv) * (1 - drv) + dl * mk * 2.2 * Math.min(1, drv * 3);
         }
-        st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18;
+        st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18; st.prevX[c] = px;
       }
     }
     var am = st.am, ainc = TAU * (22 + 45 * this.dread) / this.sr, rnorm = 1 / (1 - rough * .5);
@@ -1567,7 +1605,7 @@ function HECoreFactory() {
     if (this.hbAct) this.hbRender(bdL, bdR, BL);
     for (i = 0; i < BL; i++) { this.dL[i] += hmL[i] + bdL[i]; this.dR[i] += hmR[i] + bdR[i]; rvI[i] += (hmL[i] + hmR[i]) * .18 + (bdL[i] + bdR[i]) * .08; }
     this.rev.render(this.rvIn, this.rL, this.rR, BL, P);
-    this.revBoost *= .995; this.duckE *= Math.exp(-BL / (.22 * sr));
+    this.revBoost *= Math.pow(.995, 48000 / sr); this.duckE *= Math.exp(-BL / (.22 * sr));
     var rm = P['rev.mix'], rL = this.rL, rR = this.rR, ring = this.ring, NST = this.NST;
     var hL = this.stemL[NS], hR = this.stemR[NS], wL = this.stemL[NS + 1], wR = this.stemR[NS + 1], dL = this.dL, dR = this.dR;
     // hall return and reverse swell become stems 8 and 9; the swell ring keeps the full dry+hall signal as before
@@ -1580,7 +1618,7 @@ function HECoreFactory() {
       ring[0][this.rw] = l + wl; ring[1][this.rw] = r + wr; this.rw = (this.rw + 1) & 65535;
     }
     // linear master chain per stem, then the look-ahead delay; sum undelayed (for detection) and delayed (for output)
-    var tone = P['master.tone'], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - Math.exp(-TAU * 700 / sr), vol = db(P['master.vol']);
+    var tone = P['master.tone'], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - Math.exp(-TAU * 700 / sr), vol = db(P['master.vol']), dcR = Math.exp(-TAU * 18 / sr);
     var uL = this.uL, uR = this.uR, sumL = this.sumL, sumR = this.sumR, w0 = this.lkw, LA = this.LA;
     uL.fill(0); uR.fill(0); sumL.fill(0); sumR.fill(0);
     for (s = 0; s < NST; s++) {
@@ -1591,29 +1629,29 @@ function HECoreFactory() {
         for (i = 0; i < BL; i++) {
           var x = b[i];
           tl += tc * (x - tl); x = (tl * gl + (x - tl) * gh) * vol;
-          hy = x - hx + .9975 * hy; hx = x; x = hy;
+          hy = x - hx + dcR * hy; hx = x; x = hy;
           u[i] += x; lk[w] = x; var dly = lk[(w - LA) & 255]; b[i] = dly; sm[i] += dly; w = (w + 1) & 255;
         }
         M.tl[c] = tl + 1e-18; M.hx[c] = hx; M.hy[c] = hy + 1e-18;
       }
     }
     this.lkw = (w0 + BL) & 255;
-    var lg = this.lg, ceil = .891, mgr = 1, pL = 0, pR = 0, lgB = this.lgB;
+    var lg = this.lg, ceil = .891, mgr = 1, pL = 0, pR = 0, lgB = this.lgB, attC = srAlpha(.09, sr), relC = srAlpha(.0004, sr);
+    var dqVal = this.dqVal, dqIdx = this.dqIdx, dqHead = this.dqHead, dqTail = this.dqTail, dqPos = this.dqPos, hn = LA + 8;
     for (i = 0; i < BL; i++) {
       var ul = uL[i] < 0 ? -uL[i] : uL[i], ur = uR[i] < 0 ? -uR[i] : uR[i], pkk = ul > ur ? ul : ur, gt = pkk > ceil ? ceil / pkk : 1;
-      // sliding-window minimum of the target over the look-ahead time (+8), so the gain is still down when every
-      // delayed peak arrives, including a slightly smaller peak that follows a bigger one
-      var hw = this.hw, hn = LA + 8, hp = this.hp2, old = hw[hp]; hw[hp] = gt; this.hp2 = (hp + 1) % hn;
-      if (gt <= this.lh) this.lh = gt;
-      else if (old <= this.lh) { var mn = 1; for (var q = 0; q < hn; q++) if (hw[q] < mn) mn = hw[q]; this.lh = mn; }
-      gt = this.lh;
+      var pos = dqPos++;
+      while (dqHead !== dqTail && dqVal[(dqTail - 1) & 255] >= gt) dqTail = (dqTail - 1) & 255;
+      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 255;
+      while (dqHead !== dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 255;
+      gt = dqVal[dqHead];
       // the attack aims 0.004 dB under the target so its exponential approach never leaves an over
-      lg += gt < lg ? (gt * .9995 - lg) * .09 : (gt - lg) * .0004; if (lg < mgr) mgr = lg; lgB[i] = lg;
-      l = sumL[i] * lg; r = sumR[i] * lg;
-      l = l > ceil ? ceil : l < -ceil ? -ceil : l; r = r > ceil ? ceil : r < -ceil ? -ceil : r;
+      lg += gt < lg ? (gt * .9995 - lg) * attC : (gt - lg) * relC; if (lg < mgr) mgr = lg; lgB[i] = lg;
+      l = softClip(sumL[i] * lg, ceil); r = softClip(sumR[i] * lg, ceil);
       oL[i] = l; oR[i] = r;
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
+    this.dqHead = dqHead; this.dqTail = dqTail; this.dqPos = dqPos;
     this.lg = lg; if (mgr < this.gr) this.gr = mgr; if (pL > this.pkL) this.pkL = pL; if (pR > this.pkR) this.pkR = pR;
     if (this.byeN || this.gate) this.byeRun(oL, oR);
     this.frame += BL;
@@ -1680,8 +1718,9 @@ function HECoreFactory() {
         var C = this.Cv[s][j]; C.on = false; C.x = .5; C.y = .5; C.p = .6; C.spd = 0; C.hz = 0; C.auto = false; C.own = null; C.kick = 0; this.iq[s][j] = 999;
       }
       for (j = 0; j < 2; j++) { var S = this.slots[s][j]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.auto = -1; S.kick = 0; }
+      for (j = 0; j < 3; j++) { var Sm = this.midiSlots[s][j]; Sm.on = false; Sm.tx = Sm.ty = Sm.x = Sm.y = .5; Sm.p = .6; Sm.spd = 0; Sm.hz = 0; Sm.auto = -1; Sm.kick = 0; }
       var st = this.strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
-      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
+      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.prevX[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
     }
     // the looper keeps its layers, muted; a take in progress is dropped
     for (j = 0; j < this.layers.length; j++) { var L = this.layers[j]; L.sl.on = false; L.mute = true; if (L.gs) L.gs.cur = null; }
@@ -1699,7 +1738,7 @@ function HECoreFactory() {
     if (this.hb) { this.hb[0].t = this.hb[1].t = -1; this.hbL1 = this.hbL2 = 0; } this.hbAct = 0;
     this.ring[0].fill(0); this.ring[1].fill(0);
     for (s = 0; s < this.NST; s++) { var M = this.ms[s]; for (c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; M.lk[c].fill(0); } }
-    this.lh = 1; this.hw.fill(1); this.lg = 1;
+    this.dqHead = this.dqTail = this.dqPos = 0; this.lg = 1;
     this.eg.z.fill(0); this.eg.env = 0; this.eg.gr = 1;
     this.kd.lp = this.kd.fe = this.kd.se = this.kd.cd = 0; this.symB.fill(0); this.symIn.fill(0); this.symPk = 0; this.spInPk = 0; this.sl = 0;
     this.gate = true;
@@ -1738,7 +1777,7 @@ function HECoreFactory() {
           this.post({ t: 'cmrec', sr: e.sr, dur: e.frame - RM.start, ev: RM.ev, pv: RM.pv, p0: used });
         }
         break;
-      case 'g': e.user(m.s, m.k, m.x, m.y, m.p, m.hz); break;
+      case 'g': e.user(m.s, m.k, m.x, m.y, m.p, m.hz, m.slot || 0); break;
       case 'moment': e.moment(m.id, m.on, m.arg); break;
       case 'loop': e.loopCmd(m); break;
       case 'panic': e.panic(); break;

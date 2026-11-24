@@ -24,17 +24,19 @@ struct Layer { int id, src; Slot sl; double len, origin; std::shared_ptr<const s
 struct LayerSnap { int id, src; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; bool mute, ghost; uint32_t seed; };
 struct Snap { double frame; bool hasLane; double laneStart, laneLen; std::vector<LayerSnap> L; };
 
-struct Strip { double g = 0; int quiet = 999; double pk = 0; int choke = 0; double d1[2] = {}, d2[2] = {}, dl[2] = {}, am = 0, lo[2] = {}, md[4] = {}; };
+struct Strip { double g = 0; int quiet = 999; double pk = 0; int choke = 0; double d1[2] = {}, d2[2] = {}, dl[2] = {}, prevX[2] = {}, am = 0, lo[2] = {}, md[4] = {}; };
 struct MChain { double tl[2] = {}, hx[2] = {}, hy[2] = {}; float lk[2][256]; MChain() { std::memset(lk, 0, sizeof lk); } };
 
 class Engine : public EState {
  public:
+  static const int NMIDI = 3;
   // voices: src[] are the first instances; inst[s] lists every instance of voice s
   Ebow ebow0; Hurdy hurdy; Bowed bowed0; Glass glass0; Struck struck; Spring spring; Junk junk; Aura aura; Moan moan;
   std::vector<std::unique_ptr<Voice_>> extra;
   std::vector<Voice_*> inst[NS]; std::vector<Contact> Cv[NS]; std::vector<int> iq[NS];
   std::vector<Slot*> act; FB pbuf;
-  Reverb rev; Slot slots[NS][2]; Contact* C[NS]; Strip strip[NS];
+  Reverb rev; Slot slots[NS][2]; Slot midiSlots[NS][NMIDI]; Contact* C[NS]; Strip strip[NS];
+  bool stemsMode = true;
   FB tL, tR, dL, dR, rvIn, spIn, rL, rR, inL, inR; bool inOn = false, inAct = false; double inE = 0; int inTail = 0; double inPk = 0, inG = -1;
   int NST = NSTEM, LA; Body body; Harmz harm; FB bdIn, hmIn;
   double wph[32] = {}, wTilt0 = 0, sl = 0;
@@ -52,11 +54,15 @@ class Engine : public EState {
   struct CmInst { int id; std::shared_ptr<const CmDefF> d; double pos = 0; size_t i = 0; std::vector<int> li; std::map<int, std::unique_ptr<Slot>> sl; double str = 1, xo = 0, pm = 1, dm = 1; };
   struct CmBase { double v; int n; const CmLaneF* L; std::shared_ptr<const CmDefF> keep; };
   std::map<int, std::shared_ptr<const CmDefF>> cmDefs; std::vector<std::unique_ptr<CmInst>> cms; std::map<int, CmBase> cmBase; std::vector<Slot*> cmSl; uint32_t cmN = 0;
+  // preallocated scratch for cmRun() so playing custom moments never touches the heap per block
+  double cmSum_[NPARAM] = {}, cmAb_[NPARAM] = {}; uint8_t cmHasSum_[NPARAM] = {}, cmHasAb_[NPARAM] = {}; int cmDone_[64] = {};
   bool recMOn = false; double recMStart = 0; CmCapture recM; std::vector<double> recMp0; bool capReady = false; CmCapture cap;
   int ucnt = 0;
   struct { double c[20] = {}, z[32] = {}, env = 0, rel = 0, ceil = .19, gr = 1; } eg;
   double revBoost = 0; std::vector<float> ring[2]; int rw = 0; std::vector<float> sw[2]; int swN = 0, swP = 0, swEnd = -1; double duckE = 0;
-  int lkw = 0; double lh = 1, hw[256]; int hp2 = 0; double lg = 1, gr = 1, pkL = 0, pkR = 0;
+  // O(1) monotonic deque for the limiter's look-ahead hold window
+  int lkw = 0; double dqVal[256] = {}; int64_t dqIdx[256] = {}; int dqHead = 0, dqTail = 0; int64_t dqPos = 0;
+  double lg = 1, gr = 1, pkL = 0, pkR = 0;
   double frame = 0; std::vector<std::unique_ptr<Layer>> layers; bool recOn = false; double recStart = 0; std::vector<REv> recEv; int lid = 1; bool hasLane = false; double laneStart = 0, laneLen = 0; int lver = 0;
   std::vector<Snap> undo, redo;
   // looper clock: lc is the looper's time at the start of the next block (== frame while running free, as in the web app);
@@ -87,9 +93,11 @@ class Engine : public EState {
         extra.emplace_back(v); inst[s].push_back(v);
       }
       Cv[s].resize(NV[s]); iq[s].assign(NV[s], 999);
-      slots[s][0] = Slot(s); slots[s][1] = Slot(s); C[s] = &Cv[s][0];
+      slots[s][0] = Slot(s); slots[s][1] = Slot(s);
+      for (int m = 0; m < NMIDI; m++) midiSlots[s][m] = Slot(s);
+      C[s] = &Cv[s][0];
     }
-    LA = (int)jsround(.002 * sr); if (LA > 248) LA = 248;   // the lookahead ring and hold window are 256 long: above 124 kHz the 2 ms lookahead would overrun them (the JavaScript reads past its array there too)
+    LA = (int)jsround(.002 * sr); if (LA > 248) LA = 248;   // the lookahead ring and hold window are 256 long: above 124 kHz the 2 ms lookahead would overrun them
     symB = symA.d; symInW = symBb.d; symIn = symInW;
     auto bq = [&](int j, int type, double f, double Q) {
       double w = TAU * fmin2(f, sr * .45) / sr, al = std::sin(w) / (2 * Q), c = std::cos(w), a0 = 1 + al, b0 = (type ? 1 - c : 1 + c) / 2 / a0;
@@ -98,7 +106,6 @@ class Engine : public EState {
     bq(0, 0, 2000, .5412); bq(1, 0, 2000, 1.3066); bq(2, 1, 5000, .5412); bq(3, 1, 5000, 1.3066);
     eg.rel = std::exp(-1 / (.1 * sr));
     ring[0].assign(65536, 0.f); ring[1].assign(65536, 0.f); sw[0].assign(60000, 0.f); sw[1].assign(60000, 0.f);
-    for (int i = 0; i < 256; i++) hw[i] = 1;
     macros(true); voiceMacros(true);
     recM.ev.reserve(8192); recM.pv.reserve(8192);
     // preallocate what grows during playing, so the audio thread does not allocate in the common case
@@ -109,26 +116,28 @@ class Engine : public EState {
 
   // first: the constructor's call, made before any parameter is set (the JavaScript reads undefined there)
   void macros(bool first = false) {
+    double a20 = srAlpha(.2, sr), a10 = srAlpha(.1, sr), a25 = srAlpha(.25, sr);
     double D = clamp((first ? 0 : P[P_MACRO_DREAD]) + mDread, 0, 1), M = first ? .5 : P[P_MACRO_MATERIAL];
-    dread += (D - dread) * .2; D = dread; material += (M - material) * .2; M = material;
-    distance += ((sting.on ? 0 : (first ? 0 : P[P_MACRO_DISTANCE])) - distance) * .1;
-    pitchSt += ((first ? 0 : P[P_MACRO_PITCH]) + mPitch - pitchSt) * .25; pitchMul = std::pow(2.0, pitchSt / 12);
+    dread += (D - dread) * a20; D = dread; material += (M - material) * a20; M = material;
+    distance += ((sting.on ? 0 : (first ? 0 : P[P_MACRO_DISTANCE])) - distance) * a10;
+    pitchSt += ((first ? 0 : P[P_MACRO_PITCH]) + mPitch - pitchSt) * a25; pitchMul = std::pow(2.0, pitchSt / 12);
     detune = pw(D, 2, 15, 60); instab = pw(D, .5, 1, 2.5); rough = pw(D, 0, .15, .5); subAmt = pw(D, 0, .2, .6) + (pitchSt < -12 ? .3 : 0); driveOff = pw(D, 0, .15, .4);
     matT = pw(M, .3, 1, 1.6); matSlope = pw(M, 3, .7, .3); matStretch = pw(M, 0, .02, .05); matBright = pw(M, .15, .7, 1);
     GMac& g = gMac; g.pitchSt = pitchSt; g.pitchMul = pitchMul; g.material = material; g.matT = matT; g.matSlope = matSlope; g.matStretch = matStretch; g.matBright = matBright;
   }
   // per-voice Tune, Material and Distance offsets add on top of the macros (they never replace them)
   void voiceMacros(bool first = false) {
+    double a20 = srAlpha(.2, sr), a10 = srAlpha(.1, sr), a25 = srAlpha(.25, sr);
     for (int i = 0; i < NS; i++) {
       VOff& o = vOff[i];
       double pT = (first ? 0 : P[P_MACRO_PITCH]) + mPitch + (first ? 0 : P[SRC_TUNE[i]]) + (first ? 0 : P[SRC_CENTS[i]]) / 100;
-      o.pitchSt += (pT - o.pitchSt) * .25; o.pitchMul = std::pow(2.0, o.pitchSt / 12);
+      o.pitchSt += (pT - o.pitchSt) * a25; o.pitchMul = std::pow(2.0, o.pitchSt / 12);
       double Mt = first ? .5 : P[P_MACRO_MATERIAL];
       double M = clamp(Mt + (first ? 0 : P[SRC_MATOFF[i]]), 0, 1);
-      o.material += (M - o.material) * .2; M = o.material;
+      o.material += (M - o.material) * a20; M = o.material;
       o.matT = pw(M, .3, 1, 1.6); o.matSlope = pw(M, 3, .7, .3); o.matStretch = pw(M, 0, .02, .05); o.matBright = pw(M, .15, .7, 1);
       double Dt = clamp((sting.on ? 0 : (first ? 0 : P[P_MACRO_DISTANCE])) + (first ? 0 : P[SRC_DISTOFF[i]]), 0, 1);
-      o.distance += (Dt - o.distance) * .1;
+      o.distance += (Dt - o.distance) * a10;
       double D = o.distance; Dist& Dd = o.dist;
       Dd.lc = fmin2(1, 1 - std::exp(-TAU * 20000 * std::pow(.06, D) / sr)); Dd.dg = db(-15 * D); Dd.wd = 1 - .6 * D; Dd.bass = (db(4) - 1) * (1 - D); Dd.bc = 1 - std::exp(-TAU * 150 / sr); Dd.aS = D * .3; Dd.rg = db(-5 * D);
     }
@@ -144,37 +153,41 @@ class Engine : public EState {
       if (s == 5 && (int)P[P_SPRING_MODE] == 0) spring.hit(p);
       strip[s].quiet = 0;
       S.lm = frame; S.ra = S.rk = 0; S.gi = 0;
-    } else if (k == 'm') { S.tx = x; S.ty = y; S.p = p; S.ra = S.rk = 0; }
+    } else if (k == 'm') { S.tx = x; S.ty = y; S.p = p; if (hz > 0) S.hz = hz; S.ra = S.rk = 0; }
     // 'n': a move that glides (engine.js): the target walks to (x, y, p) over 1.5 times the usual gap between moves (one block to 120 ms)
     else if (k == 'n') {
       double nb = std::round((frame - S.lm) / BL); int mx = (int)std::max(1.0, std::round(.12 * sr / BL));
       S.lm = frame;
+      if (hz > 0) S.hz = hz;
       if (S.rk > 0 && nb < 1) { S.rx = x; S.ry = y; S.rp = p; }
       else { S.gi = S.gi > 0 ? S.gi + (nb - S.gi) * .3 : nb; S.ra = S.rk = (int)std::min((double)mx, std::max(1.0, std::round(S.gi * 1.5))); S.rsx = S.tx; S.rsy = S.ty; S.rsp = S.p; S.rx = x; S.ry = y; S.rp = p; }
     }
     else S.on = false;
   }
-  void user(int s, char k, double x, double y, double p, double hz) {
-    gesture2(slots[s][0], s, k, x, y, p, hz);
+  void user(int s, char k, double x, double y, double p, double hz, int slot = 0) {
+    Slot& S = (slot >= 1 && slot <= NMIDI) ? midiSlots[s][slot - 1] : slots[s][0];
+    gesture2(S, s, k, x, y, p, hz);
     if (recOn) recEv.push_back({lc, s, k, x, y, p, hz});
     if (recMOn) recM.ev.push_back({frame - recMStart, s, k, x, y, p, hz});
   }
   void smooth(Slot& S, double dt) {
-    if (!S.on) { S.spd *= .8; return; }
+    if (!S.on) { S.spd *= std::pow(.8, 48000.0 / sr); return; }
     if (S.rk > 0) { S.rk--; double gf = 1 - (double)S.rk / S.ra; S.tx = S.rsx + (S.rx - S.rsx) * gf; S.ty = S.rsy + (S.ry - S.rsy) * gf; S.p = S.rsp + (S.rp - S.rsp) * gf; }
-    double nx = S.x + (S.tx - S.x) * .35, ny = S.y + (S.ty - S.y) * .35, d = std::sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
-    S.x = nx; S.y = ny; S.spd += (fmin2(1, d / dt / 2.5) - S.spd) * .1;
+    double a35 = srAlpha(.35, sr), a10 = srAlpha(.1, sr);
+    double nx = S.x + (S.tx - S.x) * a35, ny = S.y + (S.ty - S.y) * a35, d = std::sqrt((nx - S.x) * (nx - S.x) + (ny - S.y) * (ny - S.y));
+    S.x = nx; S.y = ny; S.spd += (fmin2(1, d / dt / 2.5) - S.spd) * a10;
   }
   int actIndexOf(Slot* o) { for (size_t i = 0; i < act.size(); i++) if (act[i] == o) return (int)i; return -1; }
   void contacts() {
     double dt = BL / sr; int s, n; size_t j, k;
-    for (s = 0; s < NS; s++) { smooth(slots[s][0], dt); smooth(slots[s][1], dt); }
+    for (s = 0; s < NS; s++) { smooth(slots[s][0], dt); smooth(slots[s][1], dt); for (int m = 0; m < NMIDI; m++) smooth(midiSlots[s][m], dt); }
     for (auto& Ly : layers) smooth(Ly->sl, dt);
     for (Slot* cs : cmSl) smooth(*cs, dt);
     for (s = 0; s < NS; s++) {
       std::vector<Contact>& cv = Cv[s]; size_t nv = cv.size(); n = 0;
       auto put = [&](Slot* S) { if ((size_t)n < act.size()) act[n] = S; else act.push_back(S); n++; };
       if (slots[s][0].on) put(&slots[s][0]);
+      for (int m = 0; m < NMIDI; m++) if (midiSlots[s][m].on) put(&midiSlots[s][m]);
       if (slots[s][1].on) put(&slots[s][1]);
       for (auto& Ly : layers) if (Ly->src == s && Ly->sl.on) put(&Ly->sl);
       for (Slot* cs : cmSl) if (cs->src == s && cs->on) put(cs);
@@ -410,7 +423,8 @@ class Engine : public EState {
   }
   void cmRun() {
     if (cms.empty()) return;
-    std::map<int, double> sum, ab; std::vector<int> done; bool grew = false;
+    std::memset(cmHasSum_, 0, sizeof cmHasSum_); std::memset(cmHasAb_, 0, sizeof cmHasAb_);
+    int nDone = 0; bool grew = false;
     for (size_t q = 0; q < cms.size(); q++) {
       CmInst& I = *cms[q]; const CmDefF& d = *I.d; const auto& ev = d.ev;
       I.pos += BL / I.str;
@@ -423,14 +437,15 @@ class Engine : public EState {
       for (size_t l = 0; l < d.lanes.size(); l++) {
         const CmLaneF& L = d.lanes[l]; int j = I.li[l];
         while (j + 1 < (int)L.pts.size() && L.pts[j + 1].first <= I.pos) j++;
-        I.li[l] = j; if (j < 0) continue;
-        if (L.abs) ab[L.k] = L.pts[j].second; else { auto sm = sum.find(L.k); double prev = sm == sum.end() ? 0 : sm->second; sum[L.k] = prev + L.pts[j].second * I.dm; }
+        I.li[l] = j; if (j < 0 || L.k < 0 || L.k >= NPARAM) continue;
+        if (L.abs) { cmAb_[L.k] = L.pts[j].second; cmHasAb_[L.k] = 1; }
+        else { cmSum_[L.k] = (cmHasSum_[L.k] ? cmSum_[L.k] : 0.0) + L.pts[j].second * I.dm; cmHasSum_[L.k] = 1; }
       }
-      if (I.pos >= d.len && I.i >= ev.size()) done.push_back(I.id);
+      if (I.pos >= d.len && I.i >= ev.size() && nDone < 64) cmDone_[nDone++] = I.id;
     }
     if (grew) cmSlots();
-    for (auto& kv : cmBase) { int k = kv.first; CmBase& B = kv.second; auto a = ab.find(k); if (a != ab.end()) P[k] = a->second; else { auto sm = sum.find(k); if (sm != sum.end()) P[k] = cmDenorm(*B.L, cmNorm(*B.L, B.v) + sm->second); } }
-    for (int id : done) for (size_t i = 0; i < cms.size(); i++) if (cms[i]->id == id) { cmStop((int)i); break; }
+    for (auto& kv : cmBase) { int k = kv.first; CmBase& B = kv.second; if (cmHasAb_[k]) P[k] = cmAb_[k]; else if (cmHasSum_[k]) P[k] = cmDenorm(*B.L, cmNorm(*B.L, B.v) + cmSum_[k]); }
+    for (int di = 0; di < nDone; di++) { int id = cmDone_[di]; for (size_t i = 0; i < cms.size(); i++) if (cms[i]->id == id) { cmStop((int)i); break; } }
   }
   void cmRec(bool on) {
     if (on) { if (!recMOn) { recMOn = true; recMStart = frame; recM.ev.clear(); recM.pv.clear(); recMp0.assign(P, P + NPARAM); for (auto& kv : cmBase) recMp0[kv.first] = kv.second.v; } }
@@ -565,14 +580,18 @@ class Engine : public EState {
     float* hb0 = hmIn.d; float* bb = bdIn.d; float* knn = kn.d; float* sy = symB;
     const Dist& Dv = vOff[s].dist; double lc = Dv.lc, dg = Dv.dg, wd = Dv.wd, bass = Dv.bass, bc = Dv.bc, aS = Dv.aS, rg = Dv.rg; double* lo = st.lo; double* md = st.md;
     if (drv > .005) {
-      double pre = 1 + drv * drv * 40, mk = 1 / std::pow(pre, .55), tc = 1 - std::exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / sr);
+      // 2x oversampled smooth asymmetric saturation (no hard clip) to suppress HF foldover aliasing
+      double pre = 1 + drv * drv * 40, mk = 1 / std::pow(pre, .55), tc = 1 - std::exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / sr), dcR = std::exp(-TAU * 23.0 / sr);
       for (int c = 0; c < (stereo ? 2 : 1); c++) {
-        float* b = c ? tR.d : tL.d; double d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c];
+        float* b = c ? tR.d : tL.d; double d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c], px = st.prevX[c];
         for (i = 0; i < BL; i++) {
-          double x = b[i] * pre + .08, y = x / (1 + (x < 0 ? -x * .8 : x));
-          y = y > 1 ? 1 : y; d2 = y - d1 + .997 * d2; d1 = y; dl += tc * (d2 - dl); b[i] = (float)(b[i] * (1 - drv) * (1 - drv) + dl * mk * 2.2 * fmin2(1, drv * 3));
+          double xc = b[i], xm = .5 * (px + xc); px = xc;
+          double x0 = xm * pre + .08, y0 = x0 / (1 + (x0 < 0 ? -x0 * .8 : x0));
+          double x1 = xc * pre + .08, y1 = x1 / (1 + (x1 < 0 ? -x1 * .8 : x1));
+          double y = .5 * (y0 + y1);
+          d2 = y - d1 + dcR * d2; d1 = y; dl += tc * (d2 - dl); b[i] = (float)(xc * (1 - drv) * (1 - drv) + dl * mk * 2.2 * fmin2(1, drv * 3));
         }
-        st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18;
+        st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18; st.prevX[c] = px;
       }
     }
     double am = st.am, ainc = TAU * (22 + 45 * dread) / sr, rnorm = 1 / (1 - rough0 * .5);
@@ -677,7 +696,7 @@ class Engine : public EState {
     if (hbAct) hbRender(bdL, bdR, BL);
     for (i = 0; i < BL; i++) { dL[i] = (float)((double)dL[i] + ((double)hmL[i] + bdL[i])); dR[i] = (float)((double)dR[i] + ((double)hmR[i] + bdR[i])); rvIn[i] = (float)(rvIn[i] + (((double)hmL[i] + hmR[i]) * .18 + ((double)bdL[i] + bdR[i]) * .08)); }
     rev.render(rvIn.d, rL.d, rR.d, BL);
-    revBoost *= .995; duckE *= std::exp(-BL / (.22 * sr));
+    revBoost *= std::pow(.995, 48000.0 / sr); duckE *= std::exp(-BL / (.22 * sr));
     double rm = P[P_REV_MIX]; float* hL = stemL[NS].d; float* hR = stemR[NS].d; float* wL = stemL[NS + 1].d; float* wR = stemR[NS + 1].d;
     for (i = 0; i < BL; i++) {
       double l = rL[i] * rm, r = rR[i] * rm; hL[i] = (float)l; hR[i] = (float)r; l += dL[i]; r += dR[i];
@@ -687,33 +706,51 @@ class Engine : public EState {
       wL[i] = (float)wl2; wR[i] = (float)wr2;
       ring[0][rw] = (float)(l + wl2); ring[1][rw] = (float)(r + wr2); rw = (rw + 1) & 65535;
     }
-    double tone = P[P_MASTER_TONE], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - std::exp(-TAU * 700 / sr), vol = db(P[P_MASTER_VOL]);
+    double tone = P[P_MASTER_TONE], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - std::exp(-TAU * 700 / sr), vol = db(P[P_MASTER_VOL]), dcR = std::exp(-TAU * 18.0 / sr);
     int w0 = lkw; uL.fill0(); uR.fill0(); sumL.fill0(); sumR.fill0();
-    for (s = 0; s < NST; s++) {
-      if (s == NS + 4 && !inAct) continue;
-      MChain& M = ms[s];
+    if (stemsMode) {
+      for (s = 0; s < NST; s++) {
+        if (s == NS + 4 && !inAct) continue;
+        MChain& M = ms[s];
+        for (int c = 0; c < 2; c++) {
+          float* b = c ? stemR[s].d : stemL[s].d; float* u = c ? uR.d : uL.d; float* sm = c ? sumR.d : sumL.d; float* lk = M.lk[c]; double tl = M.tl[c], hx = M.hx[c], hy = M.hy[c]; int w = w0;
+          for (i = 0; i < BL; i++) {
+            double x = b[i];
+            tl += tc * (x - tl); x = (tl * gl + (x - tl) * gh) * vol;
+            hy = x - hx + dcR * hy; hx = x; x = hy;
+            u[i] = (float)(u[i] + x); lk[w] = (float)x; float dly = lk[(w - LA) & 255]; b[i] = dly; sm[i] = (float)(sm[i] + (double)dly); w = (w + 1) & 255;
+          }
+          M.tl[c] = tl + 1e-18; M.hx[c] = hx; M.hy[c] = hy + 1e-18;
+        }
+      }
+    } else {
+      // Single-bus linear master chain (13x cheaper in the stereo plugin when individual stems are not exported)
+      MChain& M = ms[0];
       for (int c = 0; c < 2; c++) {
-        float* b = c ? stemR[s].d : stemL[s].d; float* u = c ? uR.d : uL.d; float* sm = c ? sumR.d : sumL.d; float* lk = M.lk[c]; double tl = M.tl[c], hx = M.hx[c], hy = M.hy[c]; int w = w0;
+        float* u = c ? uR.d : uL.d; float* sm = c ? sumR.d : sumL.d; float* lk = M.lk[c]; double tl = M.tl[c], hx = M.hx[c], hy = M.hy[c]; int w = w0;
         for (i = 0; i < BL; i++) {
-          double x = b[i];
+          double x = 0;
+          for (s = 0; s < NST; s++) if (s != NS + 4 || inAct) x += (c ? stemR[s][i] : stemL[s][i]);
           tl += tc * (x - tl); x = (tl * gl + (x - tl) * gh) * vol;
-          hy = x - hx + .9975 * hy; hx = x; x = hy;
-          u[i] = (float)(u[i] + x); lk[w] = (float)x; float dly = lk[(w - LA) & 255]; b[i] = dly; sm[i] = (float)(sm[i] + (double)dly); w = (w + 1) & 255;
+          hy = x - hx + dcR * hy; hx = x; x = hy;
+          u[i] = (float)x; lk[w] = (float)x; sm[i] = lk[(w - LA) & 255]; w = (w + 1) & 255;
         }
         M.tl[c] = tl + 1e-18; M.hx[c] = hx; M.hy[c] = hy + 1e-18;
       }
     }
     lkw = (w0 + BL) & 255;
-    double lgv = lg, ceil = .891, mgr = 1, pL = 0, pR = 0;
+    double lgv = lg, ceil = .891, mgr = 1, pL = 0, pR = 0, attC = srAlpha(.09, sr), relC = srAlpha(.0004, sr);
+    int hn = LA + 8;
     for (i = 0; i < BL; i++) {
       double ul = uL[i] < 0 ? -uL[i] : uL[i], ur = uR[i] < 0 ? -uR[i] : uR[i], pkk = ul > ur ? ul : ur, gt = pkk > ceil ? ceil / pkk : 1;
-      int hn = LA + 8, hp = hp2; double old = hw[hp]; hw[hp] = gt; hp2 = (hp + 1) % hn;
-      if (gt <= lh) lh = gt;
-      else if (old <= lh) { double mn = 1; for (int q = 0; q < hn; q++) if (hw[q] < mn) mn = hw[q]; lh = mn; }
-      gt = lh;
-      lgv += gt < lgv ? (gt * .9995 - lgv) * .09 : (gt - lgv) * .0004; if (lgv < mgr) mgr = lgv; lgB[i] = (float)lgv;
-      double l = sumL[i] * lgv, r = sumR[i] * lgv;
-      l = l > ceil ? ceil : l < -ceil ? -ceil : l; r = r > ceil ? ceil : r < -ceil ? -ceil : r;
+      // O(1) amortized monotonic deque sliding-window minimum over the last hn samples
+      int64_t pos = dqPos++;
+      while (dqHead != dqTail && dqVal[(dqTail - 1) & 255] >= gt) dqTail = (dqTail - 1) & 255;
+      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 255;
+      while (dqHead != dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 255;
+      gt = dqVal[dqHead];
+      lgv += gt < lgv ? (gt * .9995 - lgv) * attC : (gt - lgv) * relC; if (lgv < mgr) mgr = lgv; lgB[i] = (float)lgv;
+      double l = softClip(sumL[i] * lgv, ceil), r = softClip(sumR[i] * lgv, ceil);
       oL[i] = (float)l; oR[i] = (float)r;
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }
@@ -750,8 +787,9 @@ class Engine : public EState {
     for (s = 0; s < NS; s++) {
       for (j = 0; j < Cv[s].size(); j++) { Cv[s][j] = Contact(); iq[s][j] = 999; }
       for (c = 0; c < 2; c++) { Slot& S = slots[s][c]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.autoSpd = -1; S.kick = 0; }
+      for (c = 0; c < NMIDI; c++) { Slot& S = midiSlots[s][c]; S.on = false; S.tx = S.ty = S.x = S.y = .5; S.p = .6; S.spd = 0; S.hz = 0; S.autoSpd = -1; S.kick = 0; }
       Strip& st = strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
-      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
+      for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.prevX[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
     }
     for (auto& L : layers) { L->sl.on = false; L->mute = true; if (L->gs) L->gs->cur = -1; }
     if (!layers.empty()) lver++;
@@ -765,7 +803,7 @@ class Engine : public EState {
     hb[0].t = hb[1].t = -1; hbL1 = hbL2 = 0; hbAct = false;
     std::fill(ring[0].begin(), ring[0].end(), 0.f); std::fill(ring[1].begin(), ring[1].end(), 0.f);
     for (s = 0; s < NST; s++) { MChain& M = ms[s]; for (c = 0; c < 2; c++) { M.tl[c] = 0; M.hx[c] = 0; M.hy[c] = 0; } std::memset(M.lk, 0, sizeof M.lk); }
-    lh = 1; for (int q = 0; q < 256; q++) hw[q] = 1; lg = 1;
+    dqHead = dqTail = 0; dqPos = 0; lg = 1;
     std::memset(eg.z, 0, sizeof eg.z); eg.env = 0; eg.gr = 1;
     kd.lp = kd.fe = kd.se = kd.cd = 0; symA.fill0(); symBb.fill0(); symPk = 0; spInPk = 0; sl = 0;
     gate = true;
@@ -794,7 +832,7 @@ void Host::msg(const Msg& m) {
   switch (m.t) {
     case Msg::INIT: if (m.params) for (int k = 0; k < NPARAM; k++) e.P[k] = m.params[k]; if (m.seed) e.rng = Rng(m.seed); ready_ = true; break;
     case Msg::PARAM: if (m.k >= 0 && m.k < NPARAM) e.setP(m.k, m.v); break;
-    case Msg::GESTURE: if (m.s >= 0 && m.s < NS) e.user(m.s, m.g, m.x, m.y, m.p, m.hz); break;
+    case Msg::GESTURE: if (m.s >= 0 && m.s < NS) e.user(m.s, m.g, m.x, m.y, m.p, m.hz, m.slot); break;
     case Msg::MOMENT: e.moment(m.id, m.on, m.arg); break;
     case Msg::CMOMENT: e.cmToggle(m.id, m.on); break;
     case Msg::CMDEF: e.cmDefine(m.id, m.def.get()); break;
@@ -833,11 +871,13 @@ void Host::render(float* L, float* R, int n, const float* IL, const float* IR) {
 void Host::init(const double* params, uint32_t seed) { Msg m; m.t = Msg::INIT; m.params = params; m.seed = seed; msg(m); }
 void Host::setParam(int id, double v) { Msg m; m.t = Msg::PARAM; m.k = id; m.v = v; msg(m); }
 double Host::param(int id) const { return id >= 0 && id < NPARAM ? e_->P[id] : 0; }
-void Host::gesture(int voice, char kind, double x, double y, double pressure, double hz) { Msg m; m.t = Msg::GESTURE; m.s = voice; m.g = kind; m.x = x; m.y = y; m.p = pressure; m.hz = hz; msg(m); }
+void Host::gesture(int voice, char kind, double x, double y, double pressure, double hz, int slot) { Msg m; m.t = Msg::GESTURE; m.s = voice; m.g = kind; m.x = x; m.y = y; m.p = pressure; m.hz = hz; m.slot = slot; msg(m); }
 void Host::moment(int id, bool on, double arg) { Msg m; m.t = Msg::MOMENT; m.id = id; m.on = on; m.arg = arg; msg(m); }
 void Host::loop(const char* action, int layer, double v, bool free) { Msg m; m.t = Msg::LOOP; m.a = action; m.layer = layer; m.lv = v; m.free = free; msg(m); }
 void Host::panic() { Msg m; m.t = Msg::PANIC; msg(m); }
 void Host::inputOn(bool on) { Msg m; m.t = Msg::INPUT; m.on = on; msg(m); }
+void Host::setStemsMode(bool on) { e_->stemsMode = on; }
+int Host::latencySamples() const { return e_->LA; }
 int64_t Host::frame() const { return (int64_t)e_->frame; }
 Host::Touch Host::touch(int voice) const { Touch t; if (voice < 0 || voice >= NS) return t; const Slot& S = e_->slots[voice][0]; t.on = S.on; t.x = S.x; t.y = S.y; t.p = S.p; t.spd = S.spd; return t; }
 bool Host::takeCapture(CmCapture& out) { Engine& e = *e_; if (!e.capReady) return false; e.capReady = false; std::swap(out, e.cap); return true; }

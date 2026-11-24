@@ -67,6 +67,8 @@ set_target_properties(he_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # the engine must round like the JavaScript one: no fast-math
 if (NOT MSVC)
   target_compile_options(he_core PRIVATE -O2 -fno-fast-math -ffp-contract=off)
+else()
+  target_compile_options(he_core PRIVATE /fp:precise)
 endif()
 
 set(HE_FORMATS VST3)

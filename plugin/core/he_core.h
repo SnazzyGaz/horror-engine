@@ -42,7 +42,8 @@ struct Msg {
   // PARAM
   int k = -1; double v = 0;
   // GESTURE: s voice, g 'd' down / 'm' move / 'n' gliding move (the board's drags, 1.0.4) / 'u' up
-  int s = 0; char g = 'd'; double x = .5, y = .5, p = .6, hz = 0;
+  // slot: 0 = live touch/board, 1..NMIDI = polyphonic MIDI note slots
+  int s = 0; char g = 'd'; double x = .5, y = .5, p = .6, hz = 0; int slot = 0;
   // MOMENT / CMOMENT (id = custom moment handle) / CMREC (on)
   int id = 0; bool on = false; double arg = 0;
   // CMDEF: definition (null removes it)
@@ -89,11 +90,13 @@ class Host {
   void init(const double* params, uint32_t seed = 1337);
   void setParam(int id, double v);
   double param(int id) const;
-  void gesture(int voice, char kind, double x, double y, double pressure, double hz = 0);
+  void gesture(int voice, char kind, double x, double y, double pressure, double hz = 0, int slot = 0);
   void moment(int id, bool on, double arg = 0);
   void loop(const char* action, int layer = 0, double v = 0, bool free = false);
   void panic();
   void inputOn(bool on);
+  void setStemsMode(bool on);
+  int latencySamples() const;
   // Sync to host: call once per host buffer, before render(), with the transport at the buffer's first sample. With sync on
   // and the host playing at a known tempo the looper follows the host's position (bars, loop points, jumps); otherwise it
   // runs free, exactly as in the web app. Never calling this keeps the engine identical to the web one.

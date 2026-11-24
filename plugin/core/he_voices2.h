@@ -8,11 +8,16 @@ namespace he {
 /* ---------- 6. Spring tank: dispersive allpass chains in a feedback loop (source and send) ---------- */
 struct Spring {
   EState* E;
+  int bufN = 16384, bufMask = 16383;
   struct S { int M; std::vector<float> d, buf, ap; int64_t w = 0; double td, am, lp1 = 0, lp2 = 0, hp = 0, hx = 0, eq1 = 0, eq2 = 0, ex1 = 0, ex2 = 0; int apN, apw = 0; double t1 = 0, t2 = 0; } s[3];
   int p = 0, K = 6; double exc = 0, exAt = 0, bWait = 0, burst = 0, bLen = 1, bAmp = 0, bLc = .1, bz = 0, bz2 = 0, pd = 0, shT = 0, nl = 0, eb = 0, last = 0, ebe = 0, dr = 0, rat = 0;
   explicit Spring(EState* e) : E(e) {
+    bufN = nextPow2(std::max(16384, (int)std::ceil(.1 * E->sr))); bufMask = bufN - 1;
     int M[3] = {64, 52, 44}, AP[3] = {347, 419, 491}; double td[3] = {.0546, .0631, .0712}, am[3] = {1, .86, .74};
-    for (int i = 0; i < 3; i++) { s[i].M = M[i]; s[i].d.assign(M[i] * 16, 0.f); s[i].buf.assign(16384, 0.f); s[i].td = td[i]; s[i].am = am[i]; s[i].ap.assign(AP[i], 0.f); s[i].apN = AP[i]; }
+    for (int i = 0; i < 3; i++) {
+      int apLen = std::max(16, (int)jsround(AP[i] * E->sr / 48000.0));
+      s[i].M = M[i]; s[i].d.assign(M[i] * 16, 0.f); s[i].buf.assign(bufN, 0.f); s[i].td = td[i]; s[i].am = am[i]; s[i].ap.assign(apLen, 0.f); s[i].apN = apLen;
+    }
   }
   void reset() {
     for (auto& q : s) { std::fill(q.d.begin(), q.d.end(), 0.f); std::fill(q.buf.begin(), q.buf.end(), 0.f); std::fill(q.ap.begin(), q.ap.end(), 0.f); q.apw = 0; q.lp1 = q.lp2 = q.hp = q.hx = q.eq1 = q.eq2 = q.ex1 = q.ex2 = q.t1 = q.t2 = 0; }
@@ -32,7 +37,8 @@ struct Spring {
     dr = fmax2(dr * std::exp(-n / (.55 * sr)), fmin2(1, scr * .45 + shake * .7));
     double fT = fmin2(fmin2(sr / (2 * K) * .9, 900 + 1900 * std::pow(dr, 1.5)), sr * .45), lc = 1 - std::exp(-TAU * fT / sr); int pp = p;
     double ebT = mode == 3 && C.on ? (.35 + .65 * C.p) * (C.autoOn ? 1 : .6 + .8 * fmin2(1, C.spd * 3 + .3)) : 0;
-    eb += (ebT - eb) * .02; double ebv = eb, ebe0 = ebe, last0 = last, rat0 = rat, rD = std::exp(-1 / (.07 * sr));
+    eb += (ebT - eb) * srAlpha(.02, sr); double ebv = eb, ebe0 = ebe, last0 = last, rat0 = rat, rD = std::exp(-1 / (.07 * sr));
+    double ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = std::exp(-TAU * 38.0 / sr);
     exc = 0;
     double w0 = TAU * 180 / sr, al = std::sin(w0) / (2 * 1.2), a0 = 1 + al, eb0 = al / a0, ea1 = -2 * std::cos(w0) / a0, ea2 = (1 - al) / a0;
     double bLcv = bLc, bzv = bz, bz2v = bz2;
@@ -40,21 +46,21 @@ struct Spring {
       double x = inp ? inp[i] : 0;
       if (bWait > 0) bWait--; else if (burst > 0) { double bu = burst / bLen; bzv += bLcv * (rng.b() - bzv); bz2v += bLcv * (bzv - bz2v); x += bAmp * bz2v * 6 * bu * std::sqrt(1 - bu + .02); burst--; }
       if (shake > .02) { if (--shT <= 0) { shT = sr / (4 + 60 * shake) * (.3 + rng.u() * 1.4); x += shake * (shake > .6 ? 1.6 : 1) * rng.b() * 40; } }
-      if (scr > 0) { nl += .3 * (rng.b() - nl); x += nl * scr * 4.5; }
-      if (ebv > .001) { double av = last0 < 0 ? -last0 : last0; ebe0 += .001 * (av - ebe0); double qd = last0 * 3 / (ebe0 + .02); qd = qd / (1 + (qd < 0 ? -qd : qd)); x += ebv * (qd * .09 + .002 * rng.b()); }
+      if (scr > 0) { nl += nlC * (rng.b() - nl); x += nl * scr * 4.5; }
+      if (ebv > .001) { double av = last0 < 0 ? -last0 : last0; ebe0 += ebeC * (av - ebe0); double qd = last0 * 3 / (ebe0 + .02); qd = qd / (1 + (qd < 0 ? -qd : qd)); x += ebv * (qd * .09 + .002 * rng.b()); }
       if (rat0 > .002) { rat0 *= rD; if (rng.u() < .08) x += rat0 * rng.b(); }
       double o3 = 0, oL = 0, oR = 0;
       for (int j = 0; j < 3; j++) {
         S& q = s[j]; int M = q.M; float* d = q.d.data(); double aj = a * q.am, aaj = aa * q.am;
-        double dcj = K * (1 + aaj) / (1 - aaj), D = fmax2(sr * .003, q.td * sr - M * dcj);
+        double dcj = K * (1 + aaj) / (1 - aaj), D = fmin2((double)(bufN - 4), fmax2(sr * .003, q.td * sr - M * dcj));
         double g = std::pow(10.0, -3 * q.td / T60);
-        double rp = (double)q.w - D, i0 = std::floor(rp), fr = rp - i0; int64_t ii = (int64_t)i0; double fb = q.buf[ii & 16383] * (1 - fr) + q.buf[(ii + 1) & 16383] * fr;
+        double rp = (double)q.w - D, i0 = std::floor(rp), fr = rp - i0; int64_t ii = (int64_t)i0; double fb = q.buf[ii & bufMask] * (1 - fr) + q.buf[(ii + 1) & bufMask] * fr;
         double v = x * (j == 2 ? .7 : 1) + fb * g;
         for (int k = 0, qq = pp; k < M; k++, qq += 16) { double z = d[qq], t = v - aj * z; d[qq] = (float)t; v = aj * t + z; }
         double apz = q.ap[q.apw], apw0 = v + apz * .55, apy = apz - .55 * apw0; q.ap[q.apw] = (float)apw0; q.apw = q.apw + 1 == q.apN ? 0 : q.apw + 1; v = apy;
         q.lp1 += lc * (v - q.lp1); q.lp2 += lc * (q.lp1 - q.lp2) + 1e-18;
-        double o = q.lp2; q.hp = o - q.hx + .995 * q.hp; q.hx = o; o = q.hp;
-        q.buf[q.w & 16383] = (float)(-o); q.w = (q.w + 1) & 16383;
+        double o = q.lp2; q.hp = o - q.hx + hpR * q.hp; q.hx = o; o = q.hp;
+        q.buf[q.w & bufMask] = (float)(-o); q.w = (q.w + 1) & bufMask;
         double bp = eb0 * (o - q.ex2) - ea1 * q.eq1 - ea2 * q.eq2; q.ex2 = q.ex1; q.ex1 = o; q.eq2 = q.eq1; q.eq1 = bp + 1e-18; o += bp * .8;
         if (j == 0) oL = o; else if (j == 1) oR = o; else o3 = o;
       }
@@ -217,10 +223,13 @@ struct Junk : Voice_ {
 
 /* ---------- 8. Aura pad: granular cloud over a capture of the instrument's own dry bus ---------- */
 struct Aura : Voice_ {
-  EState* E; static const int N = 1 << 19, mask = N - 1, G = 32; std::vector<float> buf; int64_t w = 0;
+  EState* E; static const int G = 32; int N = 1 << 19, mask = (1 << 19) - 1; std::vector<float> buf; int64_t w = 0;
   double pos[G]; float rate[G]; int32_t len[G], age[G]; float gl[G], gr[G]; uint8_t actv[G]; float hann[2050];
   double acc = 0, lpL = 0, lpR = 0, ph = 0, lv = 0; bool frozen = false; double e1 = 0, ref = 0, ag = 1;
-  explicit Aura(EState* e) : E(e), buf(N, 0.f) { std::memset(pos, 0, sizeof pos); std::memset(rate, 0, sizeof rate); std::memset(len, 0, sizeof len); std::memset(age, 0, sizeof age); std::memset(gl, 0, sizeof gl); std::memset(gr, 0, sizeof gr); std::memset(actv, 0, sizeof actv); for (int i = 0; i < 2050; i++) hann[i] = (float)(.5 - .5 * std::cos(TAU * i / 2048)); }
+  explicit Aura(EState* e) : E(e) {
+    N = nextPow2(std::max(1 << 19, (int)std::ceil(11.0 * E->sr))); mask = N - 1; buf.assign(N, 0.f);
+    std::memset(pos, 0, sizeof pos); std::memset(rate, 0, sizeof rate); std::memset(len, 0, sizeof len); std::memset(age, 0, sizeof age); std::memset(gl, 0, sizeof gl); std::memset(gr, 0, sizeof gr); std::memset(actv, 0, sizeof actv); for (int i = 0; i < 2050; i++) hann[i] = (float)(.5 - .5 * std::cos(TAU * i / 2048));
+  }
   void reset() override { std::memset(actv, 0, sizeof actv); }
   void capture(const float* dL, const float* dR, int n) {
     if (frozen) return;
@@ -243,7 +252,9 @@ struct Aura : Voice_ {
         rt *= std::pow(2.0, rng.b() * E->detune * 1.5 / 1200);
         int ln = (int)fmax2(256, (double)(int)(size * (.6 + .8 * rng.u())));
         double back = (C.autoOn ? .05 + rng.u() * (.15 + blur * 4) : C.x * 8 + rng.u() * (.05 + blur * 1.5)) * sr + ln * fmax2(1, rt) + 64;
-        if (back > N - 4096) back = N - 4096;
+        // leave enough headroom behind the write head so slow grains (rt < 1) are never overwritten mid-playback
+        double maxBack = (double)N - fmax2(4096.0, (double)ln * fmax2(0.0, 1.0 - rt) + 2048.0);
+        if (back > maxBack) back = maxBack;
         pos[g] = (double)w - back; rate[g] = (float)rt; len[g] = ln; age[g] = 0; actv[g] = 1;
         double pan = .5 + rng.b() * .45; gl[g] = (float)std::cos(pan * 1.5708); gr[g] = (float)std::sin(pan * 1.5708);
       }
@@ -262,14 +273,15 @@ struct Aura : Voice_ {
     double br = 1 - P[P_AURA_BREATHE] * .35 * (1 + std::sin(ph)), norm = 2.6 / std::sqrt(fmax2(1, dens * .5));
     double e1v = e1, refv = ref, agv = ag, k1 = 1 - std::exp(-1 / (.15 * sr)), k2 = 1 - std::exp(-1 / (2 * sr)); bool fz = frozen;
     double lc = 1 - std::exp(-TAU * 500 * std::pow(36.0, 1 - P[P_AURA_DARK]) / sr), lL = lpL, lR = lpR, lvv = lv;
+    double lvC = srAlpha(.0003, sr), agC = srAlpha(.0002, sr);
     for (int i = 0; i < n; i++) {
-      lvv += (lvT - lvv) * .0003; double gg = norm * lvv;
+      lvv += (lvT - lvv) * lvC; double gg = norm * lvv;
       lL += lc * (L[i] * gg - lL); lR += lc * (R[i] * gg - lR);
       double pwr = lL * lL + lR * lR;
       e1v += k1 * (pwr - e1v);
       if (!fz) refv += k2 * (pwr - refv);
       double gt = fz && e1v > 1e-12 && refv > 1e-12 ? clamp(std::sqrt(refv / e1v), .5, 2) : 1;
-      agv += (gt - agv) * .0002;
+      agv += (gt - agv) * agC;
       L[i] = (float)(lL * agv * br); R[i] = (float)(lR * agv * br);
     }
     e1 = e1v + 1e-30; ref = refv + 1e-30; ag = agv;
@@ -279,27 +291,38 @@ struct Aura : Voice_ {
 
 /* ---------- Huge reverb: 8-line Householder FDN with modulated lines ---------- */
 struct Reverb {
-  EState* E; static const int N = 16384, mask = N - 1; std::vector<float> b[8]; double lp[8] = {}, d[8] = {}, ms[8] = {31.7, 37.1, 41.3, 47.9, 53.3, 61.1, 67.3, 73.9}; int64_t w = 0; double ph[8] = {};
+  EState* E; int N = 16384, mask = 16383, preN = 32768, preMask = 32767, apN = 2048, apMask = 2047;
+  std::vector<float> b[8]; double lp[8] = {}, d[8] = {}, ms[8] = {31.7, 37.1, 41.3, 47.9, 53.3, 61.1, 67.3, 73.9}; int64_t w = 0; double ph[8] = {};
   struct AP { std::vector<float> b; int n; int w = 0; } ap[3]; std::vector<float> pre; int pw = 0; double hp = 0, x[8] = {}, g[8] = {};
-  explicit Reverb(EState* e) : E(e), pre(32768, 0.f) { for (auto& q : b) q.assign(N, 0.f); double am[3] = {5.1, 7.7, 11.3}; for (int i = 0; i < 3; i++) { ap[i].b.assign(2048, 0.f); ap[i].n = (int)jsround(am[i] * E->sr / 1000) % 2048; } }
+  explicit Reverb(EState* e) : E(e) {
+    N = nextPow2(std::max(16384, (int)std::ceil(.2 * E->sr))); mask = N - 1;
+    preN = nextPow2(std::max(32768, (int)std::ceil(.3 * E->sr))); preMask = preN - 1;
+    apN = nextPow2(std::max(2048, (int)std::ceil(.015 * E->sr))); apMask = apN - 1;
+    pre.assign(preN, 0.f);
+    for (auto& q : b) q.assign(N, 0.f);
+    double am[3] = {5.1, 7.7, 11.3};
+    for (int i = 0; i < 3; i++) { ap[i].b.assign(apN, 0.f); ap[i].n = (int)fmin2(apN - 2, fmax2(1, jsround(am[i] * E->sr / 1000))); }
+  }
   void clear() { for (auto& q : b) std::fill(q.begin(), q.end(), 0.f); }
   // GOODBYE: every line, the pre-delay and the diffusers emptied (clear() above is the old partial clear)
   void wipe() { clear(); for (int k = 0; k < 8; k++) { lp[k] = 0; x[k] = 0; } std::fill(pre.begin(), pre.end(), 0.f); hp = 0; for (auto& a : ap) std::fill(a.b.begin(), a.b.end(), 0.f); }
   void render(const float* inp, float* L, float* R, int n) {
     const double* P = E->P; double sr = E->sr;
-    double sz = .45 + P[P_REV_SIZE] * 1.5, rt = P[P_REV_DECAY], dc = 1 - .85 * P[P_REV_DAMP] * (.6 + .4 * (1 - E->matBright * .3));
-    int prd = (int)fmin2(32000, (double)(int)((P[P_REV_PRE] + 60 * E->distance) * .001 * sr)); int k;
-    for (k = 0; k < 8; k++) { double dt = fmin2(ms[k] * sz * .001 * sr, N - 64); if (d[k] == 0) d[k] = dt; d[k] += (dt - d[k]) * .05; g[k] = std::pow(10.0, -3 * d[k] / (sr * rt)); }
+    double sz = .45 + P[P_REV_SIZE] * 1.5, rt = P[P_REV_DECAY];
+    double dc48 = 1 - .85 * P[P_REV_DAMP] * (.6 + .4 * (1 - E->matBright * .3));
+    double dc = srAlpha(dc48, sr), hpC = 1 - std::exp(-TAU * 60.0 / sr), modD = 14.0 * sr / 48000.0, dC = srAlpha(.05, sr);
+    int prd = (int)fmin2((double)(preN - 64), (double)(int)((P[P_REV_PRE] + 60 * E->distance) * .001 * sr)); int k;
+    for (k = 0; k < 8; k++) { double dt = fmin2(ms[k] * sz * .001 * sr, N - 64 - 2.0 * modD); if (d[k] == 0) d[k] = dt; d[k] += (dt - d[k]) * dC; g[k] = std::pow(10.0, -3 * d[k] / (sr * rt)); }
     int64_t ww = w; double pinc = TAU * .31 / sr;
     for (int i = 0; i < n; i++) {
-      hp += .008 * (inp[i] - hp);
+      hp += hpC * (inp[i] - hp);
       double s = inp[i] - hp;
-      pre[pw] = (float)s; s = pre[(pw - prd) & 32767]; pw = (pw + 1) & 32767;
-      for (k = 0; k < 3; k++) { AP& a = ap[k]; double z = a.b[(a.w - a.n) & 2047], t = s + .6 * z; a.b[a.w] = (float)t; a.w = (a.w + 1) & 2047; s = z - .6 * t; }
+      pre[pw] = (float)s; s = pre[(pw - prd) & preMask]; pw = (pw + 1) & preMask;
+      for (k = 0; k < 3; k++) { AP& a = ap[k]; double z = a.b[(a.w - a.n) & apMask], t = s + .6 * z; a.b[a.w] = (float)t; a.w = (a.w + 1) & apMask; s = z - .6 * t; }
       double sum = 0;
       for (k = 0; k < 8; k++) {
         if (!(k & 1)) { ph[k] += pinc * (1 + k * .13); if (ph[k] > TAU) ph[k] -= TAU; }
-        double rp = (double)ww - d[k] - (k & 1 ? 0 : 14 * (1 + std::sin(ph[k] + k))), i0 = std::floor(rp), f = rp - i0; int64_t ii = (int64_t)i0; const float* bk = b[k].data();
+        double rp = (double)ww - d[k] - (k & 1 ? 0 : modD * (1 + std::sin(ph[k] + k))), i0 = std::floor(rp), f = rp - i0; int64_t ii = (int64_t)i0; const float* bk = b[k].data();
         double v = bk[ii & mask] * (1 - f) + bk[(ii + 1) & mask] * f;
         lp[k] += dc * (v - lp[k]); v = lp[k] * g[k] + 1e-18; x[k] = v; sum += v;
       }
@@ -325,10 +348,10 @@ struct Moan : Voice_ {
   explicit Moan(EState* e) : E(e) {}
   void reset() override { for (int k = 0; k < 12; k++) y1[k] = y2[k] = 0; amp = 0; pu = 0; x1 = x2 = dl = 0; }
   void render(float* L, float* R, int n, Contact& C) override {
-    const double* P = E->P; double sr = E->sr; Rng& rng = E->rng; int sf = (int)P[P_MOAN_SURFACE]; double sz = P[P_MOAN_SIZE], grip = P[P_MOAN_GRIP]; int k;
-    const MoanSet& S = MOAN_SETS[sf < 0 ? 0 : sf];
+    const double* P = E->P; double sr = E->sr; Rng& rng = E->rng; int sf = (int)P[P_MOAN_SURFACE]; if (sf < 0) sf = 0; else if (sf > 3) sf = 3; double sz = P[P_MOAN_SIZE], grip = P[P_MOAN_GRIP]; int k;
+    const MoanSet& S = MOAN_SETS[sf];
     double pr = clamp(P[P_MOAN_PRESS] * (C.on ? .4 + 1.2 * C.p : 1), 0, 1.3), spd = C.on ? (C.autoOn ? .4 : C.spd) : 0;
-    sp += (spd - sp) * .15; spd = sp;
+    sp += (spd - sp) * srAlpha(.15, sr); spd = sp;
     double wd = sf >= 2 ? E->water * .04 : 0, pos = C.x, st = 1 + (sf == 0 ? 0 : E->matStretch), mt = sf == 0 ? 1 : E->matT, im = sf == 3 ? immerse(E, pos) : 1;
     for (k = 0; k < 12; k++) {
       double fq = S.b / sz * std::pow(S.r[k], st) * E->pitchMul * (1 + wd * E->wv[k]) * im; fk[k] = fq;
@@ -341,19 +364,20 @@ struct Moan : Voice_ {
     fT *= E->pitchMul;
     double best = 1; int lk = 0; for (k = 0; k < 12; k++) { double d = std::log(fk[k] / fT); if (d < 0) d = -d; if (d < best) { best = d; lk = k; } }
     double lock = best < .07 ? (1 - best / .07) * (.3 + .5 * grip) : 0; if (lock > 0) fT += (fk[lk] - fT) * lock;
-    if (f == 0) f = fT; f += (fT - f) * .08;
+    if (f == 0) f = fT; f += (fT - f) * srAlpha(.08, sr);
     double aT = spd > .01 ? fmin2(1, spd * 2.5) * (.25 + .75 * fmin2(pr, 1)) * (1 + lock * .6) : 0;
     double f0 = f, p0 = ph, puu = pu, pll = pl, paa = pa, am = amp, X1 = x1, X2 = x2, nzv = nz, dlv = dl, jt = jit;
     double rough = (.004 + .025 * grip) * E->instab, out = S.g * 1.5;
+    double amUp = srAlpha(.002, sr), amDn = srAlpha(.0008, sr), nzC = srAlpha(.2, sr), dlC = srAlpha(.15, sr);
     for (int i = 0; i < n; i++) {
-      am += (aT - am) * (aT > am ? .002 : .0008);
+      am += (aT - am) * (aT > am ? amUp : amDn);
       p0 += f0 / sr * (1 + jt);
       if (p0 >= 1) { p0 -= 1; jt = rng.b() * rough; pll = fmax2(3, jsround(sr / (f0 * 2.8))); puu = pll; paa = am * (1 + rng.b() * .15 * grip); }
       double x = 0; if (puu > 0) { x = paa * (.5 - .5 * std::cos(TAU * puu / pll)); puu--; }
-      nzv += .2 * (rng.b() - nzv); x += nzv * am * .06;
+      nzv += nzC * (rng.b() - nzv); x += nzv * am * .06;
       double xd = x - X2, o = 0; X2 = X1; X1 = x;
       for (k = 0; k < 12; k++) { double y = a1[k] * y1[k] - a2[k] * y2[k] + b[k] * xd + 1e-18; y2[k] = y1[k]; y1[k] = y; o += y * g[k]; }
-      dlv += .15 * (x - dlv);
+      dlv += dlC * (x - dlv);
       L[i] = (float)((o * 6 + (x - dlv) * .5) * out); R[i] = L[i];
     }
     ph = p0; pu = puu; pl = pll; pa = paa; amp = am; x1 = X1; x2 = X2; nz = nzv; dl = dlv + 1e-18; jit = jt;
@@ -390,30 +414,30 @@ struct Body {
 
 /* ---------- harmonizer: two-voice granular pitch shifter, detuned left/right, with feedback ---------- */
 struct Harmz {
-  EState* E; std::vector<float> buf; int64_t w = 0; double ph[4] = {0, .5, 0, .5}, fbv = 0, lp = 0, dc1 = 0, dc2 = 0; int q = 999; double pk = 0;
-  explicit Harmz(EState* e) : E(e), buf(16384, 0.f) {}
+  EState* E; int N = 16384, mask = 16383; std::vector<float> buf; int64_t w = 0; double ph[4] = {0, .5, 0, .5}, fbv = 0, lp = 0, dc1 = 0, dc2 = 0; int q = 999; double pk = 0;
+  explicit Harmz(EState* e) : E(e) { N = nextPow2(std::max(16384, (int)std::ceil(.1 * E->sr))); mask = N - 1; buf.assign(N, 0.f); }
   void reset() { std::fill(buf.begin(), buf.end(), 0.f); fbv = lp = dc1 = dc2 = 0; }
   void render(const float* inp, float* L, float* R, int n) {
     const double* P = E->P; double sr = E->sr, mx = 0; int i;
     for (i = 0; i < n; i++) { double a = inp[i] < 0 ? -inp[i] : inp[i]; if (a > mx) mx = a; }
     if (mx < 1e-7 && fbv * fbv < 1e-14) { if (++q > 200) { if (q == 201) reset(); for (i = 0; i < n; i++) { L[i] = 0; R[i] = 0; } return; } } else q = 0;
-    double W = jsround(sr * .07), sh = P[P_HARM_SHIFT], dt = P[P_HARM_DETUNE] / 100, fb = P[P_HARM_FB], mix = P[P_HARM_MIX] * 1.4;
+    double W = fmin2((double)(N - 8), fmax2(16.0, jsround(sr * .07))), sh = P[P_HARM_SHIFT], dt = P[P_HARM_DETUNE] / 100, fb = P[P_HARM_FB], mix = P[P_HARM_MIX] * 1.4;
     double rA = std::pow(2.0, (sh - dt / 2) / 12), rB = std::pow(2.0, (sh + dt / 2) / 12), dA = (1 - rA) / W, dB = (1 - rB) / W;
-    int64_t ww = w; double fv = fbv, lpv = lp, lc = 1 - std::exp(-TAU * 3500 / sr), pkv = 0, d1 = dc1, d2 = dc2;
+    int64_t ww = w; double fv = fbv, lpv = lp, lc = 1 - std::exp(-TAU * 3500 / sr), dcR = std::exp(-TAU * 38.0 / sr), pkv = 0, d1 = dc1, d2 = dc2;
     for (i = 0; i < n; i++) {
       lpv += lc * (fv - lpv);
-      buf[ww & 16383] = (float)(inp[i] + lpv * fb);
+      buf[ww & mask] = (float)(inp[i] + lpv * fb);
       double o[2] = {0, 0};
       for (int v = 0; v < 4; v++) {
         double p = ph[v] + (v < 2 ? dA : dB); if (p >= 1) p -= 1; else if (p < 0) p += 1; ph[v] = p;
-        double rp = (double)ww - 2 - p * W, i0 = std::floor(rp), fr = rp - i0; int64_t ii = (int64_t)i0; double x = buf[ii & 16383] * (1 - fr) + buf[(ii + 1) & 16383] * fr, s = std::sin(PI * p);
+        double rp = (double)ww - 2 - p * W, i0 = std::floor(rp), fr = rp - i0; int64_t ii = (int64_t)i0; double x = buf[ii & mask] * (1 - fr) + buf[(ii + 1) & mask] * fr, s = std::sin(PI * p);
         o[v >> 1] += x * s * s;
       }
-      double l = o[0], r = o[1]; fv = (l + r) * .5; d2 = fv - d1 + .995 * d2; d1 = fv; fv = d2;
+      double l = o[0], r = o[1]; fv = (l + r) * .5; d2 = fv - d1 + dcR * d2; d1 = fv; fv = d2;
       l *= mix; r *= mix; L[i] = (float)l; R[i] = (float)r; double al = l < 0 ? -l : l; if (al > pkv) pkv = al;
       ww++;
     }
-    w = ww & 16383; fbv = fv + 1e-18; lp = lpv + 1e-18; dc1 = d1; dc2 = d2; if (pkv > pk) pk = pkv;
+    w = ww & mask; fbv = fv + 1e-18; lp = lpv + 1e-18; dc1 = d1; dc2 = d2; if (pkv > pk) pk = pkv;
   }
 };
 

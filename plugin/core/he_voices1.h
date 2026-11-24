@@ -20,7 +20,7 @@ static inline double ebowTune(double Pp, double c) {
 struct Ebow : Voice_ {
   EState* E; static const int N = 16384, mask = N - 1;
   std::vector<float> b[2], ih[2];
-  int64_t w = 0; double lp[2] = {}, env[2] = {}, agc[2] = {}, bx1[2] = {}, bx2[2] = {}, by1[2] = {}, by2[2] = {};
+  int64_t w = 0; double lp[2] = {}, env[2] = {}, agc[2] = {}, bx1[2] = {}, bx2[2] = {}, by1[2] = {}, by2[2] = {}, apX[2] = {}, apY[2] = {};
   double f = 0, dr = 0, drift = 0; int h = 1; double hT = 0, sph = 0, dc1 = 0, dc2 = 0, hm = 1; HG hg;
   struct { double b0, a1, a2, x1 = 0, x2 = 0, y1 = 0, y2 = 0, env = 0; } pz;
   explicit Ebow(EState* e) : E(e) {
@@ -29,7 +29,7 @@ struct Ebow : Voice_ {
     pz.b0 = (1 + std::cos(w0)) / 2 / a0; pz.a1 = -2 * std::cos(w0) / a0; pz.a2 = (1 - al) / a0;
   }
   void reset() override {
-    for (int k = 0; k < 2; k++) { std::fill(b[k].begin(), b[k].end(), 0.f); std::fill(ih[k].begin(), ih[k].end(), 0.f); lp[k] = env[k] = agc[k] = bx1[k] = bx2[k] = by1[k] = by2[k] = 0; }
+    for (int k = 0; k < 2; k++) { std::fill(b[k].begin(), b[k].end(), 0.f); std::fill(ih[k].begin(), ih[k].end(), 0.f); lp[k] = env[k] = agc[k] = bx1[k] = bx2[k] = by1[k] = by2[k] = apX[k] = apY[k] = 0; }
     dr = 0; pz.x1 = pz.x2 = pz.y1 = pz.y2 = pz.env = 0;
   }
   void render(float* L, float*, int n, Contact& C) override {
@@ -38,10 +38,10 @@ struct Ebow : Voice_ {
     double sr = E->sr, D = E->dread; Rng& rng = E->rng; double slack = P[P_EBOW_SLACK], damp = P[P_EBOW_DAMP];
     int exm = (int)P[P_EBOW_EXCITE]; double slideR = P[P_EBOW_SLIDE] != 0 ? P[P_EBOW_SLIDE] : 1;
     double base = C.hz > 0 ? C.hz : P[P_EBOW_PITCH] * std::pow(2.0, (C.x - .5) * 2 * slideR);
-    drift = drift * .995 + rng.b() * .1;
+    drift = drift * std::pow(.995, 48000.0 / sr) + rng.b() * .1 * std::sqrt(48000.0 / sr);
     double fT = clamp(base * E->pitchMul * std::pow(2.0, drift * slack * 4 * E->instab / 1200), sr / 7000, 2500);
     if (f == 0) f = fT;
-    f += (fT - f) * .3;
+    f += (fT - f) * srAlpha(.3, sr);
     double fr0 = f;
     double dT = C.on && !exm ? clamp(P[P_EBOW_SUSTAIN] * (.3 + .7 * C.p) + C.spd * .5, 0, 1.3) : 0;
     int hp = (int)P[P_EBOW_HARM], hh = hp + 1;
@@ -52,17 +52,19 @@ struct Ebow : Voice_ {
     }
     double T60 = .5 + 9 * (1 - damp) * (1 - damp) * (.5 + E->matT * .5);
     double g = std::pow(10.0, -3 / (T60 * fr0));
-    double c = clamp(.5 + .48 * (1 - damp) * (.6 + .4 * E->material), .05, .98);
+    double c48 = clamp(.5 + .48 * (1 - damp) * (.6 + .4 * E->material), .05, .98);
+    double c = srAlpha(c48, sr);
     double kT = slack * .06, eR = 1 / .25, kN = 1 + kT * .6, buzz = P[P_EBOW_BUZZ], thr = 1.1 - buzz * .9;
     double pos = clamp(P[P_EBOW_POS] + (C.on && C.hz <= 0 ? (C.y - .5) * .2 : 0), .03, .5);
     double det = std::pow(2.0, (3 + E->detune) / 1200), sub = E->subAmt;
     double fh = fmin2(fr0 * hh, sr * .4), w0 = TAU * fh / sr, al = std::sin(w0) / 8, a0 = 1 / (1 + al), b0 = al * a0, a1 = -2 * std::cos(w0) * a0, a2 = (1 - al) * a0;
+    double drUp = srAlpha(.0008, sr), drDn = srAlpha(.001, sr), envC = srAlpha(.0006, sr), agcC = srAlpha(.003, sr);
     int64_t ww = w; double drr = dr, dinc = TAU * fr0 * .5 / sr;
     for (int i = 0; i < n; i++) L[i] = 0;
     for (int k = 0; k < 2; k++) {
       float* bb = b[k].data(); float* ihh = ih[k].data();
-      double lpk = lp[k], envk = env[k], agck = agc[k], x1 = bx1[k], x2 = bx2[k], y1 = by1[k], y2 = by2[k];
-      double Pp = sr / (k ? fr0 * det : fr0), t0 = ebowTune(32, c), Lb = Pp - (1 - c) / c + 1.3 + t0 + (ebowTune(Pp * 48000 / sr, c) - t0) * sr / 48000, amp = k ? .6 : 1;
+      double lpk = lp[k], envk = env[k], agck = agc[k], x1 = bx1[k], x2 = bx2[k], y1 = by1[k], y2 = by2[k], ax = apX[k], ay0 = apY[k];
+      double Pp = sr / (k ? fr0 * det : fr0), t0 = ebowTune(32, c48), Lb = Pp - (1 - c) / c + 1.3 + t0 + (ebowTune(Pp * 48000 / sr, c48) - t0) * sr / 48000, amp = k ? .6 : 1;
       ww = w; drr = dr;
       if (C.kick > 0) {
         double Lk = fmin2(Lb, N - 2), ka = C.kick * (exm == 2 ? .9 : 1.4) * amp;
@@ -70,14 +72,15 @@ struct Ebow : Voice_ {
         envk = fmax2(envk, .02);
       }
       for (int i = 0; i < n; i++) {
-        drr += (dT - drr) * (dT > drr ? .0008 : .001);
-        double A = envk * eR, Le = Lb * kN / (1 + kT * fmin2(A * A, 4)), rp = (double)ww - Le, i0 = std::floor(rp), fr = rp - i0;
-        int64_t ii = (int64_t)i0;
-        double y = bb[ii & mask] * (1 - fr) + bb[(ii + 1) & mask] * fr;
+        drr += (dT - drr) * (dT > drr ? drUp : drDn);
+        double A = envk * eR, Le = fmax2(2.0, Lb * kN / (1 + kT * fmin2(A * A, 4)));
+        // 1st-order Thiran allpass fractional delay (unity magnitude at all frequencies, no slide damping ripple)
+        int64_t D0 = (int64_t)std::floor(Le - .5); double fd = Le - (double)D0, eta = (1.0 - fd) / (1.0 + fd);
+        double xs = bb[(ww - D0) & mask], y = eta * (xs - ay0) + ax; ax = xs; ay0 = y + 1e-18;
         lpk += c * (y - lpk);
-        double ay = y < 0 ? -y : y; envk += .0006 * (ay - envk);
+        double ay = y < 0 ? -y : y; envk += envC * (ay - envk);
         double bp = b0 * (y - x2) - a1 * y1 - a2 * y2; x2 = x1; x1 = y; y2 = y1; y1 = bp;
-        double ab = bp < 0 ? -bp : bp; agck += .003 * (ab - agck);
+        double ab = bp < 0 ? -bp : bp; agck += agcC * (ab - agck);
         double q2 = 1.5 * bp / (agck + .01); q2 = q2 / (1 + (q2 < 0 ? -q2 : q2));
         double inj = drr * (.05 * q2 + .004 * rng.b());
         ihh[ww & mask] = (float)inj;
@@ -88,20 +91,20 @@ struct Ebow : Voice_ {
         L[i] = (float)(L[i] + amp * (y - .6 * bb[(ww - trunc64(Le * .13)) & mask]));
         ww++;
       }
-      lp[k] = lpk; env[k] = envk; agc[k] = agck; bx1[k] = x1; bx2[k] = x2; by1[k] = y1; by2[k] = y2;
+      lp[k] = lpk; env[k] = envk; agc[k] = agck; bx1[k] = x1; bx2[k] = x2; by1[k] = y1; by2[k] = y2; apX[k] = ax; apY[k] = ay0;
     }
     w = ww & mask; dr = drr; C.kick = 0;
-    double hmT = hh > 1 ? .55 : 1; hm += (hmT - hm) * .05; if (hm != 1) for (int i = 0; i < n; i++) L[i] = (float)(L[i] * hm);
-    hg.run(L, n, .16, 0, .03, 0, 1 - std::exp(-1 / (.03 * sr)));
-    double e0 = env[0], ph = sph, d1 = dc1, d2 = dc2, og = 1.3, pzA = P[P_EBOW_PICKUP] * 8;
+    double hmT = hh > 1 ? .55 : 1; hm += (hmT - hm) * srAlpha(.05, sr); if (hm != 1) for (int i = 0; i < n; i++) L[i] = (float)(L[i] * hm);
+    hg.run(L, n, .16, 0, .03, 0, 1 - std::exp(-1 / (.03 * sr)), sr);
+    double e0 = env[0], ph = sph, d1 = dc1, d2 = dc2, og = 1.3, pzA = P[P_EBOW_PICKUP] * 8, dcR = std::exp(-TAU * 15.0 / sr), pzEnvC = srAlpha(.002, sr);
     for (int i = 0; i < n; i++) {
       ph += dinc; if (ph > TAU) ph -= TAU;
       double o = L[i] * og + std::sin(ph) * sub * e0 * 3;
       if (pzA > 0) {
-        double aL = L[i] < 0 ? -L[i] : L[i]; pz.env += .002 * (aL - pz.env); double en = pz.env * 1.5 + 1e-6, qz = L[i] * 6 / en; qz = qz / (1 + (qz < 0 ? -qz : qz)) * en * .5;
+        double aL = L[i] < 0 ? -L[i] : L[i]; pz.env += pzEnvC * (aL - pz.env); double en = pz.env * 1.5 + 1e-6, qz = L[i] * 6 / en; qz = qz / (1 + (qz < 0 ? -qz : qz)) * en * .5;
         double hpv = pz.b0 * (qz - 2 * pz.x1 + pz.x2) - pz.a1 * pz.y1 - pz.a2 * pz.y2; pz.x2 = pz.x1; pz.x1 = qz; pz.y2 = pz.y1; pz.y1 = hpv + 1e-18; o += hpv * pzA;
       }
-      d2 = o - d1 + .998 * d2; d1 = o; L[i] = (float)d2;
+      d2 = o - d1 + dcR * d2; d1 = o; L[i] = (float)d2;
     }
     sph = ph; dc1 = d1; dc2 = d2;
   }
@@ -110,20 +113,20 @@ struct Ebow : Voice_ {
 /* ---------- 2. Hurdy-gurdy: three bowed waveguide strings on a rosined wheel ---------- */
 struct Hurdy : Voice_ {
   EState* E; static const int N = 8192, mask = N - 1;
-  struct Str { std::vector<float> nd, bd; double sf = 0, f = 0; } st[3];
+  struct Str { std::vector<float> nd, bd; double sf = 0, f = 0, apBx = 0, apBy = 0, apNx = 0, apNy = 0; } st[3];
   int64_t w = 0; double bv = 0, nz = 0, crank = 0, pc = 0, bz = 0, bzl = 0;
   double mf[6] = {182, 287, 405, 540, 790, 1210}, mq[6] = {.07, .06, .05, .05, .04, .03};
   double y1[6] = {}, y2[6] = {}, x1 = 0, x2 = 0, sph = 0, env = 0, ma1[6] = {}, ma2[6] = {}, mb[6] = {}, lens[3] = {}, fr[3] = {}, gains[3] = {1, .75, .65};
   explicit Hurdy(EState* e) : E(e) { for (auto& s : st) { s.nd.assign(N, 0.f); s.bd.assign(N, 0.f); } }
-  void reset() override { for (auto& s : st) { std::fill(s.nd.begin(), s.nd.end(), 0.f); std::fill(s.bd.begin(), s.bd.end(), 0.f); s.sf = 0; } bv = 0; for (int k = 0; k < 6; k++) y1[k] = y2[k] = 0; }
+  void reset() override { for (auto& s : st) { std::fill(s.nd.begin(), s.nd.end(), 0.f); std::fill(s.bd.begin(), s.bd.end(), 0.f); s.sf = s.apBx = s.apBy = s.apNx = s.apNy = 0; } bv = 0; for (int k = 0; k < 6; k++) y1[k] = y2[k] = 0; }
   void render(float* L, float*, int n, Contact& C) override {
     const double* P = E->P; double sr = E->sr, D = E->dread; Rng& rng = E->rng;
     double crT = C.on ? P[P_HURDY_CRANK] * (C.autoOn ? fmin2(1, C.spd / .4) : .45 + 1.6 * C.spd) : 0;
-    crank += (crT - crank) * .04;
+    crank += (crT - crank) * srAlpha(.04, sr);
     double cr = crank, acc = (cr - pc) / (n / sr); pc = cr;
     double buzzP = P[P_HURDY_BUZZ];
     if (acc > 6 - buzzP * 4.5) bz = fmin2(1, bz + .5);
-    bz *= .93;
+    bz *= std::pow(.93, 48000.0 / sr);
     double bzAmt = buzzP * fmin2(1, bz + fmax2(0, cr - (3.6 - buzzP * 2.4)) * .6);
     double pr = clamp(P[P_HURDY_PRESS] * (C.on ? .55 + .75 * C.p : 1), 0, 1), cn = fmin2(1, cr / 3);
     double bvT = cr > .02 ? .035 * fmin2(1, cn * 10) + .19 * cn : 0, slope = 5 - 4 * pr, rosin = P[P_HURDY_ROSIN] * E->instab;
@@ -133,17 +136,20 @@ struct Hurdy : Voice_ {
     fr[0] = root * std::pow(2.0, -E->detune / 2400); fr[1] = root * r2; fr[2] = C.hz > 0 ? C.hz * E->pitchMul : root * r3 * mel;
     double pole = clamp(.75 - .2 * 22050 / sr - (E->material - .5) * .2, .2, .9), fg = .95;
     for (int k = 0; k < 6; k++) { double Rr = std::exp(-6.91 / (mq[k] * (.5 + E->matT) * sr)), th = TAU * mf[k] / sr; ma1[k] = 2 * Rr * std::cos(th); ma2[k] = Rr * Rr; mb[k] = (1 - Rr * Rr) / 2; }
-    for (int k = 0; k < 3; k++) { Str& s = st[k]; if (s.f == 0) s.f = fr[k]; s.f += (fr[k] - s.f) * .2; lens[k] = clamp(sr / s.f - 3.3, 8, 8000); }
+    double fC = srAlpha(.2, sr), nzC = srAlpha(.02, sr), bvC = srAlpha(.0008, sr), bzlC = srAlpha(.25, sr), envC = srAlpha(.0005, sr);
+    for (int k = 0; k < 3; k++) { Str& s = st[k]; if (s.f == 0) s.f = fr[k]; s.f += (fr[k] - s.f) * fC; lens[k] = clamp(sr / s.f - 3.3, 8, 8000); }
     double bvv = bv, nzz = nz, bzl0 = bzl, X1 = x1, X2 = x2, ph = sph, en = env, sub = E->subAmt, dinc = TAU * st[0].f * .5 / sr; int64_t ww = w;
     for (int i = 0; i < n; i++) {
-      nzz += .02 * (rng.b() - nzz);
-      bvv += (bvT - bvv) * .0008;
+      nzz += nzC * (rng.b() - nzz);
+      bvv += (bvT - bvv) * bvC;
       double vb = bvv * (1 + rosin * 6 * nzz), sum = 0, z2 = 0;
       for (int k = 0; k < 3; k++) {
         Str& s = st[k];
-        double lb = lens[k] * .127, ln = lens[k] - lb;
-        double rp = (double)ww - lb, i0 = std::floor(rp), f0 = rp - i0; int64_t ii = (int64_t)i0; double rb = s.bd[ii & mask] * (1 - f0) + s.bd[(ii + 1) & mask] * f0;
-        rp = (double)ww - ln; i0 = std::floor(rp); f0 = rp - i0; ii = (int64_t)i0; double rn = s.nd[ii & mask] * (1 - f0) + s.nd[(ii + 1) & mask] * f0;
+        double lb = fmax2(1.0, lens[k] * .127), ln = fmax2(1.0, lens[k] - lb);
+        int64_t dB = (int64_t)std::floor(lb - .5); double fB = lb - (double)dB, eB = (1.0 - fB) / (1.0 + fB);
+        double xB = s.bd[(ww - dB) & mask], rb = eB * (xB - s.apBy) + s.apBx; s.apBx = xB; s.apBy = rb + 1e-18;
+        int64_t dN = (int64_t)std::floor(ln - .5); double fN = ln - (double)dN, eN = (1.0 - fN) / (1.0 + fN);
+        double xN = s.nd[(ww - dN) & mask], rn = eN * (xN - s.apNy) + s.apNx; s.apNx = xN; s.apNy = rn + 1e-18;
         s.sf = fg * ((1 - pole) * rb + pole * s.sf) + 1e-18;
         double br = -s.sf, nr = -rn, dv = vb - (br + nr), q = dv * slope; if (q < 0) q = -q; q += .75; q = 1 / (q * q); q *= q; if (q > 1) q = 1;
         double nv = dv * q;
@@ -151,11 +157,11 @@ struct Hurdy : Voice_ {
         sum += rb * gains[k]; if (k == 1) z2 = rb;
       }
       ww++;
-      double bzs = clamp(z2 * 14, -1, 1); bzl0 += .25 * (bzs - bzl0);
+      double bzs = clamp(z2 * 14, -1, 1); bzl0 += bzlC * (bzs - bzl0);
       double x = sum + (bzs - bzl0) * bzAmt * .22, body = 0;
       for (int k = 0; k < 6; k++) { double y = ma1[k] * y1[k] - ma2[k] * y2[k] + mb[k] * (x - X2); y2[k] = y1[k]; y1[k] = y; body += y; }
       X2 = X1; X1 = x;
-      double ax = x < 0 ? -x : x; en += .0005 * (ax - en);
+      double ax = x < 0 ? -x : x; en += envC * (ax - en);
       ph += dinc; if (ph > TAU) ph -= TAU;
       L[i] = (float)(x * 1.1 + body * 2.2 + std::sin(ph) * sub * en * 3);
     }
@@ -196,19 +202,21 @@ static const ModeSet BOW_SETS[5] = {
   {14, {1, 1.47, 2.09, 2.56, 3.19, 3.86, 4.31, 5.12, 5.87, 6.73, 7.61, 8.44, 9.6, 11.1}, {1, .9, .8, .8, .7, .7, .6, .6, .5, .5, .4, .4, .3, .3}, 1.6},
   {14, {1, 1.59, 2.14, 2.3, 2.65, 2.92, 3.16, 3.5, 3.6, 4.06, 4.6, 5.13, 5.65, 6.25}, {.8, 1, .9, .7, .8, .6, .7, .55, .5, .5, .45, .4, .35, .3}, 4.5}};
 struct Bowed : Voice_ {
-  EState* E; Fric m{14}; FB vb, nz, pg; double v = 0, bend = .5, wob = 0; HG hg; double lpr = -1, kk = 0; bool hasRx = false; double rx = .5;
+  EState* E; Fric m{14}; FB vb, nz, pg; double v = 0, bend = .5, wob = 0; HG hg; double lpr = -1, kk = 0, jmp = 0; bool hasRx = false; double rx = .5;
   explicit Bowed(EState* e) : E(e) {}
-  void reset() override { m.reset(); v = 0; lpr = -1; }
+  void reset() override { m.reset(); v = 0; lpr = -1; kk = 0; jmp = 0; }
   void render(float* L, float*, int n, Contact& C) override {
     const double* P = E->P; double sr = E->sr; int ob = (int)P[P_BOWED_OBJECT]; const ModeSet& S = BOW_SETS[ob < 0 ? 0 : ob > 4 ? 4 : ob]; int N = S.n; m.cnt = N;
     double pr = clamp(P[P_BOWED_PRESS] * (C.on ? .4 + C.p : 1), 0, 1.4);
-    double bT = clamp(P[P_BOWED_BEND] + (C.on && C.hz <= 0 ? (C.y - .5) * .7 : 0), 0, 1); bend += (bT - bend) * .15;
+    double bT = clamp(P[P_BOWED_BEND] + (C.on && C.hz <= 0 ? (C.y - .5) * .7 : 0), 0, 1); bend += (bT - bend) * srAlpha(.15, sr);
     double bd = bend, Lr = P[P_BOWED_LENGTH] * (.7 + .6 * bd), damp = P[P_BOWED_DAMP];
     double f0 = (C.hz > 0 ? C.hz : ob == 0 ? rulerHz(Lr) : P[P_BOWED_SIZE]) * E->pitchMul;
-    if (C.on) { if (lpr < 0) lpr = pr; if (std::fabs(pr - lpr) > .15) { lpr = pr; kk = 1; for (int q = 0; q < N; q++) { m.y1[q] *= .2; m.y2[q] *= .2; } } } else lpr = -1;
+    // Smooth mode-jump damping burst instead of instantaneous y1/y2 *= 0.2 (eliminates pressure-automation clicks)
+    if (C.on) { if (lpr < 0) lpr = pr; if (std::fabs(pr - lpr) > .15) { lpr = pr; kk = 1; jmp = 1; } } else { lpr = -1; }
     double prf = clamp(pr / 1.1, 0, 1), rt = std::pow(ob == 0 ? 30.0 : 10.0, .85 * (1 - prf)), wd = E->water * .04;
     wob += n / sr * 5.3; double vib = 1 + std::sin(wob) * .002 * E->instab;
-    double pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E->matT, stt = 1 + E->matStretch;
+    double pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E->matT * (1 - .85 * jmp), stt = 1 + E->matStretch;
+    if (jmp > 0) { jmp *= std::exp(-n / (.015 * sr)); if (jmp < .01) jmp = 0; }
     if (ob == 1) { if (C.on) { rx = C.x; hasRx = true; } } double imm = ob == 1 ? immerse(E, hasRx ? rx : .5) : 1;
     for (int k = 0; k < N; k++) {
       double r = S.r[k], f;
@@ -224,14 +232,14 @@ struct Bowed : Voice_ {
     }
     double vT = C.on ? (C.autoOn ? P[P_BOWED_SPEED] * (.5 + C.p * .7) : C.spd * (.4 + 1.6 * P[P_BOWED_SPEED])) : 0;
     vT = fmin2(vT, 1.2) * .5;
-    double vv = v, sa = (1.6 + .5 * fmin2(pr, 1)) / fmax2(vT, .04), pgv = (1 + 4 * pr) * fmax2(vT, .04), nzG = (.02 + .1 * pr * pr) * (.5 + E->matBright);
+    double vv = v, vC = srAlpha(.0015, sr), sa = (1.6 + .5 * fmin2(pr, 1)) / fmax2(vT, .04), pgv = (1 + 4 * pr) * fmax2(vT, .04), nzG = (.02 + .1 * pr * pr) * (.5 + E->matBright);
     Rng& rng = E->rng;
-    for (int i = 0; i < n; i++) { vv += (vT - vv) * .0015; vb[i] = (float)vv; nz[i] = (float)(vv * nzG * rng.b()); pg[i] = (float)pgv; }
+    for (int i = 0; i < n; i++) { vv += (vT - vv) * vC; vb[i] = (float)vv; nz[i] = (float)(vv * nzG * rng.b()); pg[i] = (float)pgv; }
     v = vv;
-    if (kk > 0) { for (int i = 0; i < n; i++) nz[i] = (float)(nz[i] + kk * .02 * rng.b()); kk *= .5; if (kk < .01) kk = 0; }
-    m.run(L, n, vb.d, pg.d, sa, nz.d, .5 + .4 * E->matBright);
+    if (kk > 0) { for (int i = 0; i < n; i++) nz[i] = (float)(nz[i] + kk * .02 * rng.b()); kk *= std::pow(.5, 48000.0 / sr); if (kk < .01) kk = 0; }
+    m.run(L, n, vb.d, pg.d, sa, nz.d, srAlpha(.5 + .4 * E->matBright, sr));
     for (int i = 0; i < n; i++) L[i] = (float)(L[i] * 2.6);
-    double hq = .5 + .5 * fmin2(pr, 1); hg.run(L, n, .06 * hq, .1 * hq, .03 * hq, .04 * hq, 1 - std::exp(-1 / (.02 * sr)));
+    double hq = .5 + .5 * fmin2(pr, 1); hg.run(L, n, .06 * hq, .1 * hq, .03 * hq, .04 * hq, 1 - std::exp(-1 / (.02 * sr)), sr);
   }
 };
 
@@ -260,12 +268,12 @@ struct Glass : Voice_ {
     if (pv - spd > .12) sq = fmin2(1, (pv - spd) * 3);
     pv = spd; sq *= .9;
     spd = fmin2(1, spd + sq * .5);
-    sp += (spd - sp) * .2; spd = sp;
+    sp += (spd - sp) * srAlpha(.2, sr); spd = sp;
     double vSlip = spd > .004 ? .06 + .5 * spd : 0, duty = clamp(.22 + .8 * wet, 0, 1);
     double fS = 3 + 42 * spd * (1.2 - pr * .5);
-    double nzG = ct == 2 ? .5 : ct == 1 ? .04 : .14, sa = (ct == 1 ? 1.6 : 1.7 + .4 * pr) / fmax2(vSlip, .06), lpc = ct == 1 ? .28 : ct == 2 ? .6 : .95;
-    cg = cg + ((C.on || vSlip > 0 ? 1 : 0) - cg) * .05;
-    double vv = v, c0 = cnt, sm = ct == 1 ? .01 : .12; bool stk = stuck;
+    double nzG = ct == 2 ? .5 : ct == 1 ? .04 : .14, sa = (ct == 1 ? 1.6 : 1.7 + .4 * pr) / fmax2(vSlip, .06), lpc = srAlpha(ct == 1 ? .28 : ct == 2 ? .6 : .95, sr);
+    cg = cg + ((C.on || vSlip > 0 ? 1 : 0) - cg) * srAlpha(.05, sr);
+    double vv = v, c0 = cnt, sm = srAlpha(ct == 1 ? .01 : .12, sr); bool stk = stuck;
     double pgv = (1 + 4 * pr) * fmax2(vSlip, .06) * cg, bs = 0, puu = pu, paa = pa; int PL = (int)fmax2(4, (double)(int64_t)(sr * (ct == 1 ? .0025 : .00018)));
     for (int k2 = 0; k2 < N; k2++) bs += m.bb[k2] * m.wi[k2];
     double kx = .02 * N / (bs + 1e-9) * (ct == 1 ? .5 : 1);
@@ -287,9 +295,9 @@ struct Glass : Voice_ {
     double gG = (ct == 1 ? .62 : 5) * (sfc == 3 ? .5 : 1);
     for (int i = 0; i < n; i++) L[i] = (float)(L[i] * gG);
     if (ct == 1) {
-      double hm = P[P_GLASS_HARM]; if (hm > 0) hg.run(L, n, .05 * hm, .06 * hm, .02 * hm, 0, 1 - std::exp(-1 / (.03 * sr)), true);
-      double frr = TAU * (4 + 4 * fmin2(1, spd * 1.6)) / sr, fpp = fp, faa = fa, faT = spd > .01 ? .42 * P[P_GLASS_BEAT] : 0;
-      for (int i = 0; i < n; i++) { fpp += frr; if (fpp > TAU) fpp -= TAU; faa += (faT - faa) * .0005; L[i] = (float)(L[i] * (1 - faa * .5 * std::cos(fpp))); }
+      double hm = P[P_GLASS_HARM]; if (hm > 0) hg.run(L, n, .05 * hm, .06 * hm, .02 * hm, 0, 1 - std::exp(-1 / (.03 * sr)), sr, true);
+      double frr = TAU * (4 + 4 * fmin2(1, spd * 1.6)) / sr, fpp = fp, faa = fa, faT = spd > .01 ? .42 * P[P_GLASS_BEAT] : 0, faC = srAlpha(.0005, sr);
+      for (int i = 0; i < n; i++) { fpp += frr; if (fpp > TAU) fpp -= TAU; faa += (faT - faa) * faC; L[i] = (float)(L[i] * (1 - faa * .5 * std::cos(fpp))); }
       fp = fpp; fa = faa;
     }
   }
@@ -306,21 +314,21 @@ static const StrSet STR_SETS[5] = {
 static const double STR_VEL[5] = {9, 1.2, 1, 1.2, 2};
 struct SVoice { bool on = false; int n = 0, obj = 0; double R[14] = {}, th[14] = {}, a1[14] = {}, a2[14] = {}, g[14] = {}, y1[14] = {}, y2[14] = {}; double pl = 0, pp = 0, vel = 0, nzm = 0, life = 0, slap = 0, gs = 0, age = 0, wait = 0, clk = 0, cn = 0, cb1 = 0, cb2 = 0, fade = 0; };
 struct Struck : Voice_ {
-  EState* E; static const int SV = 12; SVoice pool[SV + 1]; SVoice* v[SV]; SVoice* fv; double FADE; struct { double b0, a1, a2; } cbp;
+  EState* E; static const int SV = 12; SVoice pool[SV + 1]; int v[SV]; int fv; double FADE; struct { double b0, a1, a2; } cbp;
   explicit Struck(EState* e) : E(e) {
-    for (int i = 0; i < SV; i++) v[i] = &pool[i]; fv = &pool[SV]; FADE = fmax2(16, jsround(E->sr * .005));
+    for (int i = 0; i < SV; i++) v[i] = i; fv = SV; FADE = fmax2(16, jsround(E->sr * .005));
     double w0 = TAU * 1800 / E->sr, al = std::sin(w0) / (2 * 1.5), a0 = 1 + al; cbp.b0 = al / a0; cbp.a1 = -2 * std::cos(w0) / a0; cbp.a2 = (1 - al) / a0;
   }
-  void reset() override { for (int i = 0; i < SV; i++) v[i]->on = false; fv->on = false; }
+  void reset() override { for (int i = 0; i < SV; i++) pool[v[i]].on = false; pool[fv].on = false; }
   // NAN = "undefined" in the JavaScript (take it from the parameters)
   void trigger(double hz, double vel, double pos, double obj = NAN, double hard = NAN, double decay = NAN, double clk = NAN, double dly = NAN) {
     const double* P = E->P; double sr = E->sr; int vi = -1, i;
-    for (i = 0; i < SV; i++) if (!v[i]->on) { vi = i; break; }
+    for (i = 0; i < SV; i++) if (!pool[v[i]].on) { vi = i; break; }
     if (vi < 0) {
-      for (i = 0, vi = 0; i < SV; i++) if (v[i]->age > v[vi]->age) vi = i;
-      SVoice* old = v[vi]; SVoice* spare = fv; fv = old; old->fade = FADE; v[vi] = spare;
+      for (i = 0, vi = 0; i < SV; i++) if (pool[v[i]].age > pool[v[vi]].age) vi = i;
+      int old = v[vi]; int spare = fv; fv = old; pool[old].fade = FADE; v[vi] = spare;
     }
-    SVoice& V = *v[vi];
+    SVoice& V = pool[v[vi]];
     if (std::isnan(obj) || obj < 0) obj = (int)P[P_STRUCK_OBJECT];
     int ob = (int)obj; if (ob > 4) ob = 4;
     if (std::isnan(hard)) hard = P[P_STRUCK_HARD];
@@ -362,10 +370,10 @@ struct Struck : Voice_ {
   }
   void render(float* L, float*, int n, Contact&) override {
     Rng& rng = E->rng; double wd = E->water * .04;
-    if (wd > 0) for (int j0 = 0; j0 < SV; j0++) { SVoice& v0 = *v[j0]; if (!v0.on || v0.obj == 0 || v0.obj == 4) continue; for (int k0 = 0; k0 < v0.n; k0++) if (v0.g[k0] != 0) v0.a1[k0] = 2 * v0.R[k0] * std::cos(v0.th[k0] * (1 + wd * E->wv[(k0 + j0) & 15])); }
+    if (wd > 0) for (int j0 = 0; j0 < SV; j0++) { SVoice& v0 = pool[v[j0]]; if (!v0.on || v0.obj == 0 || v0.obj == 4) continue; for (int k0 = 0; k0 < v0.n; k0++) if (v0.g[k0] != 0) v0.a1[k0] = 2 * v0.R[k0] * std::cos(v0.th[k0] * (1 + wd * E->wv[(k0 + j0) & 15])); }
     for (int i = 0; i < n; i++) L[i] = 0;
-    for (int j = 0; j < SV; j++) { if (!v[j]->on) continue; voice(*v[j], L, n, rng); }
-    if (fv->on) voice(*fv, L, n, rng);
+    for (int j = 0; j < SV; j++) { if (!pool[v[j]].on) continue; voice(pool[v[j]], L, n, rng); }
+    if (pool[fv].on) voice(pool[fv], L, n, rng);
     for (int i = 0; i < n; i++) L[i] = (float)(L[i] * .022);
   }
 };

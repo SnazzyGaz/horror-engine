@@ -19,8 +19,12 @@ heap allocations inside `render()` went from 2 to 0, and in message handling fro
 
 Gliding moves (1.0.4) allocate nothing: a glide is ten numbers in each contact slot, stepped once per block.
 
+Custom-moment playback (`cmRun()`) allocates nothing: per-block parameter accumulation uses fixed member scratch arrays on `Engine` instead of local `std::map`/`std::vector`.
+
+`processBlock()` never resizes audio buffers: `inBuf_` and `outTmp_` are preallocated to at least 4096 samples in `prepareToPlay()`, and oversized host blocks are processed in chunks.
+
 GOODBYE (1.0.3) also allocates nothing: at the end of its fade every voice is copy-assigned from a pristine set built
-with the engine (same buffer sizes, so no reallocation), and the hall, spring, body and harmonizer buffers are zeroed in place.
+with the engine (same buffer sizes, so no reallocation; `Struck` uses pool indices rather than raw pointers so copy-assignment is aliasing-free across repeated panics), and the hall, spring, body and harmonizer buffers are zeroed in place.
 
 ## What still allocates, and why it is left
 
