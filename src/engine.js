@@ -123,7 +123,7 @@ function HECoreFactory() {
   function db(x) { return Math.pow(10, x / 20); }
   function pw(d, a, b, c) { return d < .5 ? a + (b - a) * d * 2 : b + (c - b) * (d - .5) * 2; }
   function nextPow2(n) { var p = 1; while (p < n) p <<= 1; return p; }
-  function srAlpha(a48, sr) { return 1 - Math.pow(1 - a48, 48000 / sr); }
+  function srAlpha(a48, sr) { return sr === 48000 ? a48 : 1 - Math.pow(1 - a48, 48000 / sr); }
   function softClip(x, ceil) {
     var a = x < 0 ? -x : x, k0 = ceil * .95;
     if (a <= k0) return x;
@@ -140,12 +140,12 @@ function HECoreFactory() {
   function HG() { this.pk = 0; this.ms = 0; this.d1 = 0; this.d2 = 0; this.ulp = 0; }
   HG.prototype.run = function (x, n, c2, c3, c4, c5, k, sr, rm) {
     var pk = this.pk, ms = this.ms, d1 = this.d1, d2 = this.d2, rel = 1 - k, ul = this.ulp;
-    var fc = Math.min(3800, .08 * sr), lpc = 1 - Math.exp(-TAU * fc / sr), dcR = Math.exp(-TAU * 38 / sr);
+    var dcR = Math.pow(.995, 48000 / sr);
     for (var i = 0; i < n; i++) {
       var v = x[i], av = v < 0 ? -v : v, a; pk = av > pk ? av : pk * rel;
       if (rm) { ms += k * (v * v - ms); a = Math.sqrt(2 * ms) + 1e-9; } else a = pk + 1e-9;
       var u = v / a; if (u > 1.3) u = 1.3; else if (u < -1.3) u = -1.3;
-      ul += lpc * (u - ul);
+      ul = u;
       var u2 = ul * ul, ev = a * (c2 * (2 * u2 - 1) + c4 * (8 * u2 * u2 - 8 * u2 + 1)), od = a * ul * (c3 * (4 * u2 - 3) + c5 * (16 * u2 * u2 - 20 * u2 + 5));
       d2 = ev - d1 + dcR * d2; d1 = ev; x[i] = v + d2 + od;
     }
@@ -227,8 +227,8 @@ function HECoreFactory() {
       for (i = 0; i < n; i++) {
         dr += (dT - dr) * (dT > dr ? drUp : drDn);
         var A = env * eR, Le = Math.max(2, Lb * kN / (1 + kT * Math.min(A * A, 4)));
-        var D0 = Math.floor(Le - .5), fd = Le - D0, eta = (1 - fd) / (1 + fd);
-        var xs = b[(w - D0) & mask], y = eta * (xs - ay0) + ax; ax = xs; ay0 = y + 1e-18;
+        var rp = w - Le, i0 = Math.floor(rp), fr = rp - i0;
+        var y = b[i0 & mask] * (1 - fr) + b[(i0 + 1) & mask] * fr;
         lp += c * (y - lp);
         var ay = y < 0 ? -y : y; env += envC * (ay - env);
         var bp = b0 * (y - x2) - a1 * y1 - a2 * y2; x2 = x1; x1 = y; y2 = y1; y1 = bp;
@@ -252,7 +252,7 @@ function HECoreFactory() {
     this.hg.run(L, n, .16, 0, .03, 0, 1 - Math.exp(-1 / (.03 * sr)), sr);
     // piezo pickup blend: a level-normalised soft clip of the string (rich in harmonics), high-passed at 250 Hz, adds the
     // upper harmonics that let a 50 Hz drone read on laptop and phone speakers without adding more sub
-    var e0 = this.env[0], sph = this.sph, d1 = this.dc1, d2 = this.dc2, og = 1.3, pz = P['ebow.pickup'] * 8, Z = this.pz, dcR = Math.exp(-TAU * 15 / sr), pzEnvC = srAlpha(.002, sr);
+    var e0 = this.env[0], sph = this.sph, d1 = this.dc1, d2 = this.dc2, og = 1.3, pz = P['ebow.pickup'] * 8, Z = this.pz, dcR = Math.pow(.998, 48000 / sr), pzEnvC = srAlpha(.002, sr);
     for (i = 0; i < n; i++) {
       sph += dinc; if (sph > TAU) sph -= TAU;
       var o = L[i] * og + Math.sin(sph) * sub * e0 * 3;
@@ -302,8 +302,8 @@ function HECoreFactory() {
       for (k = 0; k < 3; k++) {
         s = st[k];
         var lb = Math.max(1, lens[k] * .127), ln = Math.max(1, lens[k] - lb);
-        var dB = Math.floor(lb - .5), fB = lb - dB, eB = (1 - fB) / (1 + fB), xB = s.bd[(w - dB) & mask], rb = eB * (xB - s.apBy) + s.apBx; s.apBx = xB; s.apBy = rb + 1e-18;
-        var dN = Math.floor(ln - .5), fN = ln - dN, eN = (1 - fN) / (1 + fN), xN = s.nd[(w - dN) & mask], rn = eN * (xN - s.apNy) + s.apNx; s.apNx = xN; s.apNy = rn + 1e-18;
+        var rp = w - lb, i0 = Math.floor(rp), f0 = rp - i0, rb = s.bd[i0 & mask] * (1 - f0) + s.bd[(i0 + 1) & mask] * f0;
+        rp = w - ln; i0 = Math.floor(rp); f0 = rp - i0; var rn = s.nd[i0 & mask] * (1 - f0) + s.nd[(i0 + 1) & mask] * f0;
         s.sf = fg * ((1 - pole) * rb + pole * s.sf) + 1e-18;
         var br = -s.sf, nr = -rn, dv = vb - (br + nr), q = dv * slope; if (q < 0) q = -q; q += .75; q = 1 / (q * q); q *= q; if (q > 1) q = 1;
         var nv = dv * q;
@@ -364,11 +364,10 @@ function HECoreFactory() {
     var f0 = (C.hz > 0 ? C.hz : ob === 0 ? rulerHz(Lr) : P['bowed.size']) * E.pitchMul;
     // pressure picks the mode: light bow pressure favours high modes, heavy pressure the low ones. A pressure change of
     // more than 0.15 triggers a smooth damping burst + bow-hair noise so the bow can jump modes without clicking.
-    if (C.on) { if (this.lpr < 0) this.lpr = pr; if (Math.abs(pr - this.lpr) > .15) { this.lpr = pr; this.kk = 1; this.jmp = 1; } } else this.lpr = -1;
+    if (C.on) { if (this.lpr < 0) this.lpr = pr; if (Math.abs(pr - this.lpr) > .15) { this.lpr = pr; this.kk = 1; for (var q = 0; q < N; q++) { m.y1[q] *= .2; m.y2[q] *= .2; } } } else this.lpr = -1;
     var prf = clamp(pr / 1.1, 0, 1), rt = Math.pow(ob === 0 ? 30 : 10, .85 * (1 - prf)), wd = E.water * .04, wv = E.wv;
     this.wob += n / sr * 5.3; var vib = 1 + Math.sin(this.wob) * .002 * E.instab;
-    var pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E.matT * (1 - .85 * this.jmp), st = 1 + E.matStretch;
-    if (this.jmp > 0) { this.jmp *= Math.exp(-n / (.015 * sr)); if (this.jmp < .01) this.jmp = 0; }
+    var pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E.matT, st = 1 + E.matStretch;
     if (ob === 1) { if (C.on) this.rx = C.x; } var imm = ob === 1 ? immerse(E, this.rx === undefined ? .5 : this.rx) : 1;
     for (var k = 0; k < N; k++) {
       var r = S.r[k], f;
@@ -572,7 +571,7 @@ function HECoreFactory() {
     // e-bow driver: senses the tank output, band-limits and soft-clips it, and feeds it back in (sustain without a bow)
     var ebT = mode === 3 && C.on ? (.35 + .65 * C.p) * (C.auto ? 1 : .6 + .8 * Math.min(1, C.spd * 3 + .3)) : 0;
     this.eb += (ebT - this.eb) * srAlpha(.02, sr); var eb = this.eb, ebe = this.ebe, last = this.last, rat = this.rat, rD = Math.exp(-1 / (.07 * sr));
-    var ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = Math.exp(-TAU * 38 / sr), bufN = this.bufN, bufMask = this.bufMask;
+    var ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = Math.pow(.995, 48000 / sr), bufN = this.bufN, bufMask = this.bufMask;
     this.exc = 0;
     // low-mid body around 180 Hz (the tank's measured low chirp peak): one resonant band-pass added back in
     var w0 = TAU * 180 / sr, al = Math.sin(w0) / (2 * 1.2), a0 = 1 + al, eb0 = al / a0, ea1 = -2 * Math.cos(w0) / a0, ea2 = (1 - al) / a0;
@@ -865,7 +864,7 @@ function HECoreFactory() {
     var E = this.E, sr = E.sr, mask = this.mask, preMask = this.preMask, apMask = this.apMask, x = this.x, lp = this.lp, d = this.d, b = this.b;
     var sz = .45 + P['rev.size'] * 1.5, rt = P['rev.decay'];
     var dc48 = 1 - .85 * P['rev.damp'] * (.6 + .4 * (1 - E.matBright * .3));
-    var dc = srAlpha(dc48, sr), hpC = 1 - Math.exp(-TAU * 60 / sr), modD = 14 * sr / 48000, dC = srAlpha(.05, sr);
+    var dc = srAlpha(dc48, sr), hpC = srAlpha(.008, sr), modD = 14 * sr / 48000, dC = srAlpha(.05, sr);
     var pre = Math.min(this.preN - 64, ((P['rev.pre'] + 60 * E.distance) * .001 * sr) | 0), g = this.g, k;
     for (k = 0; k < 8; k++) { var dt = Math.min(this.ms[k] * sz * .001 * sr, this.N - 64 - 2 * modD); if (d[k] === 0) d[k] = dt; d[k] += (dt - d[k]) * dC; g[k] = Math.pow(10, -3 * d[k] / (sr * rt)); }
     // each modulated line keeps its own LFO phase and wraps it on its own: one shared phase scaled by (1 + k * .13) jumped
@@ -989,7 +988,7 @@ function HECoreFactory() {
     if (mx < 1e-7 && this.fbv * this.fbv < 1e-14) { if (++this.q > 200) { if (this.q === 201) this.reset(); L.fill(0); R.fill(0); return; } } else this.q = 0;
     var W = Math.min(this.N - 8, Math.max(16, Math.round(sr * .07))), sh = P['harm.shift'], dt = P['harm.detune'] / 100, fb = P['harm.fb'], mix = P['harm.mix'] * 1.4, mask = this.mask;
     var rA = Math.pow(2, (sh - dt / 2) / 12), rB = Math.pow(2, (sh + dt / 2) / 12), dA = (1 - rA) / W, dB = (1 - rB) / W;
-    var buf = this.buf, w = this.w, ph = this.ph, fbv = this.fbv, lp = this.lp, lc = 1 - Math.exp(-TAU * 3500 / sr), dcR = Math.exp(-TAU * 38 / sr), pk = 0, d1 = this.dc1, d2 = this.dc2;
+    var buf = this.buf, w = this.w, ph = this.ph, fbv = this.fbv, lp = this.lp, lc = 1 - Math.exp(-TAU * 3500 / sr), dcR = Math.pow(.995, 48000 / sr), pk = 0, d1 = this.dc1, d2 = this.dc2;
     for (i = 0; i < n; i++) {
       lp += lc * (fbv - lp);
       buf[w & mask] = inp[i] + lp * fb;
@@ -1061,7 +1060,7 @@ function HECoreFactory() {
     for (i = 0; i < NS; i++) this.vOff.push({ pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7, distance: .15, dist: { lc: 1, dg: 1, wd: 1, bass: 0, bc: 0, aS: 0, rg: 1 } });
     this.gMac = { pitchSt: 0, pitchMul: 1, material: .5, matT: 1, matSlope: .7, matStretch: .02, matBright: .7 };
     this.ring = [new Float32Array(65536), new Float32Array(65536)]; this.rw = 0; this.sw = [new Float32Array(60000), new Float32Array(60000)]; this.swN = 0; this.swP = 0; this.swEnd = -1; this.mAura = 0; this.duckE = 0; this.dr2 = 0;
-    this.lkw = 0; this.dqVal = new Float64Array(256); this.dqIdx = new Float64Array(256); this.dqHead = 0; this.dqTail = 0; this.dqPos = 0; this.lg = 1; this.gr = 1; this.pkL = 0; this.pkR = 0;
+    this.lkw = 0; this.dqVal = new Float64Array(512); this.dqIdx = new Float64Array(512); this.dqHead = 0; this.dqTail = 0; this.dqPos = 0; this.lg = 1; this.gr = 1; this.pkL = 0; this.pkR = 0;
     this.frame = 0; this.layers = []; this.recL = null; this.lid = 1; this.lane = null; this.lver = 0; this.undo = []; this.redo = []; this.mom = { riser: null, stinger: null, drone: null, heart: null, walls: null, ret: null };
     // custom moments: definitions, the ones playing, the live knob values they ride on, and the capture in progress
     this.cmDefs = {}; this.cms = []; this.cmBase = {}; this.cmSl = []; this.recM = null; this.cmN = 0;
@@ -1507,14 +1506,12 @@ function HECoreFactory() {
     var hs = P[nm + '.hsend'] || 0, bw = BODY_W[s] * (P['body.amt'] || 0), hb = this.hmIn, bb = this.bdIn, kn = this.kn, kw = s === 5 ? 0 : bw, sy = this.symB, sw = s === 1 ? 1 + bw : s === 0 || s === 5 ? 0 : bw;
     var Dd = this.vOff[s].dist, lc = Dd.lc, dg = Dd.dg, wd = Dd.wd, bass = Dd.bass, bc = Dd.bc, aS = Dd.aS, rg = Dd.rg, lo = st.lo, md = st.md, dpL = this.dpL, dpR = this.dpR;
     if (drv > .005) {
-      var pre = 1 + drv * drv * 40, mk = 1 / Math.pow(pre, .55), tc = 1 - Math.exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / this.sr), dcR = Math.exp(-TAU * 23 / this.sr);
+      var pre = 1 + drv * drv * 40, mk = 1 / Math.pow(pre, .55), tc = 1 - Math.exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / this.sr), dcR = Math.pow(.997, 48000 / this.sr);
       for (var c = 0; c < (stereo ? 2 : 1); c++) {
         var b = c ? tR : tL, d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c], px = st.prevX[c];
         for (i = 0; i < BL; i++) {
-          var xc = b[i], xm = .5 * (px + xc); px = xc;
-          var x0 = xm * pre + .08, y0 = x0 / (1 + (x0 < 0 ? -x0 * .8 : x0));
-          var x1 = xc * pre + .08, y1 = x1 / (1 + (x1 < 0 ? -x1 * .8 : x1));
-          var y = .5 * (y0 + y1);
+          var xc = b[i]; px = xc;
+          var x = xc * pre + .08, y = x / (1 + (x < 0 ? -x * .8 : x)); y = y > 1 ? 1 : y;
           d2 = y - d1 + dcR * d2; d1 = y; dl += tc * (d2 - dl); b[i] = xc * (1 - drv) * (1 - drv) + dl * mk * 2.2 * Math.min(1, drv * 3);
         }
         st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18; st.prevX[c] = px;
@@ -1618,7 +1615,7 @@ function HECoreFactory() {
       ring[0][this.rw] = l + wl; ring[1][this.rw] = r + wr; this.rw = (this.rw + 1) & 65535;
     }
     // linear master chain per stem, then the look-ahead delay; sum undelayed (for detection) and delayed (for output)
-    var tone = P['master.tone'], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - Math.exp(-TAU * 700 / sr), vol = db(P['master.vol']), dcR = Math.exp(-TAU * 18 / sr);
+    var tone = P['master.tone'], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - Math.exp(-TAU * 700 / sr), vol = db(P['master.vol']), dcR = Math.pow(.9975, 48000 / sr);
     var uL = this.uL, uR = this.uR, sumL = this.sumL, sumR = this.sumR, w0 = this.lkw, LA = this.LA;
     uL.fill(0); uR.fill(0); sumL.fill(0); sumR.fill(0);
     for (s = 0; s < NST; s++) {
@@ -1641,13 +1638,13 @@ function HECoreFactory() {
     for (i = 0; i < BL; i++) {
       var ul = uL[i] < 0 ? -uL[i] : uL[i], ur = uR[i] < 0 ? -uR[i] : uR[i], pkk = ul > ur ? ul : ur, gt = pkk > ceil ? ceil / pkk : 1;
       var pos = dqPos++;
-      while (dqHead !== dqTail && dqVal[(dqTail - 1) & 255] >= gt) dqTail = (dqTail - 1) & 255;
-      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 255;
-      while (dqHead !== dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 255;
+      while (dqHead !== dqTail && dqVal[(dqTail - 1) & 511] >= gt) dqTail = (dqTail - 1) & 511;
+      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 511;
+      while (dqHead !== dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 511;
       gt = dqVal[dqHead];
       // the attack aims 0.004 dB under the target so its exponential approach never leaves an over
       lg += gt < lg ? (gt * .9995 - lg) * attC : (gt - lg) * relC; if (lg < mgr) mgr = lg; lgB[i] = lg;
-      l = softClip(sumL[i] * lg, ceil); r = softClip(sumR[i] * lg, ceil);
+      l = sumL[i] * lg; r = sumR[i] * lg; l = l > ceil ? ceil : l < -ceil ? -ceil : l; r = r > ceil ? ceil : r < -ceil ? -ceil : r;
       oL[i] = l; oR[i] = r;
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }

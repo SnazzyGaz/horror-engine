@@ -38,7 +38,7 @@ struct Spring {
     double fT = fmin2(fmin2(sr / (2 * K) * .9, 900 + 1900 * std::pow(dr, 1.5)), sr * .45), lc = 1 - std::exp(-TAU * fT / sr); int pp = p;
     double ebT = mode == 3 && C.on ? (.35 + .65 * C.p) * (C.autoOn ? 1 : .6 + .8 * fmin2(1, C.spd * 3 + .3)) : 0;
     eb += (ebT - eb) * srAlpha(.02, sr); double ebv = eb, ebe0 = ebe, last0 = last, rat0 = rat, rD = std::exp(-1 / (.07 * sr));
-    double ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = std::exp(-TAU * 38.0 / sr);
+    double ebeC = srAlpha(.001, sr), nlC = srAlpha(.3, sr), hpR = std::pow(.995, 48000.0 / sr);
     exc = 0;
     double w0 = TAU * 180 / sr, al = std::sin(w0) / (2 * 1.2), a0 = 1 + al, eb0 = al / a0, ea1 = -2 * std::cos(w0) / a0, ea2 = (1 - al) / a0;
     double bLcv = bLc, bzv = bz, bz2v = bz2;
@@ -310,7 +310,7 @@ struct Reverb {
     const double* P = E->P; double sr = E->sr;
     double sz = .45 + P[P_REV_SIZE] * 1.5, rt = P[P_REV_DECAY];
     double dc48 = 1 - .85 * P[P_REV_DAMP] * (.6 + .4 * (1 - E->matBright * .3));
-    double dc = srAlpha(dc48, sr), hpC = 1 - std::exp(-TAU * 60.0 / sr), modD = 14.0 * sr / 48000.0, dC = srAlpha(.05, sr);
+    double dc = srAlpha(dc48, sr), hpC = srAlpha(.008, sr), modD = 14.0 * sr / 48000.0, dC = srAlpha(.05, sr);
     int prd = (int)fmin2((double)(preN - 64), (double)(int)((P[P_REV_PRE] + 60 * E->distance) * .001 * sr)); int k;
     for (k = 0; k < 8; k++) { double dt = fmin2(ms[k] * sz * .001 * sr, N - 64 - 2.0 * modD); if (d[k] == 0) d[k] = dt; d[k] += (dt - d[k]) * dC; g[k] = std::pow(10.0, -3 * d[k] / (sr * rt)); }
     int64_t ww = w; double pinc = TAU * .31 / sr;
@@ -423,7 +423,7 @@ struct Harmz {
     if (mx < 1e-7 && fbv * fbv < 1e-14) { if (++q > 200) { if (q == 201) reset(); for (i = 0; i < n; i++) { L[i] = 0; R[i] = 0; } return; } } else q = 0;
     double W = fmin2((double)(N - 8), fmax2(16.0, jsround(sr * .07))), sh = P[P_HARM_SHIFT], dt = P[P_HARM_DETUNE] / 100, fb = P[P_HARM_FB], mix = P[P_HARM_MIX] * 1.4;
     double rA = std::pow(2.0, (sh - dt / 2) / 12), rB = std::pow(2.0, (sh + dt / 2) / 12), dA = (1 - rA) / W, dB = (1 - rB) / W;
-    int64_t ww = w; double fv = fbv, lpv = lp, lc = 1 - std::exp(-TAU * 3500 / sr), dcR = std::exp(-TAU * 38.0 / sr), pkv = 0, d1 = dc1, d2 = dc2;
+    int64_t ww = w; double fv = fbv, lpv = lp, lc = 1 - std::exp(-TAU * 3500 / sr), dcR = std::pow(.995, 48000.0 / sr), pkv = 0, d1 = dc1, d2 = dc2;
     for (i = 0; i < n; i++) {
       lpv += lc * (fv - lpv);
       buf[ww & mask] = (float)(inp[i] + lpv * fb);

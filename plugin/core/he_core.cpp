@@ -61,7 +61,8 @@ class Engine : public EState {
   struct { double c[20] = {}, z[32] = {}, env = 0, rel = 0, ceil = .19, gr = 1; } eg;
   double revBoost = 0; std::vector<float> ring[2]; int rw = 0; std::vector<float> sw[2]; int swN = 0, swP = 0, swEnd = -1; double duckE = 0;
   // O(1) monotonic deque for the limiter's look-ahead hold window
-  int lkw = 0; double dqVal[256] = {}; int64_t dqIdx[256] = {}; int dqHead = 0, dqTail = 0; int64_t dqPos = 0;
+  // 512 entries: more than the longest hold window (256), so a full window never looks empty
+  int lkw = 0; double dqVal[512] = {}; int64_t dqIdx[512] = {}; int dqHead = 0, dqTail = 0; int64_t dqPos = 0;
   double lg = 1, gr = 1, pkL = 0, pkR = 0;
   double frame = 0; std::vector<std::unique_ptr<Layer>> layers; bool recOn = false; double recStart = 0; std::vector<REv> recEv; int lid = 1; bool hasLane = false; double laneStart = 0, laneLen = 0; int lver = 0;
   std::vector<Snap> undo, redo;
@@ -581,14 +582,12 @@ class Engine : public EState {
     const Dist& Dv = vOff[s].dist; double lc = Dv.lc, dg = Dv.dg, wd = Dv.wd, bass = Dv.bass, bc = Dv.bc, aS = Dv.aS, rg = Dv.rg; double* lo = st.lo; double* md = st.md;
     if (drv > .005) {
       // 2x oversampled smooth asymmetric saturation (no hard clip) to suppress HF foldover aliasing
-      double pre = 1 + drv * drv * 40, mk = 1 / std::pow(pre, .55), tc = 1 - std::exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / sr), dcR = std::exp(-TAU * 23.0 / sr);
+      double pre = 1 + drv * drv * 40, mk = 1 / std::pow(pre, .55), tc = 1 - std::exp(-TAU * (2200 + 7000 * (1 - drv * .6)) / sr), dcR = std::pow(.997, 48000.0 / sr);
       for (int c = 0; c < (stereo ? 2 : 1); c++) {
         float* b = c ? tR.d : tL.d; double d1 = st.d1[c], d2 = st.d2[c], dl = st.dl[c], px = st.prevX[c];
         for (i = 0; i < BL; i++) {
-          double xc = b[i], xm = .5 * (px + xc); px = xc;
-          double x0 = xm * pre + .08, y0 = x0 / (1 + (x0 < 0 ? -x0 * .8 : x0));
-          double x1 = xc * pre + .08, y1 = x1 / (1 + (x1 < 0 ? -x1 * .8 : x1));
-          double y = .5 * (y0 + y1);
+          double xc = b[i]; px = xc;
+          double x = xc * pre + .08, y = x / (1 + (x < 0 ? -x * .8 : x)); y = y > 1 ? 1 : y;
           d2 = y - d1 + dcR * d2; d1 = y; dl += tc * (d2 - dl); b[i] = (float)(xc * (1 - drv) * (1 - drv) + dl * mk * 2.2 * fmin2(1, drv * 3));
         }
         st.d1[c] = d1; st.d2[c] = d2; st.dl[c] = dl + 1e-18; st.prevX[c] = px;
@@ -706,7 +705,7 @@ class Engine : public EState {
       wL[i] = (float)wl2; wR[i] = (float)wr2;
       ring[0][rw] = (float)(l + wl2); ring[1][rw] = (float)(r + wr2); rw = (rw + 1) & 65535;
     }
-    double tone = P[P_MASTER_TONE], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - std::exp(-TAU * 700 / sr), vol = db(P[P_MASTER_VOL]), dcR = std::exp(-TAU * 18.0 / sr);
+    double tone = P[P_MASTER_TONE], gl = db(-5 * tone), gh = db(5 * tone), tc = 1 - std::exp(-TAU * 700 / sr), vol = db(P[P_MASTER_VOL]), dcR = std::pow(.9975, 48000.0 / sr);
     int w0 = lkw; uL.fill0(); uR.fill0(); sumL.fill0(); sumR.fill0();
     if (stemsMode) {
       for (s = 0; s < NST; s++) {
@@ -745,12 +744,13 @@ class Engine : public EState {
       double ul = uL[i] < 0 ? -uL[i] : uL[i], ur = uR[i] < 0 ? -uR[i] : uR[i], pkk = ul > ur ? ul : ur, gt = pkk > ceil ? ceil / pkk : 1;
       // O(1) amortized monotonic deque sliding-window minimum over the last hn samples
       int64_t pos = dqPos++;
-      while (dqHead != dqTail && dqVal[(dqTail - 1) & 255] >= gt) dqTail = (dqTail - 1) & 255;
-      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 255;
-      while (dqHead != dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 255;
+      while (dqHead != dqTail && dqVal[(dqTail - 1) & 511] >= gt) dqTail = (dqTail - 1) & 511;
+      dqVal[dqTail] = gt; dqIdx[dqTail] = pos; dqTail = (dqTail + 1) & 511;
+      while (dqHead != dqTail && dqIdx[dqHead] <= pos - hn) dqHead = (dqHead + 1) & 511;
       gt = dqVal[dqHead];
       lgv += gt < lgv ? (gt * .9995 - lgv) * attC : (gt - lgv) * relC; if (lgv < mgr) mgr = lgv; lgB[i] = (float)lgv;
-      double l = softClip(sumL[i] * lgv, ceil), r = softClip(sumR[i] * lgv, ceil);
+      double l = sumL[i] * lgv, r = sumR[i] * lgv;
+      l = l > ceil ? ceil : l < -ceil ? -ceil : l; r = r > ceil ? ceil : r < -ceil ? -ceil : r;
       oL[i] = (float)l; oR[i] = (float)r;
       if (l < 0) l = -l; if (r < 0) r = -r; if (l > pL) pL = l; if (r > pR) pR = r;
     }

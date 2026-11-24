@@ -75,8 +75,8 @@ struct Ebow : Voice_ {
         drr += (dT - drr) * (dT > drr ? drUp : drDn);
         double A = envk * eR, Le = fmax2(2.0, Lb * kN / (1 + kT * fmin2(A * A, 4)));
         // 1st-order Thiran allpass fractional delay (unity magnitude at all frequencies, no slide damping ripple)
-        int64_t D0 = (int64_t)std::floor(Le - .5); double fd = Le - (double)D0, eta = (1.0 - fd) / (1.0 + fd);
-        double xs = bb[(ww - D0) & mask], y = eta * (xs - ay0) + ax; ax = xs; ay0 = y + 1e-18;
+        double rp = (double)ww - Le, i0 = std::floor(rp), fr = rp - i0; int64_t ii = (int64_t)i0;
+        double y = bb[ii & mask] * (1 - fr) + bb[(ii + 1) & mask] * fr;
         lpk += c * (y - lpk);
         double ay = y < 0 ? -y : y; envk += envC * (ay - envk);
         double bp = b0 * (y - x2) - a1 * y1 - a2 * y2; x2 = x1; x1 = y; y2 = y1; y1 = bp;
@@ -96,7 +96,7 @@ struct Ebow : Voice_ {
     w = ww & mask; dr = drr; C.kick = 0;
     double hmT = hh > 1 ? .55 : 1; hm += (hmT - hm) * srAlpha(.05, sr); if (hm != 1) for (int i = 0; i < n; i++) L[i] = (float)(L[i] * hm);
     hg.run(L, n, .16, 0, .03, 0, 1 - std::exp(-1 / (.03 * sr)), sr);
-    double e0 = env[0], ph = sph, d1 = dc1, d2 = dc2, og = 1.3, pzA = P[P_EBOW_PICKUP] * 8, dcR = std::exp(-TAU * 15.0 / sr), pzEnvC = srAlpha(.002, sr);
+    double e0 = env[0], ph = sph, d1 = dc1, d2 = dc2, og = 1.3, pzA = P[P_EBOW_PICKUP] * 8, dcR = std::pow(.998, 48000.0 / sr), pzEnvC = srAlpha(.002, sr);
     for (int i = 0; i < n; i++) {
       ph += dinc; if (ph > TAU) ph -= TAU;
       double o = L[i] * og + std::sin(ph) * sub * e0 * 3;
@@ -146,10 +146,8 @@ struct Hurdy : Voice_ {
       for (int k = 0; k < 3; k++) {
         Str& s = st[k];
         double lb = fmax2(1.0, lens[k] * .127), ln = fmax2(1.0, lens[k] - lb);
-        int64_t dB = (int64_t)std::floor(lb - .5); double fB = lb - (double)dB, eB = (1.0 - fB) / (1.0 + fB);
-        double xB = s.bd[(ww - dB) & mask], rb = eB * (xB - s.apBy) + s.apBx; s.apBx = xB; s.apBy = rb + 1e-18;
-        int64_t dN = (int64_t)std::floor(ln - .5); double fN = ln - (double)dN, eN = (1.0 - fN) / (1.0 + fN);
-        double xN = s.nd[(ww - dN) & mask], rn = eN * (xN - s.apNy) + s.apNx; s.apNx = xN; s.apNy = rn + 1e-18;
+        double rp = (double)ww - lb, i0 = std::floor(rp), f0 = rp - i0; int64_t ii = (int64_t)i0; double rb = s.bd[ii & mask] * (1 - f0) + s.bd[(ii + 1) & mask] * f0;
+        rp = (double)ww - ln; i0 = std::floor(rp); f0 = rp - i0; ii = (int64_t)i0; double rn = s.nd[ii & mask] * (1 - f0) + s.nd[(ii + 1) & mask] * f0;
         s.sf = fg * ((1 - pole) * rb + pole * s.sf) + 1e-18;
         double br = -s.sf, nr = -rn, dv = vb - (br + nr), q = dv * slope; if (q < 0) q = -q; q += .75; q = 1 / (q * q); q *= q; if (q > 1) q = 1;
         double nv = dv * q;
@@ -212,11 +210,10 @@ struct Bowed : Voice_ {
     double bd = bend, Lr = P[P_BOWED_LENGTH] * (.7 + .6 * bd), damp = P[P_BOWED_DAMP];
     double f0 = (C.hz > 0 ? C.hz : ob == 0 ? rulerHz(Lr) : P[P_BOWED_SIZE]) * E->pitchMul;
     // Smooth mode-jump damping burst instead of instantaneous y1/y2 *= 0.2 (eliminates pressure-automation clicks)
-    if (C.on) { if (lpr < 0) lpr = pr; if (std::fabs(pr - lpr) > .15) { lpr = pr; kk = 1; jmp = 1; } } else { lpr = -1; }
+    if (C.on) { if (lpr < 0) lpr = pr; if (std::fabs(pr - lpr) > .15) { lpr = pr; kk = 1; for (int q = 0; q < N; q++) { m.y1[q] *= .2; m.y2[q] *= .2; } } } else lpr = -1;
     double prf = clamp(pr / 1.1, 0, 1), rt = std::pow(ob == 0 ? 30.0 : 10.0, .85 * (1 - prf)), wd = E->water * .04;
     wob += n / sr * 5.3; double vib = 1 + std::sin(wob) * .002 * E->instab;
-    double pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E->matT * (1 - .85 * jmp), stt = 1 + E->matStretch;
-    if (jmp > 0) { jmp *= std::exp(-n / (.015 * sr)); if (jmp < .01) jmp = 0; }
+    double pos = C.on ? .04 + C.x * .4 : .1, T = S.t * (1 - damp * .9) * E->matT, stt = 1 + E->matStretch;
     if (ob == 1) { if (C.on) { rx = C.x; hasRx = true; } } double imm = ob == 1 ? immerse(E, hasRx ? rx : .5) : 1;
     for (int k = 0; k < N; k++) {
       double r = S.r[k], f;

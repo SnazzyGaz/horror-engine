@@ -21,7 +21,7 @@ static inline double fmax2(double a, double b) { return a > b ? a : b; }
 static inline double fmin2(double a, double b) { return a < b ? a : b; }
 static inline int nextPow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
 // sample-rate-invariant one-pole smoother coefficient (matches a48 at 48 kHz)
-static inline double srAlpha(double a48, double sr) { return 1.0 - std::pow(1.0 - a48, 48000.0 / sr); }
+static inline double srAlpha(double a48, double sr) { return sr == 48000.0 ? a48 : 1.0 - std::pow(1.0 - a48, 48000.0 / sr); }   // exactly a48 at 48 kHz, so the 48 kHz sound is unchanged
 // smooth C1 soft-knee safety clipper: linear up to 0.95*ceil, asymptotic to ceil (never exceeds ceil)
 static inline double softClip(double x, double ceil) {
   double a = x < 0 ? -x : x, k0 = ceil * .95;
@@ -46,12 +46,12 @@ struct HG {
   double pk = 0, ms = 0, d1 = 0, d2 = 0, ulp = 0;
   void run(float* x, int n, double c2, double c3, double c4, double c5, double k, double sr, bool rm = false) {
     double pk0 = pk, ms0 = ms, e1 = d1, e2 = d2, rel = 1 - k, ul = ulp;
-    double fc = fmin2(3800.0, .08 * sr), lpc = 1.0 - std::exp(-TAU * fc / sr), dcR = std::exp(-TAU * 38.0 / sr);
+    double dcR = std::pow(.995, 48000.0 / sr);
     for (int i = 0; i < n; i++) {
       double v = x[i], av = v < 0 ? -v : v, a; pk0 = av > pk0 ? av : pk0 * rel;
       if (rm) { ms0 += k * (v * v - ms0); a = std::sqrt(2 * ms0) + 1e-9; } else a = pk0 + 1e-9;
       double u = v / a; if (u > 1.3) u = 1.3; else if (u < -1.3) u = -1.3;
-      ul += lpc * (u - ul);
+      ul = u;   // no pre-filter: it changed the harmonics' timbre (review); sr only scales the DC blocker
       double u2 = ul * ul, ev = a * (c2 * (2 * u2 - 1) + c4 * (8 * u2 * u2 - 8 * u2 + 1)), od = a * ul * (c3 * (4 * u2 - 3) + c5 * (16 * u2 * u2 - 20 * u2 + 5));
       e2 = ev - e1 + dcR * e2; e1 = ev; x[i] = (float)(v + e2 + od);
     }
