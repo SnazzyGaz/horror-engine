@@ -386,7 +386,12 @@ static DreadLook dreadLook(float D, float lvl, bool still, double tMs) {
   float tone = jmin(1.f, jmax(0.f, lvl) * 4.f);
   float glow = D * (.22f + .78f * tone);
   float flick = 1.f;
-  if (!still) flick = .88f + .12f * std::sin((float)(tMs * .069)) * (.35f + .65f * tone);
+  // Hold steady when silent so Dread > 0 at idle does not drive continuous 60-144 Hz full-board repaints;
+  // quantize flicker to ~30 Hz when sounding to keep CPU light on high-refresh displays.
+  if (!still && tone > 1e-3f) {
+    double qMs = std::floor(tMs * 0.03) / 0.03;
+    flick = .88f + .12f * std::sin((float)(qMs * .069)) * (.35f + .65f * tone);
+  }
   return {D, .15f * D + .55f * D * D, .62f - .44f * D, glow, flick};
 }
 static bool motionReduced() { return false; }
@@ -427,10 +432,23 @@ void Plaque::paint(Graphics& g) {
   if (bye && isMouseButtonDown()) { g.setColour(rgba(224, 118, 74, .18f)); g.fillRoundedRectangle(r.reduced(1), 8); }
   float top = bye ? 5.f : 6.f, wh = bye ? 26.f : 30.f;
   auto wr = Rectangle<float>(0, top, r.getWidth(), wh + 2);
-  GlyphArrangement ga; ga.addFittedText(font(FELL, wh, bye ? .12f : 0.f), word, wr.getX(), wr.getY(), wr.getWidth(), wr.getHeight(), Justification::centred, 1);
-  Path wp; ga.createPath(wp);
-  DropShadow(rgba(255, 72, 24, D * .18f + G * .72f), (int)std::round(2 + 22 * G), {}).drawForPath(g, wp);
-  g.setColour(pressed ? live : wordCol); g.fillPath(wp);
+  float scale = jmin(2.f, (float)g.getInternalContext().getPhysicalPixelScaleFactor());
+  int cw = getWidth(), ch = getHeight();
+  if (cw != cacheW_ || ch != cacheH_ || scale != cacheScale_ || !glowImg_.isValid()) {
+    GlyphArrangement ga; ga.addFittedText(font(FELL, wh, bye ? .12f : 0.f), word, wr.getX(), wr.getY(), wr.getWidth(), wr.getHeight(), Justification::centred, 1);
+    wordPath_.clear(); ga.createPath(wordPath_);
+    int iw = jmax(1, (int)std::round(cw * scale)), ih = jmax(1, (int)std::round(ch * scale));
+    glowImg_ = Image(Image::ARGB, iw, ih, true);
+    Graphics gg(glowImg_); gg.addTransform(AffineTransform::scale(scale));
+    DropShadow(Colour((juce::uint8)255, (juce::uint8)72, (juce::uint8)24), 18, {}).drawForPath(gg, wordPath_);
+    cacheW_ = cw; cacheH_ = ch; cacheScale_ = scale;
+  }
+  {
+    Graphics::ScopedSaveState st(g);
+    g.setOpacity(jlimit(0.f, 1.f, D * .18f + G * .72f));
+    g.drawImage(glowImg_, r);
+  }
+  g.setColour(pressed ? live : wordCol); g.fillPath(wordPath_);
   text(g, sub, Rectangle<float>(0, top + wh + 3, r.getWidth(), 16), font(MONO, 12), giltTxt.withMultipliedAlpha(1.f - D * .5f), Justification::centred);
   if (progress > 0) { g.setColour(live); g.fillRect(Rectangle<float>(0, r.getBottom() - 3, r.getWidth() * jmin(1.f, progress), 3)); }
 }
@@ -1024,20 +1042,22 @@ void Board::paint(Graphics& g) {
       }
     }
 
-    // Rim stroke + soft halo, clipped to the body so it cannot bloom onto the board.
-    // The hole is excluded so the letter stays readable; in-lens light is the glass fill below.
+    // Rim stroke + soft halo (pre-baked radial sprite, clipped to body minus hole so zero software DropShadow per frame).
     {
       Graphics::ScopedSaveState st(g);
       clipBodyMinusHole(g);
       float blur = (live ? 8 + 14 * pr : 3) + (ember ? 6 + 12 * eg : 0);
       float haloA = ember ? jmin(1.f, .35f + .55f * gl) : jmin(1.f, gl * .85f);
+      const float hr = rCss + blur * 1.4f;
+      {
+        Graphics::ScopedSaveState st2(g);
+        g.setOpacity(jlimit(0.f, 1.f, haloA));
+        g.drawImage(ember ? ringHaloEmber : ringHaloCream, Rectangle<float>(X - hr, Y - hr, 2 * hr, 2 * hr));
+      }
       Path ring; ring.addEllipse(X - rCss, Y - rCss, 2 * rCss, 2 * rCss);
-      Path ringS; PathStrokeType(1.6f * s).createStrokedPath(ringS, ring);
-      Colour haloCol = ember ? rgba(255, 80, 28, haloA) : rgba(233, 211, 154, haloA);
-      DropShadow(haloCol, jmax(1, (int) std::round(blur)), {0, 0}).drawForPath(g, ringS);
       if (ember) g.setColour(live ? Colour(0xffffb08a) : rgba(255, 140, 80, .45f + .4f * ev));
       else g.setColour(live ? Colour(0xfff1dfae) : rgba(233, 211, 154, .55f));
-      g.fillPath(ringS);
+      g.strokePath(ring, PathStrokeType(1.6f * s));
     }
 
     // Light glass fill + specular highlight in the window.
@@ -1074,13 +1094,9 @@ void Board::paint(Graphics& g) {
   {
     he_paint::ScopeT _pinset(he_paint::Inset);
     if (look.vis) {
-      float rad = 30.f + look.vis * 240.f;
-      auto rr = getLocalBounds().toFloat();
-      for (int i = 0; i < 18; i++) {
-        float t = (i + 1) / 18.f;
-        g.setColour(rgba(8, 2, 1, look.vis * .82f * (1.f - t) * .18f));
-        g.drawRoundedRectangle(rr.reduced(t * rad * .35f), jmax(1.f, 14 - t * 10), 6.f);
-      }
+      if (insetVis != look.vis || !insetLayer.isValid())
+        buildInsetLayer(w, h, scale, look.vis);
+      g.drawImage(insetLayer, Rectangle<float>(0, 0, w, h));
     }
   }
   // the reading in the corner
@@ -1118,11 +1134,10 @@ void Board::paintOverChildren(Graphics& g) {
   text(g, pr, Rectangle<float>(w - 28 - pw - 2, h - 24 - 18, pw + 2, 18), mf, live, Justification::centredRight);
   if (reading.isNotEmpty()) text(g, reading, Rectangle<float>(w - 28 - pw - 14 - rw - 2, h - 24 - 18, rw + 2, 18), mf, live, Justification::centredRight);
   }
-  Path clip; clip.addRoundedRectangle(r, 14); g.reduceClipRegion(clip);
-  for (int i = 0; i < 18; i++) { g.setColour(Colours::black.withAlpha(.55f * (1 - i / 18.f) * .12f)); g.drawRoundedRectangle(r.reduced(i * 2.f + 7), 14 - jmin(13.f, i * 2.f), 2.5f); }
-  g.setColour(Colour(0xff120d0b)); g.drawRoundedRectangle(r.reduced(3.5f), 11, 5.f);
-  g.setColour(rgba(201, 168, 101, .35f)); g.drawRoundedRectangle(r.reduced(6.5f), 8, 1.f);
-  g.setColour(giltLo); g.drawRoundedRectangle(r.reduced(.5f), 14, 1.f);
+  const float fScale = jmin(2.f, (float)g.getInternalContext().getPhysicalPixelScaleFactor());
+  if (!frameLayer.isValid() || layerW != w || layerH != h || layerScale != fScale)
+    buildFrameLayer(w, h, fScale);
+  g.drawImage(frameLayer, r);
 }
 
 float Board::pressure(const MouseEvent& e) const {

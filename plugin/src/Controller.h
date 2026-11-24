@@ -154,8 +154,8 @@ class Controller : private juce::Timer {
   // ---- toasts and change counters ----
   juce::String toastText; juce::uint32 toastAt = 0; int toastSeq = 0;
   void toast(const juce::String& t);
-  int version = 0;        // bumped when lists (moments, MIDI map, favourites) change
-  int paramVersion = 0;   // bumped on any parameter change made here
+  std::atomic<int> version{0};        // bumped when lists (moments, MIDI map, favourites) change
+  std::atomic<int> paramVersion{0};   // bumped on any parameter change made here
 
   void poll() { timerCallback(); }   // tests: take the audio thread's news now
 
@@ -188,6 +188,7 @@ class Controller : private juce::Timer {
   void saveFile(const juce::String& name, const juce::String& filters, std::function<bool(const juce::File&)> write, std::function<void(const juce::File&)> ok);
 
   HorrorProcessor& p_;
+  std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
   int sel_ = 0, octave_ = 0, preset_ = 0, nextHandle_ = 1;
   std::vector<HEntry> hist_; int hpos_ = 0; std::unique_ptr<HEntry> hGrp_; int hMute_ = 0; int ucSeen_ = -1;
   std::map<juce::String, int> mmap_;   // "cc:ch:cc" -> parameter

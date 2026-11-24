@@ -54,7 +54,6 @@ static const char* seanceVersion() {
 
 void HorrorEditor::writeGLLog() {
   auto f = seanceLogFile();
-  f.deleteFile();
   auto text = String("Horror Engine Seance ") + seanceVersion() + " editor\n"
             + "opened  " + Time::getCurrentTime().toString(true, true, true, true) + "\n";
   if (glOk && gl_ && gl_->isAttached()) {
@@ -72,17 +71,25 @@ void HorrorEditor::writeGLLog() {
 
 void HorrorEditor::queryGLInfo() {
   if (!gl_ || !gl_->isAttached()) return;
-  gl_->executeOnGLThread([this](OpenGLContext&) {
+  Component::SafePointer<HorrorEditor> safe(this);
+  gl_->executeOnGLThread([safe](OpenGLContext&) {
     auto str = [](GLenum n) -> String {
       const auto* s = juce::gl::glGetString(n);
       return s != nullptr ? String(CharPointer_UTF8(reinterpret_cast<const char*>(s))) : String("(null)");
     };
-    glVendor = str(juce::gl::GL_VENDOR);
-    glRendererName = str(juce::gl::GL_RENDERER);
-    glVersion = str(juce::gl::GL_VERSION);
-  }, true);
-  glReason = {};
-  writeGLLog();
+    String vendor = str(juce::gl::GL_VENDOR);
+    String renderer = str(juce::gl::GL_RENDERER);
+    String version = str(juce::gl::GL_VERSION);
+    MessageManager::callAsync([safe, vendor, renderer, version] {
+      if (auto* ed = safe.getComponent()) {
+        ed->glVendor = vendor;
+        ed->glRendererName = renderer;
+        ed->glVersion = version;
+        ed->glReason = {};
+        ed->writeGLLog();
+      }
+    });
+  }, false);
 }
 
 void HorrorEditor::tryAttachGL() {
@@ -165,7 +172,7 @@ HorrorEditor::HorrorEditor(HorrorProcessor& p)
   setSize(1280, 760);
   startTimerHz(30);
 }
-HorrorEditor::~HorrorEditor() { removeMouseListener(this); detachGL(); setLookAndFeel(nullptr); }
+HorrorEditor::~HorrorEditor() { stopTimer(); removeMouseListener(this); detachGL(); restorePeerEngine(); setLookAndFeel(nullptr); }
 void HorrorEditor::parentHierarchyChanged() { takeKeys(); tryAttachGL(); }
 void HorrorEditor::visibilityChanged() { tryAttachGL(); }
 // the editor only asks for keyboard focus while computer-keyboard playing is on; otherwise keys go to the host

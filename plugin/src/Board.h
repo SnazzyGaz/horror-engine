@@ -30,6 +30,11 @@ class Plaque : public juce::Component, public juce::SettableTooltipClient {
   void paint(juce::Graphics&) override;
   void mouseUp(const juce::MouseEvent& e) override { if (getLocalBounds().contains(e.getPosition()) && !e.mods.isPopupMenu() && onClick) onClick(); }
   juce::Rectangle<int> preferredSize() const;
+ private:
+  juce::Image glowImg_;
+  juce::Path wordPath_;
+  int cacheW_ = 0, cacheH_ = 0;
+  float cacheScale_ = 0;
 };
 
 struct BoardRuler { int lo, hi; double r; int kind; bool q; };

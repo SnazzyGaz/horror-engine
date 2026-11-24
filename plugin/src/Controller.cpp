@@ -34,7 +34,7 @@ Controller::Controller(HorrorProcessor& p) : p_(p) {
   favs_ = f;
   startTimerHz(30);
 }
-Controller::~Controller() { stopTimer(); }
+Controller::~Controller() { alive_->store(false); stopTimer(); chooser_.reset(); }
 
 PropertiesFile& Controller::settings() {
   if (!settings_) { PropertiesFile::Options o; o.applicationName = "HorrorEngineSeance"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support"; o.folderName = "Horror Engine"; settings_ = std::make_unique<PropertiesFile>(o); }
@@ -220,7 +220,9 @@ String Controller::stamp() { return Time::getCurrentTime().formatted("%Y%m%d-%H%
 
 void Controller::saveFile(const String& name, const String& filters, std::function<bool(const File&)> write, std::function<void(const File&)> ok) {
   chooser_ = std::make_unique<FileChooser>("Save " + name, File::getSpecialLocation(File::userDocumentsDirectory).getChildFile(name), filters);
-  chooser_->launchAsync(FileBrowserComponent::saveMode | FileBrowserComponent::canSelectFiles | FileBrowserComponent::warnAboutOverwriting, [this, write, ok](const FileChooser& fc) {
+  auto alive = alive_;
+  chooser_->launchAsync(FileBrowserComponent::saveMode | FileBrowserComponent::canSelectFiles | FileBrowserComponent::warnAboutOverwriting, [this, alive, write, ok](const FileChooser& fc) {
+    if (!alive->load()) return;
     File f = fc.getResult(); if (f == File()) return;
     if (write(f)) ok(f); else toast("This view cannot save files.");
   });
@@ -297,7 +299,9 @@ static StringArray checkFile(const var& j, const std::function<bool(const var&)>
 
 void Controller::loadPresetFile() {
   chooser_ = std::make_unique<FileChooser>("Load a preset or performance file", File::getSpecialLocation(File::userDocumentsDirectory), "*.json");
-  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this](const FileChooser& fc) {
+  auto alive = alive_;
+  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this, alive](const FileChooser& fc) {
+    if (!alive->load()) return;
     File file = fc.getResult(); if (!file.existsAsFile()) return;
     var j = JSON::parse(file.loadFileAsString());
     auto errs = checkFile(j, [this](const var& c) { return cmValid(c); });
@@ -394,6 +398,7 @@ static std::shared_ptr<const he::CmDefinition> toDefinition(const CustomMoment& 
   return d;
 }
 std::vector<std::pair<int, std::shared_ptr<const he::CmDefinition>>> Controller::engineDefinitions() const {
+  const ScopedLock stateGuard(stateLock);
   std::vector<std::pair<int, std::shared_ptr<const he::CmDefinition>>> out; for (auto& c : CMS) out.push_back({c.handle, toDefinition(c)}); return out;
 }
 void Controller::cmSend(const CustomMoment& c) { UiEvent e; e.type = UiEvent::CMDEF; e.id = c.handle; e.def = toDefinition(c); send(e); }
@@ -487,7 +492,9 @@ void Controller::cmImport(const var& j) {
 }
 void Controller::cmImportFile() {
   chooser_ = std::make_unique<FileChooser>("Import a .horror-moment.json file", File::getSpecialLocation(File::userDocumentsDirectory), "*.json");
-  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this](const FileChooser& fc) {
+  auto alive = alive_;
+  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this, alive](const FileChooser& fc) {
+    if (!alive->load()) return;
     File f = fc.getResult(); if (!f.existsAsFile()) return;
     var j = JSON::parse(f.loadFileAsString());
     if (!j.isObject()) { toast("That file is not JSON."); return; }
@@ -519,7 +526,9 @@ void Controller::inputTrack() {
 }
 void Controller::inputFile() {
   chooser_ = std::make_unique<FileChooser>("Play an audio file through the machine", File::getSpecialLocation(File::userMusicDirectory), "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
-  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this](const FileChooser& fc) {
+  auto alive = alive_;
+  chooser_->launchAsync(FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [this, alive](const FileChooser& fc) {
+    if (!alive->load()) return;
     File f = fc.getResult(); if (!f.existsAsFile()) return;
     AudioFormatManager fm; fm.registerBasicFormats();
     std::unique_ptr<AudioFormatReader> r(fm.createReaderFor(f));

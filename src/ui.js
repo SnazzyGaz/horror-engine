@@ -343,7 +343,10 @@
     try {
       // Chrome/Edge refuse Blob-URL worklets on file:// (the page origin is opaque, so blob:null is cross-origin),
       // but accept a data: URL. Over http(s) a Blob URL is the normal path. Each path falls back to the other.
-      var blobU = function () { return ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); };
+      var blobU = function () {
+        var u = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+        return ctx.audioWorklet.addModule(u).then(function (r) { URL.revokeObjectURL(u); return r; }, function (e) { URL.revokeObjectURL(u); throw e; });
+      };
       var dataU = function () { return ctx.audioWorklet.addModule('data:text/javascript;charset=utf-8,' + encodeURIComponent(code)); };
       var first = location.protocol === 'file:' ? dataU : blobU, second = first === dataU ? blobU : dataU;
       ready = first().catch(second).then(mk);
@@ -534,6 +537,8 @@
       if (learnId) { learnGot(d[0] & 15, d[1]); return; }
       var mid = MMAP['cc:' + (d[0] & 15) + ':' + d[1]]; if (mid) { setParam(mid, mmValue(mid, d[2])); return; }
     }
+    if (st === 176 && d[1] === 120) { panic(); return; }
+    if (st === 176 && d[1] === 123) { releaseAll(); return; }
     if ((d[0] & 15) === 15 && (st === 144 || st === 128)) { if (st === 144 && d[2] > 0 && d[1] >= 36) momentN(d[1] - 36); return; }
     if (st === 176 && d[1] >= 24 && d[1] <= 43) { var was = midiCC[d[1]] || 0; midiCC[d[1]] = d[2]; if (was < 64 && d[2] >= 64) momentN(d[1] - 24); return; }
     if (st === 144 && d[2] > 0) noteOn('m' + d[1], 440 * Math.pow(2, (d[1] - 69) / 12), d[2] / 127);
@@ -726,7 +731,9 @@
     try {
       var code = 'var HE_SOURCES=' + JSON.stringify(HE_SOURCES) + ';var HE_PARAMS=' + JSON.stringify(HE_PARAMS) + ';var HECoreFactory=' + HECoreFactory.toString() + ';var HE_IO=(' + HEIOFactory.toString() + ')();' +
         'onmessage=function(e){var j=HE_IO.renderJob(e.data.perf,e.data.opt);while(!j.step(2048))postMessage({p:j.progress});var r=j.result,t=[];r.mix.forEach(function(c){t.push(c.buffer)});if(r.stems)r.stems.forEach(function(s){if(s)s.forEach(function(c){t.push(c.buffer)})});postMessage({r:r},t)}';
-      w = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+      var wurl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      w = new Worker(wurl);
+      URL.revokeObjectURL(wurl);
       w.onmessage = function (e) { if (e.data.r) { w.terminate(); done(e.data.r); } else prog(e.data.p); };
       w.onerror = function (e) { e.preventDefault(); w.terminate(); main(); };
       w.postMessage({ perf: perf, opt: opt });
