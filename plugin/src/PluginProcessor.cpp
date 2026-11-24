@@ -309,7 +309,8 @@ void HorrorProcessor::handleMidi(const MidiMessage& msg) {
     if (mid >= 0) { midiParam(mid, Controller::midiValue(mid, d2)); return; }
   }
   // Channel mode messages: CC 120 All Sound Off, CC 123 All Notes Off
-  if (st == 176 && d1 == 120) { releaseAll(selVoice.load()); host_->panic(); return; }
+  // (not GOODBYE: hosts send these on transport stop, and GOODBYE also mutes every looper layer and stops the moments)
+  if (st == 176 && d1 == 120) { releaseAll(selVoice.load()); return; }
   if (st == 176 && d1 == 123) { releaseAll(selVoice.load()); return; }
   // moments over MIDI: notes on channel 16 from C2 (36) fire moment 1, 2, 3...; CC 24-43 on any channel fire them on a rise past 64
   if (ch == 15 && (st == 144 || st == 128)) { if (st == 144 && d2 > 0 && d1 >= 36) momentN(d1 - 36); return; }
@@ -407,17 +408,16 @@ void HorrorProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer& midi)
       pk = jmax(pk, std::abs(L[i]), std::abs(R[i]));
     }
     scopeW = w;
+    // no lock here: only prepareToPlay() resizes the ring, and it never runs during processBlock(); a try-lock would drop
+    // whole blocks from the last minute while the editor copies it out (a gap and a click in "Save the last minute")
     {
-      SpinLock::ScopedTryLockType rl(ringLock_);
-      if (rl.isLocked()) {
-        int rw = ringW_.load(), RN = ring_.getNumSamples();
-        if (RN > 0) {
-          for (int i = 0; i < cn; i++) {
-            ring_.setSample(0, rw, L[i]); ring_.setSample(1, rw, R[i]);
-            if (++rw >= RN) rw = 0;
-          }
-          ringW_ = rw; ringFill_ = jmin(RN, ringFill_.load() + cn);
+      int rw = ringW_.load(), RN = ring_.getNumSamples();
+      if (RN > 0) {
+        for (int i = 0; i < cn; i++) {
+          ring_.setSample(0, rw, L[i]); ring_.setSample(1, rw, R[i]);
+          if (++rw >= RN) rw = 0;
         }
+        ringW_ = rw; ringFill_ = jmin(RN, ringFill_.load() + cn);
       }
     }
   }
@@ -490,8 +490,11 @@ void HorrorProcessor::setStateInformation(const void* data, int size) {
   auto st = ValueTree::fromXml(*x); auto extra = st.getChildWithName("SEANCE").createCopy();
   st.removeChild(st.getChildWithName("SEANCE"), nullptr);
   apvts.replaceState(st);
-  // Load synchronously under stateLock (push() is thread-safe) so offline bounces never race callAsync
-  ctl_->loadState(extra);
+  // The controller's state (moments, MIDI map, undo history) belongs to the message thread, where the editor and the
+  // controller's timer read it without locks: load it there. Off the message thread, post it (guarded, so a plugin
+  // deleted before the message arrives is never touched).
+  if (MessageManager::getInstanceWithoutCreating() && MessageManager::getInstance()->isThisTheMessageThread()) ctl_->loadState(extra);
+  else { auto alive = alive_; MessageManager::callAsync([this, alive, extra] { if (alive->load()) ctl_->loadState(extra); }); }
 }
 
 AudioProcessorEditor* HorrorProcessor::createEditor() { return new HorrorEditor(*this); }

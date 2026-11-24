@@ -537,7 +537,7 @@
       if (learnId) { learnGot(d[0] & 15, d[1]); return; }
       var mid = MMAP['cc:' + (d[0] & 15) + ':' + d[1]]; if (mid) { setParam(mid, mmValue(mid, d[2])); return; }
     }
-    if (st === 176 && d[1] === 120) { panic(); return; }
+    if (st === 176 && d[1] === 120) { releaseAll(); return; }   // not GOODBYE: that also mutes the looper and stops the moments
     if (st === 176 && d[1] === 123) { releaseAll(); return; }
     if ((d[0] & 15) === 15 && (st === 144 || st === 128)) { if (st === 144 && d[2] > 0 && d[1] >= 36) momentN(d[1] - 36); return; }
     if (st === 176 && d[1] >= 24 && d[1] <= 43) { var was = midiCC[d[1]] || 0; midiCC[d[1]] = d[2]; if (was < 64 && d[2] >= 64) momentN(d[1] - 24); return; }
