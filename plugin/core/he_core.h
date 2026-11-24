@@ -31,7 +31,7 @@ struct CmDefinition { int voice = -1; double len = 0; std::vector<CmEvent> ev; s
 // what "Record moment" captured (frames from arming); see Engine.recM in engine.js
 struct CmCapture {
   double sr = 48000, dur = 0;
-  struct Ev { double t; int s; char k; double x, y, p, hz; };
+  struct Ev { double t; int s; char k; double x, y, p, hz; int sl = 0; };   // sl: the MIDI note slot (folded away before capture)
   struct Pv { double t; int k; double v; };
   std::vector<Ev> ev; std::vector<Pv> pv; std::vector<std::pair<int, double>> p0;   // p0: start values of the moved knobs
 };

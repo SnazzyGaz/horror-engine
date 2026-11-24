@@ -6,7 +6,7 @@ Horror Engine is by **Garyck Arntzen** ([x.com/_mintydoge](https://x.com/_mintyd
 
 ## Installing on Windows
 
-Download the [plugin-v1.0.13](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.13) release and unzip it. Use **`HorrorEngine-Seance-1.0.13-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
+Download the [plugin-v1.0.14](https://github.com/SnazzyGaz/horror-engine/releases/tag/plugin-v1.0.14) release and unzip it. Use **`HorrorEngine-Seance-1.0.14-Windows-MinGW.zip`** (recommended: this is the build already used in FL Studio). The `…-Windows-MSVC.zip` is the GitHub Actions build; it passed automated validation but has not yet been load-tested in a DAW.
 
 - **VST3:** copy the `Horror Engine.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 - **CLAP** (optional): copy `Horror Engine.clap` to `C:\Program Files\Common Files\CLAP\` (create that folder if needed). FL Studio supports CLAP from 2024.1.
@@ -44,6 +44,14 @@ The layout, controls and engine are the same. A few things that belong to the br
 ## Building
 
 See `BUILDING.md`. Windows builds use MSVC in GitHub Actions (the installed Visual Studio, selected by CMake), or MinGW-w64 when cross-compiled on Linux. Both use a small JUCE message-box patch (`patches/juce-8.0.15-taskdialog.patch`) to avoid a static import of `TaskDialogIndirect`, and link the C/C++ runtime statically. MinGW also needs `patches/juce-8.0.15-mingw.patch` for compiler compatibility. CMake fetches and patches its pinned dependencies automatically; if supplying a local `JUCE_DIR`, apply the relevant patches yourself first.
+
+## Changes in 1.0.14
+
+- **MIDI expression.** Pitch bend (±2 semitones), channel aftertouch and the mod wheel now shape held notes, and the sustain pedal holds them. The wheel and aftertouch take over from velocity only once moved while a note is held, so a wheel left up does not flatten every new phrase.
+- **Chords.** E-bow plays up to 2 MIDI notes at once, Bowed and Glass up to 3. A chord recorded into the looper replays as a chord, and letting go of one note keeps the others sounding. Record moment folds a chord onto one line per voice (newest note leads), so a moment keeps sounding until the last note is let go. Moment files are unchanged.
+- **High sample rates.** Filters, smoothing and the limiter now behave the same at 88.2 and 96 kHz as at 48 kHz. At 48 kHz the sound is identical to 1.0.13.
+- **Stability.** Safer loading of saved projects, no locking on the audio thread, MIDI CC 120 (All Sound Off) releases notes, and fixes for rare crashes in Struck and Moan.
+- **Automation.** The board's position and pressure can be automated from the host.
 
 ## Changes in 1.0.13
 

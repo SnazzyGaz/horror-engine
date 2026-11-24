@@ -115,7 +115,7 @@ class HorrorProcessor : public juce::AudioProcessor {
   // held notes (MIDI and the computer keyboard): polyphonic on E-bow (2), Bowed (3), Glass (3); last-note mono on others
   struct Held { int tag; int voice; int slot; double baseHz; double vel; bool sustained; };
   std::vector<Held> held_; int midiCC_[128] = {};
-  double pbMul_ = 1.0, atMod_ = -1.0, mwMod_ = -1.0;
+  double pbMul_ = 1.0, atMod_ = -1.0, mwMod_ = -1.0; bool modLive_ = false;
   bool sustain_ = false;
   // editor / host -> audio
   static constexpr int QN = 1024;

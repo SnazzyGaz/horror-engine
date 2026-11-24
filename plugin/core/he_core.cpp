@@ -16,11 +16,42 @@ namespace he {
 static const int ORDER[NS] = {0, 1, 2, 3, 4, 8, 6, 5, 7};
 
 // ---------- the gesture looper's data (events are shared between undo snapshots, never mutated) ----------
-struct LEv { double f; int j; char k; double x, y, p, hz; };
-struct REv { double t; int s; char k; double x, y, p, hz; };
+struct LEv { double f; int j; char k; double x, y, p, hz; int sl = 0; };   // sl: 0 = board/touch, 1..3 = a polyphonic MIDI note slot
+struct REv { double t; int s; char k; double x, y, p, hz; int sl = 0; };
+constexpr int LMIDI = 3;   // MIDI note slots a layer can replay (= Engine::NMIDI)
+// a chord folded onto one slot, for playback that has only one (moments, ghost layers): the newest held note leads,
+// releasing it falls back to the next newest still held, and only the last release lifts. Board-only input passes unchanged.
+template <class E> static std::vector<E> monoFold(const std::vector<E>& in, int (*voice)(const E&)) {
+  bool any = false; for (auto& e : in) if (e.sl != 0) { any = true; break; }
+  if (!any) return in;
+  struct H { int sl; double x, y, p, hz; };
+  std::vector<std::vector<H>> held(NS); std::vector<E> out; out.reserve(in.size());
+  for (const E& e : in) {
+    int v = voice(e); if (v < 0 || v >= NS) continue; auto& h = held[v];
+    auto at = [&](int q) { for (size_t i = 0; i < h.size(); i++) if (h[i].sl == q) return (int)i; return -1; };
+    E o = e; o.sl = 0; int i = at(e.sl);
+    if (e.k == 'd') { if (i >= 0) h.erase(h.begin() + i); h.push_back({e.sl, e.x, e.y, e.p, e.hz}); out.push_back(o); }
+    else if (e.k == 'u') {
+      if (i < 0) { if (h.empty()) out.push_back(o); continue; }
+      bool lead = i == (int)h.size() - 1; h.erase(h.begin() + i);
+      if (h.empty()) out.push_back(o);
+      else if (lead) { const H& n = h.back(); o.k = 'd'; o.x = n.x; o.y = n.y; o.p = n.p; o.hz = n.hz; out.push_back(o); }
+    }
+    else {
+      if (i >= 0) { h[i].x = e.x; h[i].y = e.y; h[i].p = e.p; if (e.hz > 0) h[i].hz = e.hz; }
+      if (h.empty() || i == (int)h.size() - 1) out.push_back(o);
+    }
+  }
+  return out;
+}
 struct Stroke { double t0; std::vector<LEv> ev; double len; };
 struct Ghost { std::vector<Stroke> st; std::vector<double> gaps; double wait = 0; int cur = -1; double pos = 0; size_t i = 0; double str = 1, xo = 0, pm = 1; bool mir = false; int lastK = -1; };
-struct Layer { int id, src; Slot sl; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; size_t i = 0; double pos = 0; bool mute = false, ghost = false; std::unique_ptr<Ghost> gs; uint32_t seed; Rng rng; double startAt = -1; };
+struct Layer { int id, src; Slot sl; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; size_t i = 0; double pos = 0; bool mute = false, ghost = false; std::unique_ptr<Ghost> gs; uint32_t seed; Rng rng; double startAt = -1;
+  Slot ms[LMIDI];   // the MIDI note slots of a chord recorded into this layer
+  void off() { sl.on = false; for (auto& q : ms) q.on = false; }
+  void setSrc(int v) { src = v; sl.src = v; for (auto& q : ms) q.src = v; }
+  Slot* slotFor(int k) { return k >= 1 && k <= LMIDI ? &ms[k - 1] : &sl; }
+};
 struct LayerSnap { int id, src; double len, origin; std::shared_ptr<const std::vector<LEv>> ev; bool mute, ghost; uint32_t seed; };
 struct Snap { double frame; bool hasLane; double laneStart, laneLen; std::vector<LayerSnap> L; };
 
@@ -30,6 +61,7 @@ struct MChain { double tl[2] = {}, hx[2] = {}, hy[2] = {}; float lk[2][256]; MCh
 class Engine : public EState {
  public:
   static const int NMIDI = 3;
+  static_assert(NMIDI == LMIDI, "a layer replays every MIDI slot");
   // voices: src[] are the first instances; inst[s] lists every instance of voice s
   Ebow ebow0; Hurdy hurdy; Bowed bowed0; Glass glass0; Struck struck; Spring spring; Junk junk; Aura aura; Moan moan;
   std::vector<std::unique_ptr<Voice_>> extra;
@@ -168,8 +200,9 @@ class Engine : public EState {
   void user(int s, char k, double x, double y, double p, double hz, int slot = 0) {
     Slot& S = (slot >= 1 && slot <= NMIDI) ? midiSlots[s][slot - 1] : slots[s][0];
     gesture2(S, s, k, x, y, p, hz);
-    if (recOn) recEv.push_back({lc, s, k, x, y, p, hz});
-    if (recMOn) recM.ev.push_back({frame - recMStart, s, k, x, y, p, hz});
+    int sl = slot >= 1 && slot <= NMIDI ? slot : 0;
+    if (recOn) recEv.push_back({lc, s, k, x, y, p, hz, sl});
+    if (recMOn) recM.ev.push_back({frame - recMStart, s, k, x, y, p, hz, sl});
   }
   void smooth(Slot& S, double dt) {
     if (!S.on) { S.spd *= std::pow(.8, 48000.0 / sr); return; }
@@ -182,16 +215,17 @@ class Engine : public EState {
   void contacts() {
     double dt = BL / sr; int s, n; size_t j, k;
     for (s = 0; s < NS; s++) { smooth(slots[s][0], dt); smooth(slots[s][1], dt); for (int m = 0; m < NMIDI; m++) smooth(midiSlots[s][m], dt); }
-    for (auto& Ly : layers) smooth(Ly->sl, dt);
+    for (auto& Ly : layers) { smooth(Ly->sl, dt); for (auto& q : Ly->ms) smooth(q, dt); }
     for (Slot* cs : cmSl) smooth(*cs, dt);
     for (s = 0; s < NS; s++) {
       std::vector<Contact>& cv = Cv[s]; size_t nv = cv.size(); n = 0;
       auto put = [&](Slot* S) { if ((size_t)n < act.size()) act[n] = S; else act.push_back(S); n++; };
       if (slots[s][0].on) put(&slots[s][0]);
-      for (int m = 0; m < NMIDI; m++) if (midiSlots[s][m].on) put(&midiSlots[s][m]);
+      if (midiSlots[s][0].on) put(&midiSlots[s][0]);   // the first MIDI note ranks where live MIDI always did
       if (slots[s][1].on) put(&slots[s][1]);
-      for (auto& Ly : layers) if (Ly->src == s && Ly->sl.on) put(&Ly->sl);
+      for (auto& Ly : layers) if (Ly->src == s) { if (Ly->sl.on) put(&Ly->sl); for (auto& q : Ly->ms) if (q.on) put(&q); }
       for (Slot* cs : cmSl) if (cs->src == s && cs->on) put(cs);
+      for (int m = 1; m < NMIDI; m++) if (midiSlots[s][m].on) put(&midiSlots[s][m]);   // extra chord notes take what is left
       for (k = 0; k < nv; k++) { Slot* o = cv[k].own; if (o && (!o->on || o->src != s)) cv[k].own = nullptr; }
       for (j = 0; j < (size_t)n; j++) {
         Slot* S = act[j]; bool has = false;
@@ -216,14 +250,17 @@ class Engine : public EState {
   void seekLayer(Layer& L) { double ph = phaseOf(L, lc); size_t i = 0; while (i < L.ev->size() && (*L.ev)[i].f < ph) i++; L.i = i; L.pos = ph; }
   Snap snap() { Snap S{frame, hasLane, laneStart, laneLen, {}}; for (auto& L : layers) S.L.push_back({L->id, L->src, L->len, L->origin, L->ev, L->mute, L->ghost, L->seed}); return S; }
   // a layer is going away: nothing may keep pointing at its slot (in the JavaScript the old object simply goes quiet)
-  void forget(Layer& L) { L.sl.on = false; for (int s = 0; s < NS; s++) for (auto& c : Cv[s]) if (c.own == &L.sl) c.own = nullptr; for (auto& a : act) if (a == &L.sl) a = nullptr; }
+  void forget(Layer& L) {
+    L.off(); auto mine = [&](Slot* o) { if (o == &L.sl) return true; for (auto& q : L.ms) if (o == &q) return true; return false; };
+    for (int s = 0; s < NS; s++) for (auto& c : Cv[s]) if (mine(c.own)) c.own = nullptr; for (auto& a : act) if (mine(a)) a = nullptr;
+  }
   void pushUndo() { ucnt++; undo.push_back(snap()); if (undo.size() > 50) undo.erase(undo.begin()); redo.clear(); }
   void restore(const Snap& S) {
     for (auto& L : layers) forget(*L);
     hasLane = S.hasLane; laneStart = S.laneStart; laneLen = S.laneLen;
     layers.clear();
     for (auto& q : S.L) {
-      std::unique_ptr<Layer> L(new Layer{q.id, q.src, Slot(q.src), q.len, q.origin, q.ev, 0, 0, q.mute, q.ghost, nullptr, q.seed, Rng(q.seed)});
+      std::unique_ptr<Layer> L(new Layer{q.id, q.src, Slot(q.src), q.len, q.origin, q.ev, 0, 0, q.mute, q.ghost, nullptr, q.seed, Rng(q.seed)}); L->setSrc(q.src);
       if (L->ghost) ghostPrep(*L); else seekLayer(*L);
       layers.push_back(std::move(L));
     }
@@ -256,14 +293,14 @@ class Engine : public EState {
       else if (!hasLane) { hasLane = true; laneStart = R0; laneLen = dur; origin = R0; len = dur; }
       else if (m.free) { origin = R0; len = dur; }
       else { len = fmax2(1, jsround(dur / laneLen)) * laneLen; origin = laneStart; }
-      bool down = false; for (auto& e : evb) { if (e.k == 'd') down = true; else if (e.k == 'u') down = false; }
-      if (down) evb.push_back({lc - lcAdv, best, 'u', 0, 0, 0, 0});
+      bool down[LMIDI + 1] = {}; for (auto& e : evb) { if (e.k == 'd') down[e.sl] = true; else if (e.k == 'u') down[e.sl] = false; }
+      for (int q = 0; q <= LMIDI; q++) if (down[q]) evb.push_back({lc - lcAdv, best, 'u', 0, 0, 0, 0, q});
       auto out = std::make_shared<std::vector<LEv>>(); int j = 0;
-      for (auto& e : evb) { double d = std::fmod(e.t - origin, len); if (d < 0) d += len; out->push_back({d, j++, e.k, e.x, e.y, e.p, e.hz}); }
+      for (auto& e : evb) { double d = std::fmod(e.t - origin, len); if (d < 0) d += len; out->push_back({d, j++, e.k, e.x, e.y, e.p, e.hz, e.sl}); }
       std::stable_sort(out->begin(), out->end(), [](const LEv& p, const LEv& q) { return p.f < q.f || (p.f == q.f && p.j < q.j); });
       pushUndo();
       uint32_t seed = rng.s ^ (uint32_t)((uint64_t)lid * 2654435761ULL);
-      std::unique_ptr<Layer> L(new Layer{lid++, best, Slot(best), len, origin, out, 0, 0, false, false, nullptr, seed, Rng(seed)});
+      std::unique_ptr<Layer> L(new Layer{lid++, best, Slot(best), len, origin, out, 0, 0, false, false, nullptr, seed, Rng(seed)}); L->setSrc(best);
       seekLayer(*L); if (synced) L->startAt = nextBar(lc);   // playback starts on the next bar line
       layers.push_back(std::move(L)); lver++;
     }
@@ -271,17 +308,18 @@ class Engine : public EState {
     else {
       size_t i; for (i = 0; i < layers.size(); i++) if (layers[i]->id == m.layer) break;
       if (i >= layers.size()) return;
-      pushUndo(); Layer& L = *layers[i]; L.sl.on = false;
+      pushUndo(); Layer& L = *layers[i]; L.off();
       if (a == "del") { forget(L); layers.erase(layers.begin() + i); if (layers.empty()) hasLane = false; }
       else if (a == "mute") L.mute = m.lv != 0;
-      else if (a == "src") { L.src = (int)m.lv; L.sl.src = L.src; }
+      else if (a == "src") L.setSrc((int)m.lv);
       else if (a == "ghost") { L.ghost = m.lv != 0; if (L.ghost) ghostPrep(L); else seekLayer(L); }
       lver++;
     }
   }
   void ghostPrep(Layer& L) {
     auto G = std::make_unique<Ghost>(); bool hasCur = false; Stroke cur; double last = 0;
-    for (auto& e : *L.ev) {
+    const std::vector<LEv> fold = monoFold<LEv>(*L.ev, [](const LEv&) { return 0; });   // a ghost replays strokes on one slot
+    for (auto& e : fold) {
       if (e.k == 'd') { if (hasCur) G->st.push_back(cur); G->gaps.push_back(e.f - last); cur = Stroke{e.f, {e}, 0}; hasCur = true; }
       else if (hasCur) { cur.ev.push_back(e); if (e.k == 'u') { cur.len = e.f - cur.t0; last = e.f; G->st.push_back(cur); hasCur = false; } }
     }
@@ -291,7 +329,7 @@ class Engine : public EState {
   }
   void fireLayer(Layer& L, double upTo) {
     const auto& ev = *L.ev;
-    while (L.i < ev.size() && ev[L.i].f < upTo) { const LEv& e = ev[L.i++]; if (!L.mute) gesture2(L.sl, L.src, e.k, e.x, e.y, e.p, e.hz); }
+    while (L.i < ev.size() && ev[L.i].f < upTo) { const LEv& e = ev[L.i++]; if (!L.mute) gesture2(*L.slotFor(e.sl), L.src, e.k, e.x, e.y, e.p, e.hz); }
   }
   double prevBar(double x) const { return barLc + std::floor((x - barLc) / barLen + 1e-9) * barLen; }
   double nextBar(double x) const { return barLc + std::ceil((x - barLc) / barLen - 1e-9) * barLen; }
@@ -311,7 +349,7 @@ class Engine : public EState {
   }
   // the host started, looped or jumped: every layer picks up at the host's position
   void relock(double delta) {
-    for (auto& L : layers) { L->sl.on = false; L->startAt = -1; if (L->gs) L->gs->cur = -1; else seekLayer(*L); }
+    for (auto& L : layers) { L->off(); L->startAt = -1; if (L->gs) L->gs->cur = -1; else seekLayer(*L); }
     if (recOn) { recStart += delta; recOrigin += delta; for (auto& e : recEv) e.t += delta; }
   }
   void loopRun() {
@@ -452,6 +490,7 @@ class Engine : public EState {
     if (on) { if (!recMOn) { recMOn = true; recMStart = frame; recM.ev.clear(); recM.pv.clear(); recMp0.assign(P, P + NPARAM); for (auto& kv : cmBase) recMp0[kv.first] = kv.second.v; } }
     else if (recMOn) {
       recMOn = false; bool held[NS] = {};
+      recM.ev = monoFold<CmCapture::Ev>(recM.ev, [](const CmCapture::Ev& e) { return e.s; });   // a moment plays one slot per voice
       for (auto& x : recM.ev) { if (x.k == 'd') held[x.s] = true; else if (x.k == 'u') held[x.s] = false; }
       for (int hs = 0; hs < NS; hs++) if (held[hs]) recM.ev.push_back({frame - recMStart, hs, 'u', 0, 0, 0, 0});
       cap.sr = sr; cap.dur = frame - recMStart; cap.ev = recM.ev; cap.pv = recM.pv; cap.p0.clear();
@@ -791,7 +830,7 @@ class Engine : public EState {
       Strip& st = strip[s]; st.g = 0; st.quiet = 999; st.pk = 0; st.choke = 0; st.am = 0;
       for (c = 0; c < 2; c++) { st.d1[c] = st.d2[c] = st.dl[c] = st.prevX[c] = st.lo[c] = 0; } st.md[0] = st.md[1] = st.md[2] = st.md[3] = 0;
     }
-    for (auto& L : layers) { L->sl.on = false; L->mute = true; if (L->gs) L->gs->cur = -1; }
+    for (auto& L : layers) { L->off(); L->mute = true; if (L->gs) L->gs->cur = -1; }
     if (!layers.empty()) lver++;
     recOn = false; recSync = false; recEv.clear();
     while (!cms.empty()) cmStop(0);

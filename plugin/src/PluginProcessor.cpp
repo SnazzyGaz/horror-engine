@@ -102,7 +102,7 @@ void HorrorProcessor::prepareToPlay(double sr, int maxBlock) {
   }
   held_.clear(); held_.reserve(128); inputOn_ = false; blocks_ = 0; for (auto& h : hold_) h = ParamHold();
   boardWasDown_ = false; boardVoice_ = selVoice.load();
-  pbMul_ = 1.0; atMod_ = -1.0; mwMod_ = -1.0; sustain_ = false;
+  pbMul_ = 1.0; atMod_ = -1.0; mwMod_ = -1.0; modLive_ = false; sustain_ = false;
   if (inputSource.load() != IN_NONE) { host_->inputOn(true); inputOn_ = true; }
 }
 
@@ -169,14 +169,17 @@ static int voicePolySlots(int voice) {
 }
 
 double HorrorProcessor::effPressure(double vel) const {
-  if (atMod_ >= 0.0) return jlimit(0.05, 1.0, atMod_);
-  if (mwMod_ >= 0.0) return jlimit(0.05, 1.0, mwMod_);
+  // the wheel and aftertouch take over from velocity only once moved while a note is held, so a wheel left up does not
+  // flatten every new phrase to one level
+  if (modLive_ && atMod_ >= 0.0) return jlimit(0.05, 1.0, atMod_);
+  if (modLive_ && mwMod_ >= 0.0) return jlimit(0.05, 1.0, mwMod_);
   return jlimit(0.05, 1.0, vel);
 }
 
 // held notes: polyphonic on E-bow (2), Bowed (3), Glass (3); mono last-note priority on others; one-shot on Struck
 void HorrorProcessor::noteOn(int tag, double hz, double vel) {
   int s = selVoice.load(), maxSlots = voicePolySlots(s);
+  if (held_.empty()) modLive_ = false;   // a new phrase starts on velocity
   double effHz = hz * pbMul_, effP = effPressure(vel);
   if (maxSlots >= 2) {
     for (auto& h : held_) {
@@ -290,7 +293,7 @@ void HorrorProcessor::runEvent(const UiEvent& e) {
     case UiEvent::CMOMENT: m.t = he::Msg::CMOMENT; m.id = e.id; m.on = !host_->cmActive(e.id); host_->msg(m); break;
     case UiEvent::CMDEF: m.t = he::Msg::CMDEF; m.id = e.id; m.def = e.def; host_->msg(m); break;
     case UiEvent::CMREC: m.t = he::Msg::CMREC; m.on = e.on; host_->msg(m); break;
-    case UiEvent::PANIC: releaseAll(selVoice.load()); boardWasDown_ = false; pbMul_ = 1.0; atMod_ = -1.0; mwMod_ = -1.0; host_->panic(); break;
+    case UiEvent::PANIC: releaseAll(selVoice.load()); boardWasDown_ = false; pbMul_ = 1.0; atMod_ = -1.0; mwMod_ = -1.0; modLive_ = false; host_->panic(); break;
     case UiEvent::INPUT: if (e.on != inputOn_) { inputOn_ = e.on; host_->inputOn(e.on); } break;
     case UiEvent::LOOP: {
       static const char* const A[] = {"rec", "stop", "clear", "undo", "redo", "del", "mute", "src", "ghost"};   // "rec" while recording stops it, as in engine.js
@@ -322,10 +325,10 @@ void HorrorProcessor::handleMidi(const MidiMessage& msg) {
     pbMul_ = std::pow(2.0, (2.0 * (pb - 8192) / 8192.0) / 12.0);
     updateActivePitchAndPressure();
   } else if (st == 208) {   // Channel Pressure (Aftertouch) -> pressure
-    atMod_ = d1 > 0 ? (d1 / 127.0) : -1.0;
+    atMod_ = d1 > 0 ? (d1 / 127.0) : -1.0; if (!held_.empty()) modLive_ = true;
     updateActivePitchAndPressure();
   } else if (st == 176 && d1 == 1) {   // Mod Wheel -> pressure
-    mwMod_ = d2 > 0 ? (d2 / 127.0) : -1.0;
+    mwMod_ = d2 > 0 ? (d2 / 127.0) : -1.0; if (!held_.empty()) modLive_ = true;
     updateActivePitchAndPressure();
   } else if (st == 176 && d1 == 64) {   // Sustain Pedal
     bool on = d2 >= 64;

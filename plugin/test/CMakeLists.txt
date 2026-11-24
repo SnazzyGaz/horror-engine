@@ -32,3 +32,6 @@ target_link_libraries(mono_voice_clear_test he_core)
 add_executable(daw_features_test ../test/daw_features_test.cpp)
 target_link_libraries(daw_features_test he_core)
 
+# A MIDI chord survives the looper and Record moment: letting go of one note keeps the rest (1.0.14)
+add_executable(chord_loop_test ../test/chord_loop_test.cpp)
+target_link_libraries(chord_loop_test he_core)
