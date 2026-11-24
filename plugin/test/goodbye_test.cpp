@@ -74,6 +74,28 @@ int main() {
     ok(peak(e.L, t0 + n50, e.L.size()) > std::pow(10, -50 / 20.0), m);
     Run f = scene(sr, 6, 4.0, [&](he::Host& h, int b) { if (b == bb + 40) { h.setParam(he::P_AURA_HOLD, 1); h.gesture(he::STRUCK, 'd', .5, .5, .7); } });
     ok(f.hold > .5 && peak(f.L, t0 + n50, f.L.size()) > 0, "  Hold switched back on is kept and plays");
+    // Double-GOODBYE with Struck Metal (regression test for Struck pool self-pointer aliasing after copy-assign)
+    {
+      std::vector<double> P(he::NPARAM); for (int k = 0; k < he::NPARAM; k++) P[k] = he::PARAMS[k].def;
+      P[he::P_STRUCK_OBJECT] = 2; // Bell (long decay)
+      P[he::P_REV_MIX] = 0;
+      he::Host h(sr); h.init(P.data(), 1337);
+      auto B = [&](double t) { return (int)std::lround(t * sr / he::BL); };
+      int nb = B(2.5); std::vector<float> L((size_t)nb * he::BL), R(he::BL);
+      for (int b = 0; b < nb; b++) {
+        if (b == B(.05)) h.gesture(he::STRUCK, 'd', .5, .5, .9);
+        if (b == B(.30)) h.panic();
+        if (b == B(.80)) h.gesture(he::STRUCK, 'd', .6, .5, .9);
+        if (b == B(1.20)) h.panic();
+        if (b == B(1.40)) h.gesture(he::STRUCK, 'u', 0, 0, 0); // lift byeQuiet gate without new trigger
+        h.block(&L[(size_t)b * he::BL], R.data());
+      }
+      double p1 = peak(L, (size_t)B(.05) * he::BL, (size_t)B(.30) * he::BL);
+      double p2 = peak(L, (size_t)B(.80) * he::BL, (size_t)B(1.20) * he::BL);
+      double after2 = peak(L, (size_t)B(1.45) * he::BL, L.size());
+      std::snprintf(m, sizeof m, "  double-GOODBYE Struck Bell: strike1 %.1f dBFS, strike2 %.1f dBFS, after 2nd panic %.1f dBFS", dB(p1), dB(p2), dB(after2));
+      ok(p1 > 0.05 && p2 > 0.05 && after2 < std::pow(10, -90 / 20.0), m);
+    }
   }
   std::printf(fails ? "%d failed\n" : "all passed\n", fails);
   return fails ? 1 : 0;

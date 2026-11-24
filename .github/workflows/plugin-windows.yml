@@ -54,7 +54,7 @@ jobs:
         working-directory: ${{ env.PLUGIN_DIR }}
         run: |
           cmake -S test -B build-test -A x64
-          cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test goodbye_test drag_test mono_voice_clear_test --parallel
+          cmake --build build-test --config Release --target sync_test param_hold_test samplerate_test goodbye_test drag_test mono_voice_clear_test daw_features_test --parallel
           ./build-test/Release/sync_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build-test/Release/param_hold_test.exe
@@ -66,6 +66,8 @@ jobs:
           ./build-test/Release/drag_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build-test/Release/mono_voice_clear_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build-test/Release/daw_features_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Collect the plugins

@@ -28,4 +28,7 @@ target_link_libraries(drag_test he_core)
 # Superball must not leave a block-rate tone in a stale right buffer (1.0.5)
 add_executable(mono_voice_clear_test ../test/mono_voice_clear_test.cpp)
 target_link_libraries(mono_voice_clear_test he_core)
+# Audit fixes: latency, Moan enum safety, stemsMode parity, poly MIDI slots, SR invariance, smooth bowed jump
+add_executable(daw_features_test ../test/daw_features_test.cpp)
+target_link_libraries(daw_features_test he_core)
 
